@@ -1,0 +1,6 @@
+{
+  "name": "نظام الكاشير والمحاسبة المتكامل",
+  "description": "تطبيق محاسبة وكاشير عربي متكامل موجه للمحلات، السوبرماركت، الصيدليات، الكافيهات والمشاريع التجارية مع دعم كامل للمخزون والتقارير والفواتير والطباعة.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
