@@ -27,49 +27,80 @@ export default function Reports({ invoices, products, categories, settings }: Re
     return invs; // all
   };
 
-  const activeInvoices = filterByRange(invoices);
+  // Memoize all report calculations to avoid heavy loops and O(N*M) lookups on every single render!
+  const reportData = React.useMemo(() => {
+    const activeInvoices = filterByRange(invoices);
+    const productMap = new Map(products.map(p => [p.id, p]));
 
-  // General metrics
-  const totalSalesVal = activeInvoices.reduce((acc, inv) => acc + inv.grandTotal, 0);
-  const totalTaxAmount = activeInvoices.reduce((acc, inv) => acc + inv.taxAmount, 0);
-  const totalInvsCount = activeInvoices.length;
-  
-  // Profits calculation
-  const totalProfitsVal = activeInvoices.reduce((acc, inv) => {
-    let cost = 0;
-    inv.items.forEach(item => {
-      const prod = products.find(p => p.id === item.productId);
-      const purchasePrice = prod ? prod.purchasePrice : item.price * 0.7; // default fallback cost
-      cost += purchasePrice * item.quantity;
-    });
-    return acc + (inv.grandTotal - inv.taxAmount - cost);
-  }, 0);
+    // General metrics
+    const totalSalesVal = activeInvoices.reduce((acc, inv) => acc + inv.grandTotal, 0);
+    const totalTaxAmount = activeInvoices.reduce((acc, inv) => acc + inv.taxAmount, 0);
+    const totalInvsCount = activeInvoices.length;
+    
+    // Profits calculation - O(I * L) with O(1) product map lookup
+    const totalProfitsVal = activeInvoices.reduce((acc, inv) => {
+      let cost = 0;
+      inv.items.forEach(item => {
+        const prod = productMap.get(item.productId);
+        const purchasePrice = prod ? prod.purchasePrice : item.price * 0.7; // default fallback cost
+        cost += purchasePrice * item.quantity;
+      });
+      return acc + (inv.grandTotal - inv.taxAmount - cost);
+    }, 0);
 
-  // Average ticket value
-  const avgTicketValue = totalInvsCount > 0 ? (totalSalesVal / totalInvsCount) : 0;
+    // Average ticket value
+    const avgTicketValue = totalInvsCount > 0 ? (totalSalesVal / totalInvsCount) : 0;
 
-  // Category sales performance distribution
-  const categorySales = categories.map(cat => {
-    let salesTotal = 0;
+    // Category sales performance distribution: Optimized from O(C * I * L * P) to O(P + C + I * L) using O(1) maps!
+    const categorySalesMap = new Map(categories.map(cat => [cat.id, 0]));
+    
     activeInvoices.forEach(inv => {
       inv.items.forEach(item => {
-        const prod = products.find(p => p.id === item.productId);
-        if (prod && prod.category === cat.id) {
-          salesTotal += item.total;
+        const prod = productMap.get(item.productId);
+        if (prod) {
+          const prevTotal = categorySalesMap.get(prod.category) || 0;
+          categorySalesMap.set(prod.category, prevTotal + item.total);
         }
       });
     });
-    return {
+
+    const categorySales = categories.map(cat => ({
       ...cat,
-      totalSales: salesTotal
+      totalSales: categorySalesMap.get(cat.id) || 0
+    })).sort((a, b) => b.totalSales - a.totalSales);
+
+    const maxCategorySales = Math.max(...categorySales.map(c => c.totalSales), 1);
+
+    // Stock alert stats
+    const lowStockProducts = products.filter(p => p.stock <= p.minStock && p.minStock > 0);
+    const outOfStockCount = products.filter(p => p.stock <= 0 && p.minStock > 0).length;
+
+    return {
+      activeInvoices,
+      totalSalesVal,
+      totalTaxAmount,
+      totalInvsCount,
+      totalProfitsVal,
+      avgTicketValue,
+      categorySales,
+      maxCategorySales,
+      lowStockProducts,
+      outOfStockCount
     };
-  }).sort((a, b) => b.totalSales - a.totalSales);
+  }, [invoices, products, categories, reportRange]);
 
-  const maxCategorySales = Math.max(...categorySales.map(c => c.totalSales), 1);
-
-  // Stock alert stats
-  const lowStockProducts = products.filter(p => p.stock <= p.minStock && p.minStock > 0);
-  const outOfStockCount = products.filter(p => p.stock <= 0 && p.minStock > 0).length;
+  const {
+    activeInvoices,
+    totalSalesVal,
+    totalTaxAmount,
+    totalInvsCount,
+    totalProfitsVal,
+    avgTicketValue,
+    categorySales,
+    maxCategorySales,
+    lowStockProducts,
+    outOfStockCount
+  } = reportData;
 
   const handleExportSpreadsheet = (format: 'Excel' | 'CSV') => {
     alert(`محاكاة: تم إعداد وتصدير تقرير المبيعات والأرباح والضريبة للفترة المحددة بنجاح بصيغة ${format}.\n\nاسم الملف: sales_report_${reportRange}_days.${format === 'Excel' ? 'xlsx' : 'csv'}`);

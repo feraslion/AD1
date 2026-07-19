@@ -13,23 +13,97 @@ import {
   journalDetails,
   expenses,
   settings,
-  users
+  users,
+  categories,
+  units,
+  cashboxes
 } from './src/db/schema.ts';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, and, or, like, sql, inArray } from 'drizzle-orm';
 
 const app = express();
 const PORT = 3000;
 
 app.use(express.json());
 
-// Helper for Robust Two-Layer Error Handling
-function handleApiError(res: express.Response, error: any, message: string) {
-  console.error(`${message}:`, error);
-  res.status(500).json({ error: message, details: error instanceof Error ? error.message : String(error) });
+// ─── STANDARD RESPONSE HELPERS ───
+function sendResponse(res: express.Response, data: any, status = 200, pagination?: any) {
+  res.status(status).json({
+    success: true,
+    data,
+    ...(pagination && { pagination })
+  });
 }
 
-// Helper to generate Journal Entries (Accounting Engine)
+function sendError(res: express.Response, message: string, details?: any, status = 500) {
+  res.status(status).json({
+    success: false,
+    error: message,
+    ...(details && { details })
+  });
+}
+
+// ─── AUTHENTICATION AND AUTHORIZATION MIDDLEWARES ───
+async function authenticate(req: any, res: any, next: any) {
+  try {
+    const authHeader = req.headers.authorization;
+    let userRecord = null;
+
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const code = authHeader.substring(7).trim();
+      const [u] = await db.select().from(users).where(eq(users.id, code));
+      if (u) {
+        userRecord = u;
+      }
+    }
+
+    // Default manager user fallback for seamless development/testing session
+    if (!userRecord) {
+      const [master] = await db.select().from(users).where(eq(users.id, '001'));
+      userRecord = master || { id: '001', uid: '001', email: 'manager@system.com', name: 'عبدالرحمن (المدير العام)', role: 'manager' };
+    }
+
+    req.user = userRecord;
+    next();
+  } catch (error) {
+    sendError(res, 'غير مصرح به - فشل التحقق من الهوية', error, 401);
+  }
+}
+
+function authorize(allowedRoles: string[]) {
+  return (req: any, res: any, next: any) => {
+    if (!req.user || !allowedRoles.includes(req.user.role)) {
+      return res.status(403).json({
+        success: false,
+        error: `صلاحيات غير كافية! هذه العملية تتطلب دور: ${allowedRoles.join(' أو ')}`
+      });
+    }
+    next();
+  };
+}
+
+// ─── REQUEST LOGGER MIDDLEWARE ───
+function requestLogger(req: any, res: any, next: any) {
+  const timestamp = new Date().toISOString();
+  const userStr = req.user ? `${req.user.name} (${req.user.role})` : 'Guest';
+  console.log(`[${timestamp}] ${req.method} ${req.url} - User: ${userStr}`);
+  next();
+}
+
+app.use(authenticate);
+app.use(requestLogger);
+
+// ─── ACCOUNTING JOURNAL POST ENGINE ───
 async function postJournalEntry(entryNumber: string, description: string, date: string, lines: { accountId: string, debit: number, credit: number }[]) {
+  const totalDebit = lines.reduce((sum, l) => sum + l.debit, 0);
+  const totalCredit = lines.reduce((sum, l) => sum + l.credit, 0);
+  
+  const roundedDebit = Math.round(totalDebit * 100) / 100;
+  const roundedCredit = Math.round(totalCredit * 100) / 100;
+
+  if (Math.abs(roundedDebit - roundedCredit) > 0.01) {
+    throw new Error(`القيد غير متزن! إجمالي المدين (${roundedDebit}) لا يساوي إجمالي الدائن (${roundedCredit})`);
+  }
+
   const entryId = 'je_' + Math.random().toString(36).substr(2, 9);
   
   await db.insert(journalEntries).values({
@@ -39,18 +113,35 @@ async function postJournalEntry(entryNumber: string, description: string, date: 
     date
   });
 
+  const detailValues = [];
+  const accountIds = Array.from(new Set(lines.map(line => line.accountId)));
+
+  // Fetch all accounts involved in a single query
+  const accountsList = accountIds.length > 0 
+    ? await db.select().from(accounts).where(inArray(accounts.id, accountIds))
+    : [];
+
+  const accountsMap = new Map(accountsList.map(acc => [acc.id, acc]));
+
   for (const line of lines) {
     const detailId = 'jd_' + Math.random().toString(36).substr(2, 9);
-    
-    await db.insert(journalDetails).values({
+    detailValues.push({
       id: detailId,
       journalEntryId: entryId,
       accountId: line.accountId,
       debit: line.debit.toString(),
       credit: line.credit.toString()
     });
+  }
 
-    const [account] = await db.select().from(accounts).where(eq(accounts.id, line.accountId));
+  // Bulk insert journal details in one query!
+  if (detailValues.length > 0) {
+    await db.insert(journalDetails).values(detailValues);
+  }
+
+  // Parallelize balance updates to minimize round-trip database latency!
+  const updatePromises = lines.map(async (line) => {
+    const account = accountsMap.get(line.accountId);
     if (account) {
       let currentBal = parseFloat(account.balance || '0');
       const change = line.debit - line.credit;
@@ -63,16 +154,115 @@ async function postJournalEntry(entryNumber: string, description: string, date: 
 
       await db.update(accounts).set({ balance: currentBal.toString() }).where(eq(accounts.id, line.accountId));
     }
-  }
+  });
+
+  await Promise.all(updatePromises);
 }
 
-// API Routes
+// ─── VALIDATION HELPERS ───
+function validateProduct(p: any) {
+  const errors = [];
+  if (!p.name || typeof p.name !== 'string' || p.name.trim().length < 2) {
+    errors.push('اسم المنتج مطلوب ويجب أن يكون حرفين على الأقل');
+  }
+  if (!p.barcode || typeof p.barcode !== 'string' || p.barcode.trim().length < 2) {
+    errors.push('رمز الباركود مطلوب');
+  }
+  if (p.price === undefined || parseFloat(p.price) < 0) {
+    errors.push('سعر البيع يجب أن يكون أكبر من أو يساوي الصفر');
+  }
+  if (p.purchasePrice === undefined || parseFloat(p.purchasePrice) < 0) {
+    errors.push('سعر الشراء يجب أن يكون أكبر من أو يساوي الصفر');
+  }
+  if (!p.category) {
+    errors.push('تصنيف المنتج مطلوب');
+  }
+  if (!p.unit) {
+    errors.push('وحدة المنتج مطلوبة');
+  }
+  return errors;
+}
 
-// 1. Products API
+function validateCustomer(c: any) {
+  const errors = [];
+  if (!c.name || typeof c.name !== 'string' || c.name.trim().length < 2) {
+    errors.push('اسم العميل مطلوب ويجب أن يكون حرفين على الأقل');
+  }
+  return errors;
+}
+
+function validateSupplier(s: any) {
+  const errors = [];
+  if (!s.name || typeof s.name !== 'string' || s.name.trim().length < 2) {
+    errors.push('اسم المورد مطلوب ويجب أن يكون حرفين على الأقل');
+  }
+  return errors;
+}
+
+function validateInvoice(inv: any) {
+  const errors = [];
+  if (!inv.invoiceNumber) errors.push('رقم الفاتورة مطلوب');
+  if (!inv.date) errors.push('تاريخ الفاتورة مطلوب');
+  if (!inv.items || !Array.isArray(inv.items) || inv.items.length === 0) {
+    errors.push('يجب إضافة منتج واحد على الأقل في الفاتورة');
+  }
+  return errors;
+}
+
+function validateUser(u: any) {
+  const errors = [];
+  if (!u.email || !u.email.includes('@')) errors.push('البريد الإلكتروني غير صالح');
+  if (!u.name || u.name.trim().length < 2) errors.push('الاسم مطلوب');
+  const validRoles = ['manager', 'accountant', 'cashier', 'inventory'];
+  if (!u.role || !validRoles.includes(u.role)) {
+    errors.push('دور المستخدم غير صالح، يجب أن يكون أحد الأدوار المعتمدة');
+  }
+  return errors;
+}
+
+// ─── API ROUTE HANDLERS ───
+
+// 1. Products API (With pagination and search/category filtering)
 app.get('/api/products', async (req, res) => {
   try {
-    const allProducts = await db.select().from(products);
-    // Map database numeric strings back to javascript numbers
+    const { page, limit, category, search } = req.query;
+    
+    const conditions = [];
+    if (category) {
+      conditions.push(eq(products.category, category as string));
+    }
+    if (search) {
+      conditions.push(
+        or(
+          like(products.name, `%${search}%`),
+          like(products.barcode, `%${search}%`)
+        )
+      );
+    }
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    let total = 0;
+    if (page || limit) {
+      const countResult = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(products)
+        .where(whereClause);
+      total = Number(countResult[0]?.count || 0);
+    }
+
+    let query = db.select().from(products);
+    if (whereClause) {
+      query = query.where(whereClause) as any;
+    }
+
+    if (page && limit) {
+      const p = parseInt(page as string) || 1;
+      const l = parseInt(limit as string) || 10;
+      query = query.limit(l).offset((p - 1) * l) as any;
+    }
+
+    const allProducts = await query;
     const mapped = allProducts.map(p => ({
       ...p,
       price: parseFloat(p.price || '0'),
@@ -81,70 +271,211 @@ app.get('/api/products', async (req, res) => {
       minStock: parseFloat(p.minStock || '0'),
       taxRate: parseFloat(p.taxRate || '15')
     }));
-    res.json(mapped);
+
+    if (page || limit) {
+      const p = parseInt(page as string) || 1;
+      const l = parseInt(limit as string) || 10;
+      sendResponse(res, mapped, 200, { page: p, limit: l, total });
+    } else {
+      sendResponse(res, mapped);
+    }
   } catch (error) {
-    handleApiError(res, error, 'فشل جلب المنتجات');
+    sendError(res, 'فشل جلب المنتجات', error);
   }
 });
 
-app.post('/api/products', async (req, res) => {
+app.post('/api/products', authorize(['manager', 'inventory']), async (req, res) => {
   try {
     const p = req.body;
-    const existing = await db.select().from(products).where(eq(products.id, p.id));
+    const errors = validateProduct(p);
+    if (errors.length > 0) {
+      return sendError(res, 'خطأ في التحقق من البيانات', errors, 400);
+    }
+
+    const id = p.id || 'prod_' + Math.random().toString(36).substr(2, 9);
+    const existing = await db.select().from(products).where(eq(products.id, id));
     
     const dbValue = {
-      id: p.id || 'prod_' + Math.random().toString(36).substr(2, 9),
+      id,
       name: p.name,
       barcode: p.barcode,
       price: (p.price || 0).toString(),
       purchasePrice: (p.purchasePrice || 0).toString(),
       stock: (p.stock || 0).toString(),
       minStock: (p.minStock || 0).toString(),
-      category: p.category || 'عام',
-      unit: p.unit || 'حبة',
+      category: p.category,
+      unit: p.unit,
       taxRate: (p.taxRate ?? 15).toString(),
       image: p.image || '',
       description: p.description || ''
     };
 
     if (existing.length > 0) {
-      await db.update(products).set(dbValue).where(eq(products.id, p.id));
+      await db.update(products).set(dbValue).where(eq(products.id, id));
     } else {
       await db.insert(products).values(dbValue);
     }
-    res.json({ success: true, product: dbValue });
+    sendResponse(res, dbValue);
   } catch (error) {
-    handleApiError(res, error, 'فشل حفظ المنتج');
+    sendError(res, 'فشل حفظ المنتج', error);
   }
 });
 
-app.delete('/api/products/:id', async (req, res) => {
+app.delete('/api/products/:id', authorize(['manager', 'inventory']), async (req, res) => {
   try {
     await db.delete(products).where(eq(products.id, req.params.id));
-    res.json({ success: true });
+    sendResponse(res, { success: true });
   } catch (error) {
-    handleApiError(res, error, 'فشل حذف المنتج');
+    sendError(res, 'فشل حذف المنتج', error);
   }
 });
 
-// 2. Customers API
+// 2. Categories API
+app.get('/api/categories', async (req, res) => {
+  try {
+    const allCategories = await db.select().from(categories);
+    sendResponse(res, allCategories);
+  } catch (error) {
+    sendError(res, 'فشل جلب التصنيفات', error);
+  }
+});
+
+app.post('/api/categories', authorize(['manager', 'inventory']), async (req, res) => {
+  try {
+    const cat = req.body;
+    if (!cat.name || cat.name.trim() === '') {
+      return sendError(res, 'اسم التصنيف مطلوب', null, 400);
+    }
+    const dbValue = {
+      id: cat.id || 'cat_' + Math.random().toString(36).substr(2, 9),
+      name: cat.name,
+      icon: cat.icon || '📦'
+    };
+    const existing = await db.select().from(categories).where(eq(categories.id, dbValue.id));
+    if (existing.length > 0) {
+      await db.update(categories).set(dbValue).where(eq(categories.id, dbValue.id));
+    } else {
+      await db.insert(categories).values(dbValue);
+    }
+    sendResponse(res, dbValue);
+  } catch (error) {
+    sendError(res, 'فشل حفظ التصنيف', error);
+  }
+});
+
+app.delete('/api/categories/:id', authorize(['manager', 'inventory']), async (req, res) => {
+  try {
+    await db.delete(categories).where(eq(categories.id, req.params.id));
+    sendResponse(res, { success: true });
+  } catch (error) {
+    sendError(res, 'فشل حذف التصنيف', error);
+  }
+});
+
+// 3. Units API
+app.get('/api/units', async (req, res) => {
+  try {
+    const allUnits = await db.select().from(units);
+    sendResponse(res, allUnits);
+  } catch (error) {
+    sendError(res, 'فشل جلب الوحدات', error);
+  }
+});
+
+app.post('/api/units', authorize(['manager', 'inventory', 'accountant']), async (req, res) => {
+  try {
+    const unitData = req.body;
+    if (!unitData.name || unitData.name.trim() === '') {
+      return sendError(res, 'اسم الوحدة مطلوب', null, 400);
+    }
+    const dbValue = {
+      id: unitData.id || 'unit_' + Math.random().toString(36).substr(2, 9),
+      name: unitData.name
+    };
+    const existing = await db.select().from(units).where(eq(units.id, dbValue.id));
+    if (existing.length > 0) {
+      await db.update(units).set(dbValue).where(eq(units.id, dbValue.id));
+    } else {
+      await db.insert(units).values(dbValue);
+    }
+    sendResponse(res, dbValue);
+  } catch (error) {
+    sendError(res, 'فشل حفظ الوحدة', error);
+  }
+});
+
+app.delete('/api/units/:id', authorize(['manager', 'inventory']), async (req, res) => {
+  try {
+    await db.delete(units).where(eq(units.id, req.params.id));
+    sendResponse(res, { success: true });
+  } catch (error) {
+    sendError(res, 'فشل حذف الوحدة', error);
+  }
+});
+
+// 4. Customers API (With pagination and search filtering)
 app.get('/api/customers', async (req, res) => {
   try {
-    const allCustomers = await db.select().from(customers);
+    const { page, limit, search } = req.query;
+    
+    const conditions = [];
+    if (search) {
+      conditions.push(
+        or(
+          like(customers.name, `%${search}%`),
+          like(customers.phone, `%${search}%`)
+        )
+      );
+    }
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    let total = 0;
+    if (page || limit) {
+      const countResult = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(customers)
+        .where(whereClause);
+      total = Number(countResult[0]?.count || 0);
+    }
+
+    let query = db.select().from(customers);
+    if (whereClause) {
+      query = query.where(whereClause) as any;
+    }
+
+    if (page && limit) {
+      const p = parseInt(page as string) || 1;
+      const l = parseInt(limit as string) || 10;
+      query = query.limit(l).offset((p - 1) * l) as any;
+    }
+
+    const allCustomers = await query;
     const mapped = allCustomers.map(c => ({
       ...c,
       balance: parseFloat(c.balance || '0'),
       creditLimit: parseFloat(c.creditLimit || '5000')
     }));
-    res.json(mapped);
+
+    if (page || limit) {
+      const p = parseInt(page as string) || 1;
+      const l = parseInt(limit as string) || 10;
+      sendResponse(res, mapped, 200, { page: p, limit: l, total });
+    } else {
+      sendResponse(res, mapped);
+    }
   } catch (error) {
-    handleApiError(res, error, 'فشل جلب العملاء');
+    sendError(res, 'فشل جلب العملاء', error);
   }
 });
 
-app.post('/api/customers', async (req, res) => {
+app.post('/api/customers', authorize(['manager', 'cashier', 'accountant']), async (req, res) => {
   try {
     const c = req.body;
+    const errors = validateCustomer(c);
+    if (errors.length > 0) {
+      return sendError(res, 'خطأ في التحقق من البيانات', errors, 400);
+    }
+
     const id = c.id || 'cust_' + Math.random().toString(36).substr(2, 9);
     const dbValue = {
       id,
@@ -161,13 +492,22 @@ app.post('/api/customers', async (req, res) => {
     } else {
       await db.insert(customers).values(dbValue);
     }
-    res.json({ success: true, customer: dbValue });
+    sendResponse(res, dbValue);
   } catch (error) {
-    handleApiError(res, error, 'فشل حفظ العميل');
+    sendError(res, 'فشل حفظ العميل', error);
   }
 });
 
-// 3. Suppliers API
+app.delete('/api/customers/:id', authorize(['manager']), async (req, res) => {
+  try {
+    await db.delete(customers).where(eq(customers.id, req.params.id));
+    sendResponse(res, { success: true });
+  } catch (error) {
+    sendError(res, 'فشل حذف العميل', error);
+  }
+});
+
+// 5. Suppliers API
 app.get('/api/suppliers', async (req, res) => {
   try {
     const allSuppliers = await db.select().from(suppliers);
@@ -175,15 +515,20 @@ app.get('/api/suppliers', async (req, res) => {
       ...s,
       balance: parseFloat(s.balance || '0')
     }));
-    res.json(mapped);
+    sendResponse(res, mapped);
   } catch (error) {
-    handleApiError(res, error, 'فشل جلب الموردين');
+    sendError(res, 'فشل جلب الموردين', error);
   }
 });
 
-app.post('/api/suppliers', async (req, res) => {
+app.post('/api/suppliers', authorize(['manager', 'inventory', 'accountant']), async (req, res) => {
   try {
     const s = req.body;
+    const errors = validateSupplier(s);
+    if (errors.length > 0) {
+      return sendError(res, 'خطأ في التحقق من البيانات', errors, 400);
+    }
+
     const id = s.id || 'supp_' + Math.random().toString(36).substr(2, 9);
     const dbValue = {
       id,
@@ -199,17 +544,63 @@ app.post('/api/suppliers', async (req, res) => {
     } else {
       await db.insert(suppliers).values(dbValue);
     }
-    res.json({ success: true, supplier: dbValue });
+    sendResponse(res, dbValue);
   } catch (error) {
-    handleApiError(res, error, 'فشل حفظ المورد');
+    sendError(res, 'فشل حفظ المورد', error);
   }
 });
 
-// 4. Invoices & POS Sales API
+app.delete('/api/suppliers/:id', authorize(['manager']), async (req, res) => {
+  try {
+    await db.delete(suppliers).where(eq(suppliers.id, req.params.id));
+    sendResponse(res, { success: true });
+  } catch (error) {
+    sendError(res, 'فشل حذف المورد', error);
+  }
+});
+
+// 6. Invoices & POS Sales API (With pagination and filtration)
 app.get('/api/invoices', async (req, res) => {
   try {
-    const allInvoices = await db.select().from(invoices).orderBy(desc(invoices.createdAt));
-    const allItems = await db.select().from(invoiceItems);
+    const { page, limit, customerId, status, date } = req.query;
+    
+    const conditions = [];
+    if (customerId) {
+      conditions.push(eq(invoices.customerId, customerId as string));
+    }
+    if (status) {
+      conditions.push(eq(invoices.status, status as string));
+    }
+    if (date) {
+      conditions.push(eq(invoices.date, date as string));
+    }
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    let total = 0;
+    if (page || limit) {
+      const countResult = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(invoices)
+        .where(whereClause);
+      total = Number(countResult[0]?.count || 0);
+    }
+
+    let query = db.select().from(invoices).orderBy(desc(invoices.createdAt));
+    if (whereClause) {
+      query = query.where(whereClause) as any;
+    }
+
+    if (page && limit) {
+      const p = parseInt(page as string) || 1;
+      const l = parseInt(limit as string) || 10;
+      query = query.limit(l).offset((p - 1) * l) as any;
+    }
+
+    const allInvoices = await query;
+    const invoiceIds = allInvoices.map(inv => inv.id);
+    const allItems = invoiceIds.length > 0
+      ? await db.select().from(invoiceItems).where(inArray(invoiceItems.invoiceId, invoiceIds))
+      : [];
 
     const mapped = allInvoices.map(inv => {
       const items = allItems.filter(item => item.invoiceId === inv.id).map(item => ({
@@ -245,18 +636,28 @@ app.get('/api/invoices', async (req, res) => {
       };
     });
 
-    res.json(mapped);
+    if (page || limit) {
+      const p = parseInt(page as string) || 1;
+      const l = parseInt(limit as string) || 10;
+      sendResponse(res, mapped, 200, { page: p, limit: l, total });
+    } else {
+      sendResponse(res, mapped);
+    }
   } catch (error) {
-    handleApiError(res, error, 'فشل جلب الفواتير');
+    sendError(res, 'فشل جلب الفواتير', error);
   }
 });
 
-app.post('/api/invoices', async (req, res) => {
+app.post('/api/invoices', authorize(['manager', 'cashier']), async (req, res) => {
   try {
     const inv = req.body;
+    const errors = validateInvoice(inv);
+    if (errors.length > 0) {
+      return sendError(res, 'خطأ في التحقق من البيانات', errors, 400);
+    }
+
     const invId = inv.id || 'inv_' + Math.random().toString(36).substr(2, 9);
     
-    // Create Invoice Record
     await db.insert(invoices).values({
       id: invId,
       invoiceNumber: inv.invoiceNumber,
@@ -276,11 +677,19 @@ app.post('/api/invoices', async (req, res) => {
     });
 
     let totalCogs = 0;
+    const itemIds = Array.from(new Set(inv.items.map((item: any) => item.productId)));
 
-    // Create Invoice Items Records and Update Stock
+    // Bulk fetch all relevant products at once!
+    const productsList = itemIds.length > 0
+      ? await db.select().from(products).where(inArray(products.id, itemIds))
+      : [];
+    const productsMap = new Map(productsList.map(p => [p.id, p]));
+
+    const invoiceItemValues = [];
+
     for (const item of inv.items) {
       const itemId = 'item_' + Math.random().toString(36).substr(2, 9);
-      await db.insert(invoiceItems).values({
+      invoiceItemValues.push({
         id: itemId,
         invoiceId: invId,
         productId: item.productId,
@@ -293,33 +702,43 @@ app.post('/api/invoices', async (req, res) => {
         taxAmount: item.taxAmount.toString()
       });
 
-      // Update Stock in PostgreSQL
-      const [product] = await db.select().from(products).where(eq(products.id, item.productId));
+      const product = productsMap.get(item.productId);
       if (product) {
-        const currentStock = parseFloat(product.stock || '0');
         const purchasePrice = parseFloat(product.purchasePrice || '0');
         totalCogs += purchasePrice * item.quantity;
-
-        // Deduct stock if not unlimited (unlimited indicated by stock 999 mock, but let's deduct normally)
-        if (currentStock !== 999) {
-          await db.update(products).set({
-            stock: Math.max(0, currentStock - item.quantity).toString()
-          }).where(eq(products.id, item.productId));
-        }
       }
     }
 
-    // ─── Automated Accounting integration (Double-entry journal posting) ───
+    // Bulk insert all invoice items at once!
+    if (invoiceItemValues.length > 0) {
+      await db.insert(invoiceItems).values(invoiceItemValues);
+    }
+
+    // Parallelize inventory stock updates!
+    const stockUpdatePromises = inv.items.map(async (item: any) => {
+      const product = productsMap.get(item.productId);
+      if (product) {
+        const currentStock = parseFloat(product.stock || '0');
+        if (currentStock !== 999) {
+          const nextStock = Math.max(0, currentStock - item.quantity);
+          await db.update(products).set({
+            stock: nextStock.toString()
+          }).where(eq(products.id, item.productId));
+        }
+      }
+    });
+
+    await Promise.all(stockUpdatePromises);
+
+    // Double-entry ledger integration
     const accountingLines = [];
 
-    // 1. Debit Cash/Bank/Receivable
     if (inv.paymentMethod === 'cash') {
       accountingLines.push({ accountId: 'acc_cash', debit: inv.grandTotal, credit: 0 });
     } else if (inv.paymentMethod === 'card') {
       accountingLines.push({ accountId: 'acc_bank', debit: inv.grandTotal, credit: 0 });
     } else if (inv.paymentMethod === 'credit') {
       accountingLines.push({ accountId: 'acc_receivable', debit: inv.grandTotal, credit: 0 });
-      // Update Customer balance
       if (inv.customerId) {
         const [customer] = await db.select().from(customers).where(eq(customers.id, inv.customerId));
         if (customer) {
@@ -334,15 +753,12 @@ app.post('/api/invoices', async (req, res) => {
       if (cardAmt > 0) accountingLines.push({ accountId: 'acc_bank', debit: cardAmt, credit: 0 });
     }
 
-    // 2. Credit Sales Revenue
     accountingLines.push({ accountId: 'acc_sales', debit: 0, credit: inv.totalWithoutTax });
 
-    // 3. Credit VAT Payable
     if (inv.taxAmount > 0) {
       accountingLines.push({ accountId: 'acc_tax', debit: 0, credit: inv.taxAmount });
     }
 
-    // 4. COGS & Inventory entries
     if (totalCogs > 0) {
       accountingLines.push({ accountId: 'acc_cogs', debit: totalCogs, credit: 0 });
       accountingLines.push({ accountId: 'acc_inventory', debit: 0, credit: totalCogs });
@@ -355,29 +771,67 @@ app.post('/api/invoices', async (req, res) => {
       accountingLines
     );
 
-    res.json({ success: true, invoiceId: invId });
+    sendResponse(res, { success: true, invoiceId: invId });
   } catch (error) {
-    handleApiError(res, error, 'فشل إنشاء الفاتورة');
+    sendError(res, 'فشل إنشاء الفاتورة', error);
   }
 });
 
-// 5. Expenses API
-app.get('/api/expenses', async (req, res) => {
+// 7. Expenses API (With filtration and standard response)
+app.get('/api/expenses', authorize(['manager', 'accountant', 'inventory']), async (req, res) => {
   try {
-    const allExpenses = await db.select().from(expenses).orderBy(desc(expenses.createdAt));
+    const { date, page, limit } = req.query;
+    const conditions = [];
+    if (date) {
+      conditions.push(eq(expenses.date, date as string));
+    }
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    let total = 0;
+    if (page || limit) {
+      const countResult = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(expenses)
+        .where(whereClause);
+      total = Number(countResult[0]?.count || 0);
+    }
+
+    let query = db.select().from(expenses).orderBy(desc(expenses.createdAt));
+    if (whereClause) {
+      query = query.where(whereClause) as any;
+    }
+
+    if (page && limit) {
+      const p = parseInt(page as string) || 1;
+      const l = parseInt(limit as string) || 10;
+      query = query.limit(l).offset((p - 1) * l) as any;
+    }
+
+    const allExpenses = await query;
     const mapped = allExpenses.map(e => ({
       ...e,
       amount: parseFloat(e.amount)
     }));
-    res.json(mapped);
+
+    if (page || limit) {
+      const p = parseInt(page as string) || 1;
+      const l = parseInt(limit as string) || 10;
+      sendResponse(res, mapped, 200, { page: p, limit: l, total });
+    } else {
+      sendResponse(res, mapped);
+    }
   } catch (error) {
-    handleApiError(res, error, 'فشل جلب المصاريف');
+    sendError(res, 'فشل جلب المصاريف', error);
   }
 });
 
-app.post('/api/expenses', async (req, res) => {
+app.post('/api/expenses', authorize(['manager', 'accountant']), async (req, res) => {
   try {
     const exp = req.body;
+    if (!exp.description || !exp.amount || parseFloat(exp.amount) <= 0) {
+      return sendError(res, 'بيانات المصروف غير صالحة', null, 400);
+    }
+
     const id = 'exp_' + Math.random().toString(36).substr(2, 9);
     
     await db.insert(expenses).values({
@@ -388,40 +842,164 @@ app.post('/api/expenses', async (req, res) => {
       date: exp.date
     });
 
-    // ─── Automated Journal Entry for Expense ───
     await postJournalEntry(
       `JE-EXP-${id}`,
       `مصروف: ${exp.description}`,
       exp.date,
       [
-        { accountId: 'acc_expense', debit: exp.amount, credit: 0 },
-        { accountId: 'acc_cash', debit: 0, credit: exp.amount }
+        { accountId: 'acc_expense', debit: parseFloat(exp.amount), credit: 0 },
+        { accountId: 'acc_cash', debit: 0, credit: parseFloat(exp.amount) }
       ]
     );
 
-    res.json({ success: true, id });
+    sendResponse(res, { success: true, id });
   } catch (error) {
-    handleApiError(res, error, 'فشل تسجيل المصروف');
+    sendError(res, 'فشل تسجيل المصروف', error);
   }
 });
 
-// 6. Accounting reports & Ledger API
-app.get('/api/accounting/accounts', async (req, res) => {
+app.delete('/api/expenses/:id', authorize(['manager', 'accountant']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.delete(expenses).where(eq(expenses.id, id));
+    sendResponse(res, { success: true });
+  } catch (error) {
+    sendError(res, 'فشل حذف المصروف', error);
+  }
+});
+
+// 8. Accounting Reports & Ledger API
+app.get('/api/accounting/accounts', authorize(['manager', 'accountant']), async (req, res) => {
   try {
     const allAccounts = await db.select().from(accounts);
-    res.json(allAccounts.map(acc => ({
+    sendResponse(res, allAccounts.map(acc => ({
       ...acc,
       balance: parseFloat(acc.balance || '0')
     })));
   } catch (error) {
-    handleApiError(res, error, 'فشل جلب الحسابات');
+    sendError(res, 'فشل جلب الحسابات', error);
   }
 });
 
-app.get('/api/accounting/journal-entries', async (req, res) => {
+app.post('/api/accounting/accounts', authorize(['manager', 'accountant']), async (req, res) => {
   try {
-    const allEntries = await db.select().from(journalEntries).orderBy(desc(journalEntries.createdAt));
-    const allDetails = await db.select().from(journalDetails);
+    const { id, code, name, type, balance } = req.body;
+    if (!code || !name || !type) {
+      return sendError(res, 'جميع الحقول الأساسية للحساب مطلوبة', null, 400);
+    }
+    const accountId = id || 'acc_' + Math.random().toString(36).substr(2, 9);
+    const dbValue = {
+      id: accountId,
+      code,
+      name,
+      type,
+      balance: (balance || 0).toString()
+    };
+    const existing = await db.select().from(accounts).where(eq(accounts.id, accountId));
+    if (existing.length > 0) {
+      await db.update(accounts).set(dbValue).where(eq(accounts.id, accountId));
+    } else {
+      await db.insert(accounts).values(dbValue);
+    }
+    sendResponse(res, dbValue);
+  } catch (error) {
+    sendError(res, 'فشل حفظ الحساب', error);
+  }
+});
+
+app.delete('/api/accounting/accounts/:id', authorize(['manager', 'accountant']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const existingDetails = await db.select().from(journalDetails).where(eq(journalDetails.accountId, id));
+    if (existingDetails.length > 0) {
+      return sendError(res, 'لا يمكن حذف الحساب نظراً لوجود قيود محاسبية مسجلة عليه.', null, 400);
+    }
+    await db.delete(accounts).where(eq(accounts.id, id));
+    sendResponse(res, { success: true });
+  } catch (error) {
+    sendError(res, 'فشل حذف الحساب', error);
+  }
+});
+
+app.get('/api/accounting/ledger', authorize(['manager', 'accountant']), async (req, res) => {
+  try {
+    const { accountId } = req.query;
+    if (!accountId) {
+      return sendError(res, 'يجب تحديد معرف الحساب accountId', null, 400);
+    }
+    
+    const [account] = await db.select().from(accounts).where(eq(accounts.id, accountId as string));
+    if (!account) {
+      return sendError(res, 'الحساب غير موجود', null, 404);
+    }
+
+    const details = await db.select().from(journalDetails).where(eq(journalDetails.accountId, accountId as string));
+    const entryIds = Array.from(new Set(details.map(d => d.journalEntryId)));
+    const entries = entryIds.length > 0
+      ? await db.select().from(journalEntries).where(inArray(journalEntries.id, entryIds))
+      : [];
+
+    const ledgerLines = details.map(d => {
+      const parent = entries.find(e => e.id === d.journalEntryId);
+      return {
+        id: d.id,
+        entryNumber: parent ? parent.entryNumber : 'N/A',
+        description: parent ? parent.description : 'N/A',
+        date: parent ? parent.date : '',
+        debit: parseFloat(d.debit || '0'),
+        credit: parseFloat(d.credit || '0')
+      };
+    }).sort((a, b) => a.date.localeCompare(b.date));
+
+    sendResponse(res, {
+      account: {
+        ...account,
+        balance: parseFloat(account.balance || '0')
+      },
+      lines: ledgerLines
+    });
+  } catch (error) {
+    sendError(res, 'فشل جلب دفتر الأستاذ للحساب', error);
+  }
+});
+
+app.get('/api/accounting/journal-entries', authorize(['manager', 'accountant']), async (req, res) => {
+  try {
+    const { page, limit, search, date } = req.query;
+    const conditions = [];
+    if (search) {
+      conditions.push(like(journalEntries.description, `%${search}%`));
+    }
+    if (date) {
+      conditions.push(eq(journalEntries.date, date as string));
+    }
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    let total = 0;
+    if (page || limit) {
+      const countResult = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(journalEntries)
+        .where(whereClause);
+      total = Number(countResult[0]?.count || 0);
+    }
+
+    let query = db.select().from(journalEntries).orderBy(desc(journalEntries.createdAt));
+    if (whereClause) {
+      query = query.where(whereClause) as any;
+    }
+
+    if (page && limit) {
+      const p = parseInt(page as string) || 1;
+      const l = parseInt(limit as string) || 10;
+      query = query.limit(l).offset((p - 1) * l) as any;
+    }
+
+    const allEntries = await query;
+    const entryIds = allEntries.map(e => e.id);
+    const allDetails = entryIds.length > 0
+      ? await db.select().from(journalDetails).where(inArray(journalDetails.journalEntryId, entryIds))
+      : [];
 
     const mapped = allEntries.map(entry => {
       const details = allDetails.filter(d => d.journalEntryId === entry.id).map(d => ({
@@ -433,29 +1011,37 @@ app.get('/api/accounting/journal-entries', async (req, res) => {
       return { ...entry, details };
     });
 
-    res.json(mapped);
+    if (page || limit) {
+      const p = parseInt(page as string) || 1;
+      const l = parseInt(limit as string) || 10;
+      sendResponse(res, mapped, 200, { page: p, limit: l, total });
+    } else {
+      sendResponse(res, mapped);
+    }
   } catch (error) {
-    handleApiError(res, error, 'فشل جلب قيود اليومية');
+    sendError(res, 'فشل جلب قيود اليومية', error);
   }
 });
 
-app.post('/api/accounting/journal-entries', async (req, res) => {
+app.post('/api/accounting/journal-entries', authorize(['manager', 'accountant']), async (req, res) => {
   try {
     const { description, date, lines } = req.body;
+    if (!description || !date || !lines || !Array.isArray(lines) || lines.length === 0) {
+      return sendError(res, 'بيانات قيد اليومية غير مكتملة', null, 400);
+    }
     const entryNum = 'JE-MAN-' + Math.floor(1000 + Math.random() * 9000);
     await postJournalEntry(entryNum, description, date, lines);
-    res.json({ success: true, entryNumber: entryNum });
+    sendResponse(res, { success: true, entryNumber: entryNum });
   } catch (error) {
-    handleApiError(res, error, 'فشل حفظ القيد المحاسبي اليدوي');
+    sendError(res, 'فشل حفظ القيد المحاسبي اليدوي', error.message || error);
   }
 });
 
-// 7. Store Settings API
+// 9. Store Settings API
 app.get('/api/settings', async (req, res) => {
   try {
     const existing = await db.select().from(settings);
     if (existing.length === 0) {
-      // Default Settings
       const defaultSettings = {
         id: 'global_settings',
         name: 'مطعم ومقهى السحاب',
@@ -468,22 +1054,22 @@ app.get('/api/settings', async (req, res) => {
         thermalPrinterWidth: '80mm'
       };
       await db.insert(settings).values(defaultSettings);
-      return res.json({
+      return sendResponse(res, {
         ...defaultSettings,
         taxRate: parseFloat(defaultSettings.taxRate)
       });
     }
     const current = existing[0];
-    res.json({
+    sendResponse(res, {
       ...current,
       taxRate: parseFloat(current.taxRate || '15')
     });
   } catch (error) {
-    handleApiError(res, error, 'فشل جلب إعدادات المتجر');
+    sendError(res, 'فشل جلب إعدادات المتجر', error);
   }
 });
 
-app.post('/api/settings', async (req, res) => {
+app.post('/api/settings', authorize(['manager']), async (req, res) => {
   try {
     const s = req.body;
     const dbValue = {
@@ -504,12 +1090,317 @@ app.post('/api/settings', async (req, res) => {
     } else {
       await db.insert(settings).values(dbValue);
     }
-    res.json({ success: true, settings: dbValue });
+    sendResponse(res, dbValue);
   } catch (error) {
-    handleApiError(res, error, 'فشل تحديث الإعدادات');
+    sendError(res, 'فشل تحديث الإعدادات', error);
   }
 });
-// 8. Custom Seeder for ERP Chart of Accounts & Suppliers
+
+// 10. Users API (Manager restricted, with validation, pagination & filter)
+app.get('/api/users', authorize(['manager']), async (req, res) => {
+  try {
+    const { page, limit, role } = req.query;
+    const conditions = [];
+    if (role) {
+      conditions.push(eq(users.role, role as string));
+    }
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    let total = 0;
+    if (page || limit) {
+      const countResult = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(users)
+        .where(whereClause);
+      total = Number(countResult[0]?.count || 0);
+    }
+
+    let query = db.select().from(users);
+    if (whereClause) {
+      query = query.where(whereClause) as any;
+    }
+
+    if (page && limit) {
+      const p = parseInt(page as string) || 1;
+      const l = parseInt(limit as string) || 10;
+      query = query.limit(l).offset((p - 1) * l) as any;
+    }
+
+    const allUsers = await query;
+
+    if (page || limit) {
+      const p = parseInt(page as string) || 1;
+      const l = parseInt(limit as string) || 10;
+      sendResponse(res, allUsers, 200, { page: p, limit: l, total });
+    } else {
+      sendResponse(res, allUsers);
+    }
+  } catch (error) {
+    sendError(res, 'فشل جلب المستخدمين', error);
+  }
+});
+
+app.post('/api/users', authorize(['manager']), async (req, res) => {
+  try {
+    const u = req.body;
+    const errors = validateUser(u);
+    if (errors.length > 0) {
+      return sendError(res, 'خطأ في التحقق من البيانات', errors, 400);
+    }
+
+    const id = u.id || 'user_' + Math.random().toString(36).substr(2, 9);
+    const existing = await db.select().from(users).where(eq(users.id, id));
+
+    const dbValue = {
+      id,
+      uid: u.uid || id,
+      email: u.email,
+      name: u.name,
+      role: u.role
+    };
+
+    if (existing.length > 0) {
+      await db.update(users).set(dbValue).where(eq(users.id, id));
+    } else {
+      await db.insert(users).values(dbValue);
+    }
+    sendResponse(res, dbValue);
+  } catch (error) {
+    sendError(res, 'فشل حفظ المستخدم', error);
+  }
+});
+
+app.delete('/api/users/:id', authorize(['manager']), async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    if (id === '001' || id === req.user.id) {
+      return sendError(res, 'غير مسموح بحذف الحساب الإداري الرئيسي أو حسابك النشط حالياً.', null, 400);
+    }
+    await db.delete(users).where(eq(users.id, id));
+    sendResponse(res, { success: true });
+  } catch (error) {
+    sendError(res, 'فشل حذف المستخدم', error);
+  }
+});
+
+// 11. Cashboxes API
+app.get('/api/cashboxes', async (req, res) => {
+  try {
+    const boxes = await db.select().from(cashboxes);
+    const mapped = boxes.map(b => ({
+      ...b,
+      currentBalance: parseFloat(b.currentBalance || '0')
+    }));
+    sendResponse(res, mapped);
+  } catch (error) {
+    sendError(res, 'فشل جلب صناديق النقدية', error);
+  }
+});
+
+app.post('/api/cashboxes', authorize(['manager']), async (req, res) => {
+  try {
+    const box = req.body;
+    if (!box.name || box.name.trim() === '') {
+      return sendError(res, 'اسم الصندوق مطلوب', null, 400);
+    }
+    const id = box.id || 'cashbox_' + Math.random().toString(36).substr(2, 9);
+    const existing = await db.select().from(cashboxes).where(eq(cashboxes.id, id));
+
+    const dbValue = {
+      id,
+      name: box.name,
+      status: box.status || 'closed',
+      currentBalance: (box.currentBalance || 0).toString(),
+      lastOpenedAt: box.lastOpenedAt || null,
+      lastClosedAt: box.lastClosedAt || null
+    };
+
+    if (existing.length > 0) {
+      await db.update(cashboxes).set(dbValue).where(eq(cashboxes.id, id));
+    } else {
+      await db.insert(cashboxes).values(dbValue);
+    }
+    sendResponse(res, dbValue);
+  } catch (error) {
+    sendError(res, 'فشل حفظ صندوق النقدية', error);
+  }
+});
+
+app.post('/api/cashboxes/open', authorize(['manager', 'cashier']), async (req, res) => {
+  try {
+    const { id, startBalance } = req.body;
+    if (!id) return sendError(res, 'معرف الصندوق مطلوب', null, 400);
+
+    const [box] = await db.select().from(cashboxes).where(eq(cashboxes.id, id));
+    if (!box) return sendError(res, 'الصندوق غير موجود', null, 404);
+
+    const updated = {
+      status: 'open',
+      currentBalance: (startBalance || 0).toString(),
+      lastOpenedAt: new Date().toISOString()
+    };
+    await db.update(cashboxes).set(updated).where(eq(cashboxes.id, id));
+    sendResponse(res, { success: true, box: { ...box, ...updated } });
+  } catch (error) {
+    sendError(res, 'فشل فتح الصندوق', error);
+  }
+});
+
+app.post('/api/cashboxes/close', authorize(['manager', 'cashier']), async (req, res) => {
+  try {
+    const { id, endBalance } = req.body;
+    if (!id) return sendError(res, 'معرف الصندوق مطلوب', null, 400);
+
+    const [box] = await db.select().from(cashboxes).where(eq(cashboxes.id, id));
+    if (!box) return sendError(res, 'الصندوق غير موجود', null, 404);
+
+    const updated = {
+      status: 'closed',
+      currentBalance: (endBalance || 0).toString(),
+      lastClosedAt: new Date().toISOString()
+    };
+    await db.update(cashboxes).set(updated).where(eq(cashboxes.id, id));
+    sendResponse(res, { success: true, box: { ...box, ...updated } });
+  } catch (error) {
+    sendError(res, 'فشل إغلاق الصندوق', error);
+  }
+});
+
+// 12. Purchasing API
+app.post('/api/purchases', authorize(['manager', 'inventory', 'accountant']), async (req, res) => {
+  try {
+    const { supplierId, date, items, paymentMethod, invoiceNumber, taxAmount, totalWithoutTax, grandTotal } = req.body;
+    if (!invoiceNumber || !items || items.length === 0) {
+      return sendError(res, 'بيانات المشتريات غير مكتملة', null, 400);
+    }
+    
+    const itemIds = Array.from(new Set(items.map((item: any) => item.productId)));
+    const productsList = itemIds.length > 0
+      ? await db.select().from(products).where(inArray(products.id, itemIds))
+      : [];
+    const productsMap = new Map(productsList.map(p => [p.id, p]));
+
+    const updatePromises = items.map(async (item: any) => {
+      const product = productsMap.get(item.productId);
+      if (product) {
+        const currentStock = parseFloat(product.stock || '0');
+        const nextStock = currentStock === 999 ? 999 : currentStock + item.quantity;
+        await db.update(products).set({
+          stock: nextStock.toString(),
+          purchasePrice: item.purchasePrice.toString()
+        }).where(eq(products.id, item.productId));
+      }
+    });
+
+    await Promise.all(updatePromises);
+
+    if (paymentMethod === 'credit' && supplierId) {
+      const [supplier] = await db.select().from(suppliers).where(eq(suppliers.id, supplierId));
+      if (supplier) {
+        const nextBalance = parseFloat(supplier.balance || '0') + grandTotal;
+        await db.update(suppliers).set({ balance: nextBalance.toString() }).where(eq(suppliers.id, supplierId));
+      }
+    }
+
+    const accountingLines = [];
+    accountingLines.push({ accountId: 'acc_inventory', debit: totalWithoutTax, credit: 0 });
+    if (taxAmount > 0) {
+      accountingLines.push({ accountId: 'acc_tax', debit: taxAmount, credit: 0 });
+    }
+
+    if (paymentMethod === 'cash') {
+      accountingLines.push({ accountId: 'acc_cash', debit: 0, credit: grandTotal });
+    } else if (paymentMethod === 'card') {
+      accountingLines.push({ accountId: 'acc_bank', debit: 0, credit: grandTotal });
+    } else if (paymentMethod === 'credit') {
+      accountingLines.push({ accountId: 'acc_payable', debit: 0, credit: grandTotal });
+    }
+
+    await postJournalEntry(
+      `JE-PUR-${invoiceNumber}`,
+      `فاتورة مشتريات رقم ${invoiceNumber}`,
+      date,
+      accountingLines
+    );
+
+    sendResponse(res, { success: true });
+  } catch (error) {
+    sendError(res, 'فشل تسجيل فاتورة المشتريات', error);
+  }
+});
+
+// 13. Customer Receipt Payments API
+app.post('/api/payments/customer', authorize(['manager', 'cashier', 'accountant']), async (req, res) => {
+  try {
+    const { customerId, amount, paymentMethod, date, receiptNumber } = req.body;
+    if (!customerId || !amount || parseFloat(amount) <= 0) {
+      return sendError(res, 'بيانات سند القبض غير كاملة أو غير صالحة', null, 400);
+    }
+    
+    const [customer] = await db.select().from(customers).where(eq(customers.id, customerId));
+    if (!customer) throw new Error('العميل غير موجود');
+    
+    const nextBalance = parseFloat(customer.balance || '0') - amount;
+    await db.update(customers).set({ balance: nextBalance.toString() }).where(eq(customers.id, customerId));
+
+    const accountingLines = [];
+    if (paymentMethod === 'cash') {
+      accountingLines.push({ accountId: 'acc_cash', debit: amount, credit: 0 });
+    } else {
+      accountingLines.push({ accountId: 'acc_bank', debit: amount, credit: 0 });
+    }
+    accountingLines.push({ accountId: 'acc_receivable', debit: 0, credit: amount });
+
+    await postJournalEntry(
+      `JE-RCPT-${receiptNumber}`,
+      `سند قبض عميل: ${customer.name}`,
+      date,
+      accountingLines
+    );
+
+    sendResponse(res, { success: true });
+  } catch (error) {
+    sendError(res, 'فشل تسجيل سند القبض', error);
+  }
+});
+
+// 14. Supplier Payments API
+app.post('/api/payments/supplier', authorize(['manager', 'inventory', 'accountant']), async (req, res) => {
+  try {
+    const { supplierId, amount, paymentMethod, date, paymentNumber } = req.body;
+    if (!supplierId || !amount || parseFloat(amount) <= 0) {
+      return sendError(res, 'بيانات سند الصرف غير كاملة أو غير صالحة', null, 400);
+    }
+    
+    const [supplier] = await db.select().from(suppliers).where(eq(suppliers.id, supplierId));
+    if (!supplier) throw new Error('المورد غير موجود');
+    
+    const nextBalance = parseFloat(supplier.balance || '0') - amount;
+    await db.update(suppliers).set({ balance: nextBalance.toString() }).where(eq(suppliers.id, supplierId));
+
+    const accountingLines = [];
+    accountingLines.push({ accountId: 'acc_payable', debit: amount, credit: 0 });
+    if (paymentMethod === 'cash') {
+      accountingLines.push({ accountId: 'acc_cash', debit: 0, credit: amount });
+    } else {
+      accountingLines.push({ accountId: 'acc_bank', debit: 0, credit: amount });
+    }
+
+    await postJournalEntry(
+      `JE-PAY-${paymentNumber}`,
+      `سند صرف مورد: ${supplier.name}`,
+      date,
+      accountingLines
+    );
+
+    sendResponse(res, { success: true });
+  } catch (error) {
+    sendError(res, 'فشل تسجيل سند الصرف', error);
+  }
+});
+
+
+// ─── DATABASE SEEDER FOR DEFAULT ERP CONVENTIONS ───
 async function seedDefaultData() {
   try {
     const existingAccounts = await db.select().from(accounts);
@@ -541,130 +1432,63 @@ async function seedDefaultData() {
       ];
       await db.insert(suppliers).values(defaultSuppliers);
     }
+
+    const existingUnits = await db.select().from(units);
+    if (existingUnits.length === 0) {
+      console.log('Seeding default Units...');
+      const defaultUnits = [
+        { id: '1', name: 'حبة' },
+        { id: '2', name: 'كيلو' },
+        { id: '3', name: 'كرتون' },
+        { id: '4', name: 'لتر' },
+        { id: '5', name: 'شدة' },
+        { id: '6', name: 'جرام' }
+      ];
+      await db.insert(units).values(defaultUnits);
+    }
+
+    const existingCategories = await db.select().from(categories);
+    if (existingCategories.length === 0) {
+      console.log('Seeding default Categories...');
+      const defaultCategories = [
+        { id: 'cat-1', name: 'المعلبات والأغذية', icon: '🥫' },
+        { id: 'cat-2', name: 'المخبوزات والحلويات', icon: '🍞' },
+        { id: 'cat-3', name: 'المشروبات والعصائر', icon: '🥤' },
+        { id: 'cat-4', name: 'الألبان والأجبان', icon: '🧀' },
+        { id: 'cat-5', name: 'الخضروات والفواكه', icon: '🍎' }
+      ];
+      await db.insert(categories).values(defaultCategories);
+    }
+
+    const existingUsers = await db.select().from(users);
+    if (existingUsers.length === 0) {
+      console.log('Seeding default ERP Users...');
+      const defaultUsers = [
+        { id: '001', uid: '001', email: 'manager@system.com', name: 'عبدالرحمن (المدير العام)', role: 'manager' },
+        { id: '002', uid: '002', email: 'accountant@system.com', name: 'ياسر (المحاسب المالي)', role: 'accountant' },
+        { id: '003', uid: '003', email: 'inventory@system.com', name: 'أنس (أمين المستودع)', role: 'inventory' },
+        { id: '004', uid: '004', email: 'cashier@system.com', name: 'أحمد (موظف الكاشير)', role: 'cashier' }
+      ];
+      await db.insert(users).values(defaultUsers);
+      console.log('ERP Users seeded successfully.');
+    }
+
+    const existingBoxes = await db.select().from(cashboxes);
+    if (existingBoxes.length === 0) {
+      console.log('Seeding default Cashboxes...');
+      const defaultBoxes = [
+        { id: 'box_main', name: 'الصندوق الرئيسي (المبيعات اليومية)', status: 'closed', currentBalance: '0' },
+        { id: 'box_spare', name: 'صندوق الطوارئ الاحتياطي', status: 'closed', currentBalance: '0' }
+      ];
+      await db.insert(cashboxes).values(defaultBoxes);
+    }
   } catch (error) {
     console.error('Error seeding database default data:', error);
   }
 }
 
-// 9. Purchasing API
-app.post('/api/purchases', async (req, res) => {
-  try {
-    const { supplierId, date, items, paymentMethod, invoiceNumber, taxAmount, totalWithoutTax, grandTotal } = req.body;
-    
-    // items: Array of { productId, purchasePrice, quantity }
-    for (const item of items) {
-      const [product] = await db.select().from(products).where(eq(products.id, item.productId));
-      if (product) {
-        const currentStock = parseFloat(product.stock || '0');
-        const nextStock = currentStock === 999 ? 999 : currentStock + item.quantity;
-        await db.update(products).set({
-          stock: nextStock.toString(),
-          purchasePrice: item.purchasePrice.toString()
-        }).where(eq(products.id, item.productId));
-      }
-    }
 
-    if (paymentMethod === 'credit' && supplierId) {
-      const [supplier] = await db.select().from(suppliers).where(eq(suppliers.id, supplierId));
-      if (supplier) {
-        const nextBalance = parseFloat(supplier.balance || '0') + grandTotal;
-        await db.update(suppliers).set({ balance: nextBalance.toString() }).where(eq(suppliers.id, supplierId));
-      }
-    }
-
-    const accountingLines = [];
-    accountingLines.push({ accountId: 'acc_inventory', debit: totalWithoutTax, credit: 0 });
-    if (taxAmount > 0) {
-      accountingLines.push({ accountId: 'acc_tax', debit: taxAmount, credit: 0 });
-    }
-
-    if (paymentMethod === 'cash') {
-      accountingLines.push({ accountId: 'acc_cash', debit: 0, credit: grandTotal });
-    } else if (paymentMethod === 'card') {
-      accountingLines.push({ accountId: 'acc_bank', debit: 0, credit: grandTotal });
-    } else if (paymentMethod === 'credit') {
-      accountingLines.push({ accountId: 'acc_payable', debit: 0, credit: grandTotal });
-    }
-
-    await postJournalEntry(
-      `JE-PUR-${invoiceNumber}`,
-      `فاتورة مشتريات رقم ${invoiceNumber}`,
-      date,
-      accountingLines
-    );
-
-    res.json({ success: true });
-  } catch (error) {
-    handleApiError(res, error, 'فشل تسجيل فاتورة المشتريات');
-  }
-});
-
-// 10. Customer Receipt Payments API
-app.post('/api/payments/customer', async (req, res) => {
-  try {
-    const { customerId, amount, paymentMethod, date, receiptNumber } = req.body;
-    
-    const [customer] = await db.select().from(customers).where(eq(customers.id, customerId));
-    if (!customer) throw new Error('العميل غير موجود');
-    
-    const nextBalance = parseFloat(customer.balance || '0') - amount;
-    await db.update(customers).set({ balance: nextBalance.toString() }).where(eq(customers.id, customerId));
-
-    const accountingLines = [];
-    if (paymentMethod === 'cash') {
-      accountingLines.push({ accountId: 'acc_cash', debit: amount, credit: 0 });
-    } else {
-      accountingLines.push({ accountId: 'acc_bank', debit: amount, credit: 0 });
-    }
-    accountingLines.push({ accountId: 'acc_receivable', debit: 0, credit: amount });
-
-    await postJournalEntry(
-      `JE-RCPT-${receiptNumber}`,
-      `سند قبض عميل: ${customer.name}`,
-      date,
-      accountingLines
-    );
-
-    res.json({ success: true });
-  } catch (error) {
-    handleApiError(res, error, 'فشل تسجيل سند القبض');
-  }
-});
-
-// 11. Supplier Payments API
-app.post('/api/payments/supplier', async (req, res) => {
-  try {
-    const { supplierId, amount, paymentMethod, date, paymentNumber } = req.body;
-    
-    const [supplier] = await db.select().from(suppliers).where(eq(suppliers.id, supplierId));
-    if (!supplier) throw new Error('المورد غير موجود');
-    
-    const nextBalance = parseFloat(supplier.balance || '0') - amount;
-    await db.update(suppliers).set({ balance: nextBalance.toString() }).where(eq(suppliers.id, supplierId));
-
-    const accountingLines = [];
-    accountingLines.push({ accountId: 'acc_payable', debit: amount, credit: 0 });
-    if (paymentMethod === 'cash') {
-      accountingLines.push({ accountId: 'acc_cash', debit: 0, credit: amount });
-    } else {
-      accountingLines.push({ accountId: 'acc_bank', debit: 0, credit: amount });
-    }
-
-    await postJournalEntry(
-      `JE-PAY-${paymentNumber}`,
-      `سند صرف مورد: ${supplier.name}`,
-      date,
-      accountingLines
-    );
-
-    res.json({ success: true });
-  } catch (error) {
-    handleApiError(res, error, 'فشل تسجيل سند الصرف');
-  }
-});
-
-
-// Vite Dev / Prod Middleware Integration
+// ─── VITE DEV / PROD MIDDLEWARE INTEGRATION ───
 async function startServer() {
   await seedDefaultData();
 

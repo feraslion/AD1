@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Invoice, Product, StoreSettings } from '../types';
 import { TrendingUp, ShoppingBag, AlertTriangle, FileText, Landmark, Users, Clock, ArrowLeft, RefreshCw, ChevronDown, ChevronUp, Check } from 'lucide-react';
+import StatCard from './ui/StatCard';
 
 interface DashboardProps {
   invoices: Invoice[];
@@ -17,54 +18,88 @@ export default function Dashboard({ invoices, products, settings, onNavigate, sy
   const [replenishQty, setReplenishQty] = useState<Record<string, string>>({});
   const [successItems, setSuccessItems] = useState<Record<string, boolean>>({});
 
-  // Calculations
-  const todayStr = new Date().toISOString().split('T')[0];
-  
-  const todayInvoices = invoices.filter(inv => {
-    const invDate = inv.date.split('T')[0];
-    return invDate === todayStr;
-  });
+  // Memoize all complex dashboard calculations to avoid O(N) or O(N*M) on every render!
+  const calculations = React.useMemo(() => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    
+    // Create an O(1) dictionary for product lookups
+    const productMap = new Map(products.map(p => [p.id, p]));
 
-  const todaySales = todayInvoices.reduce((acc, inv) => acc + (inv.status === 'paid' || inv.status === 'partially_paid' ? inv.grandTotal : 0), 0);
-  const totalInvoicesCount = invoices.length;
-  
-  // Low stock alert
-  const lowStockProducts = products.filter(p => p.stock <= p.minStock && p.minStock > 0);
-
-  // Total inventory valuation
-  const inventoryValue = products.reduce((acc, p) => acc + (p.stock * p.purchasePrice), 0);
-  const inventorySaleValue = products.reduce((acc, p) => acc + (p.stock * p.price), 0);
-  const potentialProfit = inventorySaleValue - inventoryValue;
-
-  // Accrued VAT tax
-  const accruedTax = invoices.reduce((acc, inv) => acc + inv.taxAmount, 0);
-
-  // Profit calculation from all invoices
-  const totalProfits = invoices.reduce((acc, inv) => {
-    let cost = 0;
-    inv.items.forEach(item => {
-      const prod = products.find(p => p.id === item.productId);
-      const purchasePrice = prod ? prod.purchasePrice : item.price * 0.7; // default fallback cost
-      cost += purchasePrice * item.quantity;
+    const todayInvoices = invoices.filter(inv => {
+      const invDate = inv.date.split('T')[0];
+      return invDate === todayStr;
     });
-    return acc + (inv.grandTotal - inv.taxAmount - cost);
-  }, 0);
 
-  // Chart calculation (last 7 days of sales)
-  const last7Days = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    return d.toISOString().split('T')[0];
-  }).reverse();
+    const todaySales = todayInvoices.reduce((acc, inv) => 
+      acc + (inv.status === 'paid' || inv.status === 'partially_paid' ? inv.grandTotal : 0)
+    , 0);
 
-  const salesData7Days = last7Days.map(dateStr => {
-    const dayInvs = invoices.filter(inv => inv.date.split('T')[0] === dateStr);
-    const daySales = dayInvs.reduce((acc, inv) => acc + inv.grandTotal, 0);
-    const label = new Date(dateStr).toLocaleDateString('ar-SA', { weekday: 'short' });
-    return { date: dateStr, label, amount: daySales };
-  });
+    const totalInvoicesCount = invoices.length;
+    
+    // Low stock alert
+    const lowStockProducts = products.filter(p => p.stock <= p.minStock && p.minStock > 0);
 
-  const maxAmount = Math.max(...salesData7Days.map(d => d.amount), 100);
+    // Total inventory valuation
+    const inventoryValue = products.reduce((acc, p) => acc + (p.stock * p.purchasePrice), 0);
+    const inventorySaleValue = products.reduce((acc, p) => acc + (p.stock * p.price), 0);
+    const potentialProfit = inventorySaleValue - inventoryValue;
+
+    // Accrued VAT tax
+    const accruedTax = invoices.reduce((acc, inv) => acc + inv.taxAmount, 0);
+
+    // O(I * L) profit calculation using the O(1) lookups
+    const totalProfits = invoices.reduce((acc, inv) => {
+      let cost = 0;
+      inv.items.forEach(item => {
+        const prod = productMap.get(item.productId);
+        const purchasePrice = prod ? prod.purchasePrice : item.price * 0.7; // default fallback cost
+        cost += purchasePrice * item.quantity;
+      });
+      return acc + (inv.grandTotal - inv.taxAmount - cost);
+    }, 0);
+
+    // Chart calculation (last 7 days of sales)
+    const last7Days = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      return d.toISOString().split('T')[0];
+    }).reverse();
+
+    const salesData7Days = last7Days.map(dateStr => {
+      const dayInvs = invoices.filter(inv => inv.date.split('T')[0] === dateStr);
+      const daySales = dayInvs.reduce((acc, inv) => acc + inv.grandTotal, 0);
+      const label = new Date(dateStr).toLocaleDateString('ar-SA', { weekday: 'short' });
+      return { date: dateStr, label, amount: daySales };
+    });
+
+    const maxAmount = Math.max(...salesData7Days.map(d => d.amount), 100);
+
+    return {
+      todayInvoices,
+      todaySales,
+      totalInvoicesCount,
+      lowStockProducts,
+      inventoryValue,
+      potentialProfit,
+      accruedTax,
+      totalProfits,
+      salesData7Days,
+      maxAmount
+    };
+  }, [invoices, products]);
+
+  const {
+    todayInvoices,
+    todaySales,
+    totalInvoicesCount,
+    lowStockProducts,
+    inventoryValue,
+    potentialProfit,
+    accruedTax,
+    totalProfits,
+    salesData7Days,
+    maxAmount
+  } = calculations;
 
   return (
     <div className="space-y-6">
@@ -106,65 +141,45 @@ export default function Dashboard({ invoices, products, settings, onNavigate, sy
       {/* Main stats grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Today's Sales Card */}
-        <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
-          <div className="space-y-1">
-            <span className="text-slate-400 text-xs font-bold block">مبيعات اليوم</span>
-            <div className="text-2xl font-black text-slate-800">
-              {todaySales.toLocaleString(undefined, { minimumFractionDigits: 2 })} <span className="text-sm font-normal text-slate-400">{settings.currency}</span>
-            </div>
-            <span className="text-emerald-600 text-xs font-bold flex items-center gap-1">
-              <TrendingUp className="w-3.5 h-3.5" />
-              {todayInvoices.length} فواتير جديدة
-            </span>
-          </div>
-          <div className="bg-emerald-50 p-3.5 rounded-xl text-emerald-600">
-            <ShoppingBag className="w-6 h-6" />
-          </div>
-        </div>
+        <StatCard
+          title="مبيعات اليوم"
+          value={`${todaySales.toLocaleString(undefined, { minimumFractionDigits: 2 })} ${settings.currency}`}
+          trendText={`${todayInvoices.length} فواتير جديدة`}
+          trendUp={true}
+          icon={<ShoppingBag className="w-6 h-6" />}
+          iconBg="bg-emerald-50"
+          iconColor="text-emerald-600"
+        />
 
         {/* Net Profit Card */}
-        <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
-          <div className="space-y-1">
-            <span className="text-slate-400 text-xs font-bold block">صافي الأرباح المقدرة</span>
-            <div className="text-2xl font-black text-emerald-600">
-              {totalProfits.toLocaleString(undefined, { minimumFractionDigits: 2 })} <span className="text-xs font-normal text-slate-400">{settings.currency}</span>
-            </div>
-            <span className="text-slate-500 text-[10px] font-semibold">إجمالي الهامش المالي المكتسب</span>
-          </div>
-          <div className="bg-slate-50 p-3.5 rounded-xl text-slate-600">
-            <Landmark className="w-6 h-6" />
-          </div>
-        </div>
+        <StatCard
+          title="صافي الأرباح المقدرة"
+          value={`${totalProfits.toLocaleString(undefined, { minimumFractionDigits: 2 })} ${settings.currency}`}
+          subtitle="إجمالي الهامش المالي المكتسب"
+          icon={<Landmark className="w-6 h-6" />}
+          iconBg="bg-slate-50"
+          iconColor="text-slate-600"
+        />
 
         {/* Inventory Valuation Card */}
-        <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between border-r-4 border-r-emerald-500">
-          <div className="space-y-1">
-            <span className="text-slate-400 text-xs font-bold block">قيمة المخزون الحالي</span>
-            <div className="text-2xl font-black text-slate-800">
-              {inventoryValue.toLocaleString(undefined, { minimumFractionDigits: 2 })} <span className="text-sm font-normal text-slate-400">{settings.currency}</span>
-            </div>
-            <span className="text-blue-500 text-[10px] font-bold">
-              أرباح محتملة: +{potentialProfit.toLocaleString()} {settings.currency}
-            </span>
-          </div>
-          <div className="bg-blue-50 p-3.5 rounded-xl text-blue-600">
-            <FileText className="w-6 h-6" />
-          </div>
-        </div>
+        <StatCard
+          title="قيمة المخزون الحالي"
+          value={`${inventoryValue.toLocaleString(undefined, { minimumFractionDigits: 2 })} ${settings.currency}`}
+          subtitle={`أرباح محتملة: +${potentialProfit.toLocaleString()} ${settings.currency}`}
+          icon={<FileText className="w-6 h-6" />}
+          iconBg="bg-blue-50"
+          iconColor="text-blue-600"
+        />
 
         {/* Tax Card */}
-        <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
-          <div className="space-y-1">
-            <span className="text-slate-400 text-xs font-bold block">الضريبة المستحقة (VAT)</span>
-            <div className="text-2xl font-black text-rose-600">
-              {accruedTax.toLocaleString(undefined, { minimumFractionDigits: 2 })} <span className="text-sm font-normal text-rose-400">{settings.currency}</span>
-            </div>
-            <span className="text-slate-500 text-[10px] font-semibold">مستندة للرقم الضريبي الحالي</span>
-          </div>
-          <div className="bg-rose-50 p-3.5 rounded-xl text-rose-600">
-            <Users className="w-6 h-6" />
-          </div>
-        </div>
+        <StatCard
+          title="الضريبة المستحقة (VAT)"
+          value={`${accruedTax.toLocaleString(undefined, { minimumFractionDigits: 2 })} ${settings.currency}`}
+          subtitle="مستندة للرقم الضريبي الحالي"
+          icon={<Users className="w-6 h-6" />}
+          iconBg="bg-rose-50"
+          iconColor="text-rose-600"
+        />
       </div>
 
       {/* Warning/Alarm section if low stock exists */}

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Product, Customer, StoreSettings } from '../types';
+import { SupplierService, PurchaseService, PaymentService } from '../services/api';
 import { 
   PlusCircle, 
   Receipt, 
@@ -78,11 +79,8 @@ export default function Purchases({ products, customers, settings, onRefreshData
   const fetchSuppliers = async () => {
     setLoadingSuppliers(true);
     try {
-      const res = await fetch('/api/suppliers');
-      if (res.ok) {
-        const data = await res.json();
-        setSuppliers(data);
-      }
+      const data = await SupplierService.getSuppliers();
+      setSuppliers(data);
     } catch (e) {
       console.error('Error fetching suppliers:', e);
     } finally {
@@ -104,30 +102,23 @@ export default function Purchases({ products, customers, settings, onRefreshData
     if (!newSuppName.trim()) return;
 
     try {
-      const res = await fetch('/api/suppliers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: newSuppName,
-          phone: newSuppPhone,
-          email: newSuppEmail,
-          balance: 0
-        })
+      const data = await SupplierService.createSupplier({
+        name: newSuppName,
+        phone: newSuppPhone,
+        email: newSuppEmail,
+        balance: 0
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        await fetchSuppliers();
-        if (data.supplier) {
-          // Auto-select in form
-          setPurSupplierId(data.supplier.id);
-          setPaySupplierId(data.supplier.id);
-        }
-        setShowSupplierModal(false);
-        setNewSuppName('');
-        setNewSuppPhone('');
-        setNewSuppEmail('');
+      await fetchSuppliers();
+      if (data && data.id) {
+        // Auto-select in form
+        setPurSupplierId(data.id);
+        setPaySupplierId(data.id);
       }
+      setShowSupplierModal(false);
+      setNewSuppName('');
+      setNewSuppPhone('');
+      setNewSuppEmail('');
     } catch (err) {
       console.error(err);
     }
@@ -160,30 +151,22 @@ export default function Purchases({ products, customers, settings, onRefreshData
       const taxAmount = totalWithoutTax * (taxRateVal / 100);
       const grandTotal = totalWithoutTax + taxAmount;
 
-      const res = await fetch('/api/purchases', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          supplierId: purSupplierId || null,
-          date: purDate,
-          items: purItems,
-          paymentMethod: purPaymentMethod,
-          invoiceNumber: purInvoiceNumber,
-          taxAmount,
-          totalWithoutTax,
-          grandTotal
-        })
+      await PurchaseService.createPurchase({
+        supplierId: purSupplierId || null,
+        date: purDate,
+        items: purItems,
+        paymentMethod: purPaymentMethod,
+        invoiceNumber: purInvoiceNumber,
+        taxAmount,
+        totalWithoutTax,
+        grandTotal
       });
 
-      if (res.ok) {
-        setMessage({ type: 'success', text: `تم تسجيل فاتورة المشتريات رقم ${purInvoiceNumber} بنجاح وقيدها آلياً في الأستاذ العام.` });
-        setPurItems([{ productId: '', purchasePrice: 0, quantity: 1 }]);
-        setPurInvoiceNumber('PUR-' + Math.floor(100000 + Math.random() * 900000));
-        await onRefreshData();
-        await fetchSuppliers();
-      } else {
-        setMessage({ type: 'error', text: 'فشل في حفظ فاتورة المشتريات.' });
-      }
+      setMessage({ type: 'success', text: `تم تسجيل فاتورة المشتريات رقم ${purInvoiceNumber} بنجاح وقيدها آلياً في الأستاذ العام.` });
+      setPurItems([{ productId: '', purchasePrice: 0, quantity: 1 }]);
+      setPurInvoiceNumber('PUR-' + Math.floor(100000 + Math.random() * 900000));
+      await onRefreshData();
+      await fetchSuppliers();
     } catch (err) {
       setMessage({ type: 'error', text: 'خطأ في الاتصال بالخادم.' });
     } finally {
@@ -230,28 +213,20 @@ export default function Purchases({ products, customers, settings, onRefreshData
 
     setSubmitting(true);
     try {
-      const res = await fetch('/api/payments/customer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          customerId: rcptCustomerId,
-          amount: amt,
-          paymentMethod: rcptPaymentMethod,
-          date: rcptDate,
-          receiptNumber: rcptNumber
-        })
+      await PaymentService.payCustomer({
+        customerId: rcptCustomerId,
+        amount: amt,
+        paymentMethod: rcptPaymentMethod,
+        date: rcptDate,
+        receiptNumber: rcptNumber
       });
 
-      if (res.ok) {
-        setMessage({ type: 'success', text: `تم تسجيل سند قبض العميل بقيمة ${rcptAmount} ${settings.currency} وتخفيض حسابه آلياً.` });
-        setRcptAmount('');
-        setRcptNumber('RCPT-' + Math.floor(100000 + Math.random() * 900000));
-        await onRefreshData();
-      } else {
-        setMessage({ type: 'error', text: 'فشل تسجيل سند القبض.' });
-      }
+      setMessage({ type: 'success', text: `تم تسجيل سند قبض العميل بقيمة ${rcptAmount} ${settings.currency} وتخفيض حسابه آلياً.` });
+      setRcptAmount('');
+      setRcptNumber('RCPT-' + Math.floor(100000 + Math.random() * 900000));
+      await onRefreshData();
     } catch (err) {
-      setMessage({ type: 'error', text: 'خطأ في الاتصال بالسيرفر.' });
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'خطأ في تسجيل سند القبض.' });
     } finally {
       setSubmitting(false);
     }
@@ -270,29 +245,21 @@ export default function Purchases({ products, customers, settings, onRefreshData
 
     setSubmitting(true);
     try {
-      const res = await fetch('/api/payments/supplier', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          supplierId: paySupplierId,
-          amount: amt,
-          paymentMethod: payPaymentMethod,
-          date: payDate,
-          paymentNumber: payNumber
-        })
+      await PaymentService.paySupplier({
+        supplierId: paySupplierId,
+        amount: amt,
+        paymentMethod: payPaymentMethod,
+        date: payDate,
+        paymentNumber: payNumber
       });
 
-      if (res.ok) {
-        setMessage({ type: 'success', text: `تم تسجيل سند صرف المورد بقيمة ${payAmount} ${settings.currency} وتخفيض مستحقاته بنجاح.` });
-        setPayAmount('');
-        setPayNumber('PAY-' + Math.floor(100000 + Math.random() * 900000));
-        await onRefreshData();
-        await fetchSuppliers();
-      } else {
-        setMessage({ type: 'error', text: 'فشل تسجيل سند الصرف.' });
-      }
+      setMessage({ type: 'success', text: `تم تسجيل سند صرف المورد بقيمة ${payAmount} ${settings.currency} وتخفيض مستحقاته بنجاح.` });
+      setPayAmount('');
+      setPayNumber('PAY-' + Math.floor(100000 + Math.random() * 900000));
+      await onRefreshData();
+      await fetchSuppliers();
     } catch (err) {
-      setMessage({ type: 'error', text: 'خطأ في الاتصال بالخادم.' });
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'خطأ في تسجيل سند الصرف.' });
     } finally {
       setSubmitting(false);
     }

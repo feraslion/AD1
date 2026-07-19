@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Product, Category, Customer, Unit, StoreSettings, Invoice } from './types';
 import { INITIAL_SETTINGS, INITIAL_UNITS, DEMO_DATASETS, GENERATE_INITIAL_INVOICES } from './data';
+import { ProductService, CustomerService, InvoiceService, CategoryService, UnitService, SettingsService } from './services/api';
 import Dashboard from './components/Dashboard';
 import POS from './components/POS';
 import Inventory from './components/Inventory';
@@ -95,32 +96,35 @@ export default function App() {
   const fetchAllData = async () => {
     setSyncStatus('syncing');
     try {
-      const pRes = await fetch('/api/products');
-      if (pRes.ok) {
-        const pData = await pRes.json();
-        setProducts(pData);
-        localStorage.setItem('cashier_products', JSON.stringify(pData));
+      const [pData, cData, iData, sData, catData, uData] = await Promise.all([
+        ProductService.getProducts(),
+        CustomerService.getCustomers(),
+        InvoiceService.getInvoices(),
+        SettingsService.getSettings(),
+        CategoryService.getCategories(),
+        UnitService.getUnits()
+      ]);
+
+      setProducts(pData);
+      localStorage.setItem('cashier_products', JSON.stringify(pData));
+
+      setCustomers(cData);
+      localStorage.setItem('cashier_customers', JSON.stringify(cData));
+
+      setInvoices(iData);
+      localStorage.setItem('cashier_invoices', JSON.stringify(iData));
+
+      setSettings(sData);
+      localStorage.setItem('cashier_settings', JSON.stringify(sData));
+
+      if (catData.length > 0) {
+        setCategories(catData);
+        localStorage.setItem('cashier_categories', JSON.stringify(catData));
       }
 
-      const cRes = await fetch('/api/customers');
-      if (cRes.ok) {
-        const cData = await cRes.json();
-        setCustomers(cData);
-        localStorage.setItem('cashier_customers', JSON.stringify(cData));
-      }
-
-      const iRes = await fetch('/api/invoices');
-      if (iRes.ok) {
-        const iData = await iRes.json();
-        setInvoices(iData);
-        localStorage.setItem('cashier_invoices', JSON.stringify(iData));
-      }
-
-      const sRes = await fetch('/api/settings');
-      if (sRes.ok) {
-        const sData = await sRes.json();
-        setSettings(sData);
-        localStorage.setItem('cashier_settings', JSON.stringify(sData));
+      if (uData.length > 0) {
+        setUnits(uData);
+        localStorage.setItem('cashier_units', JSON.stringify(uData));
       }
 
       setSyncStatus('synced');
@@ -144,21 +148,19 @@ export default function App() {
       if (storedInvoices) {
         try { setInvoices(JSON.parse(storedInvoices)); } catch(e) {}
       }
+      const storedCategories = localStorage.getItem('cashier_categories');
+      if (storedCategories) {
+        try { setCategories(JSON.parse(storedCategories)); } catch(e) {}
+      }
+      const storedUnits = localStorage.getItem('cashier_units');
+      if (storedUnits) {
+        try { setUnits(JSON.parse(storedUnits)); } catch(e) {}
+      }
     }
   };
 
   useEffect(() => {
     fetchAllData();
-
-    // Load static items
-    const storedUnits = localStorage.getItem('cashier_units');
-    if (storedUnits) {
-      try { setUnits(JSON.parse(storedUnits)); } catch(e) { console.error(e); }
-    }
-    const storedCategories = localStorage.getItem('cashier_categories');
-    if (storedCategories) {
-      try { setCategories(JSON.parse(storedCategories)); } catch(e) { console.error(e); }
-    }
   }, []);
 
   // Sync helpers
@@ -170,41 +172,45 @@ export default function App() {
     setSettings(newSettings);
     localStorage.setItem('cashier_settings', JSON.stringify(newSettings));
     try {
-      await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newSettings)
-      });
+      await SettingsService.updateSettings(newSettings);
       await fetchAllData();
     } catch (e) {
       console.error(e);
     }
   };
 
-  const handleAddUnit = (u: Unit) => {
+  const handleAddUnit = async (u: Unit) => {
     setUnits(prev => {
       const next = [...prev, u];
       localStorage.setItem('cashier_units', JSON.stringify(next));
       return next;
     });
+    try {
+      await UnitService.createUnit(u);
+      await fetchAllData();
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const handleDeleteUnit = (id: string) => {
+  const handleDeleteUnit = async (id: string) => {
     setUnits(prev => {
       const next = prev.filter(u => u.id !== id);
       localStorage.setItem('cashier_units', JSON.stringify(next));
       return next;
     });
+    try {
+      await UnitService.deleteUnit(id);
+      await fetchAllData();
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   const handleAddProduct = async (p: Product) => {
     setProducts(prev => [p, ...prev]);
     try {
-      await fetch('/api/products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(p)
-      });
+      await ProductService.createProduct(p);
       await fetchAllData();
     } catch (e) {
       console.error(e);
@@ -214,11 +220,7 @@ export default function App() {
   const handleUpdateProduct = async (p: Product) => {
     setProducts(prev => prev.map(item => item.id === p.id ? p : item));
     try {
-      await fetch('/api/products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(p)
-      });
+      await ProductService.createProduct(p);
       await fetchAllData();
     } catch (e) {
       console.error(e);
@@ -231,11 +233,7 @@ export default function App() {
     const updated = { ...prod, stock: newStock };
     setProducts(prev => prev.map(item => item.id === id ? updated : item));
     try {
-      await fetch('/api/products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updated)
-      });
+      await ProductService.createProduct(updated);
       await fetchAllData();
     } catch (e) {
       console.error(e);
@@ -245,37 +243,45 @@ export default function App() {
   const handleDeleteProduct = async (id: string) => {
     setProducts(prev => prev.filter(item => item.id !== id));
     try {
-      await fetch(`/api/products/${id}`, { method: 'DELETE' });
+      await ProductService.deleteProduct(id);
       await fetchAllData();
     } catch (e) {
       console.error(e);
     }
   };
 
-  const handleAddCategory = (c: Category) => {
+  const handleAddCategory = async (c: Category) => {
     setCategories(prev => {
       const next = [...prev, c];
       localStorage.setItem('cashier_categories', JSON.stringify(next));
       return next;
     });
+    try {
+      await CategoryService.createCategory(c);
+      await fetchAllData();
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const handleDeleteCategory = (id: string) => {
+  const handleDeleteCategory = async (id: string) => {
     setCategories(prev => {
       const next = prev.filter(item => item.id !== id);
       localStorage.setItem('cashier_categories', JSON.stringify(next));
       return next;
     });
+    try {
+      await CategoryService.deleteCategory(id);
+      await fetchAllData();
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   const handleAddCustomer = async (c: Customer) => {
     setCustomers(prev => [c, ...prev]);
     try {
-      await fetch('/api/customers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(c)
-      });
+      await CustomerService.createCustomer(c);
       await fetchAllData();
     } catch (e) {
       console.error(e);
@@ -285,11 +291,7 @@ export default function App() {
   const handleAddInvoice = async (inv: Invoice) => {
     setInvoices(prev => [inv, ...prev]);
     try {
-      await fetch('/api/invoices', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(inv)
-      });
+      await InvoiceService.createInvoice(inv);
       await fetchAllData();
     } catch (e) {
       console.error(e);
@@ -303,23 +305,24 @@ export default function App() {
 
     setSyncStatus('syncing');
     try {
-      // Clear database lists where possible or update
-      // Post all products
+      // 1. First sync units to database to prevent referential errors
+      for (const u of units) {
+        await UnitService.createUnit(u);
+      }
+
+      // 2. Sync all categories in the dataset to database
+      for (const c of dataset.categories) {
+        await CategoryService.createCategory(c);
+      }
+
+      // 3. Post all products
       for (const p of dataset.products) {
-        await fetch('/api/products', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(p),
-        });
+        await ProductService.createProduct(p);
       }
 
       // Post all customers
       for (const c of dataset.customers) {
-        await fetch('/api/customers', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(c),
-        });
+        await CustomerService.createCustomer(c);
       }
 
       // Set default name and address
@@ -342,20 +345,12 @@ export default function App() {
         address: sectorAddress
       };
 
-      await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedSettings),
-      });
+      await SettingsService.updateSettings(updatedSettings);
 
       // Post 12 invoices to the database to pop reports and charts
       const initialInvs = GENERATE_INITIAL_INVOICES(dataset.products);
       for (const inv of initialInvs) {
-        await fetch('/api/invoices', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(inv),
-        });
+        await InvoiceService.createInvoice(inv);
       }
 
       await fetchAllData();
