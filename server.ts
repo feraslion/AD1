@@ -509,10 +509,165 @@ app.post('/api/settings', async (req, res) => {
     handleApiError(res, error, 'فشل تحديث الإعدادات');
   }
 });
+// 8. Custom Seeder for ERP Chart of Accounts & Suppliers
+async function seedDefaultData() {
+  try {
+    const existingAccounts = await db.select().from(accounts);
+    if (existingAccounts.length === 0) {
+      console.log('Seeding default Chart of Accounts...');
+      const defaultAccounts = [
+        { id: 'acc_cash', code: '1101', name: 'النقدية بالصندوق (Cash)', type: 'asset', balance: '0' },
+        { id: 'acc_bank', code: '1102', name: 'الحساب البنكي (Bank)', type: 'asset', balance: '0' },
+        { id: 'acc_receivable', code: '1103', name: 'الذمم المدينة للعملاء (Receivables)', type: 'asset', balance: '0' },
+        { id: 'acc_inventory', code: '1201', name: 'مخزون البضائع (Inventory)', type: 'asset', balance: '0' },
+        { id: 'acc_payable', code: '2101', name: 'الذمم الدائنة للموردين (Payables)', type: 'liability', balance: '0' },
+        { id: 'acc_tax', code: '2201', name: 'ضريبة القيمة المضافة المستحقة (VAT)', type: 'liability', balance: '0' },
+        { id: 'acc_equity', code: '3101', name: 'رأس المال (Capital)', type: 'equity', balance: '0' },
+        { id: 'acc_sales', code: '4101', name: 'إيراد المبيعات (Sales Revenue)', type: 'revenue', balance: '0' },
+        { id: 'acc_cogs', code: '5101', name: 'تكلفة البضاعة المباعة (COGS)', type: 'expense', balance: '0' },
+        { id: 'acc_expense', code: '5201', name: 'المصاريف العمومية والتشغيلية (Expenses)', type: 'expense', balance: '0' },
+      ];
+      await db.insert(accounts).values(defaultAccounts);
+      console.log('Chart of Accounts seeded successfully.');
+    }
+
+    const existingSuppliers = await db.select().from(suppliers);
+    if (existingSuppliers.length === 0) {
+      console.log('Seeding default Suppliers...');
+      const defaultSuppliers = [
+        { id: 'supp-1', name: 'شركة المراعي الوطنية', phone: '0114944444', email: 'info@almarai.com', balance: '0' },
+        { id: 'supp-2', name: 'شركة لوزين للمخبوزات', phone: '0112345678', email: 'sales@lusine.com', balance: '0' },
+        { id: 'supp-3', name: 'موزع حلويات الخليج', phone: '0501112223', email: 'dist@gulfsweets.com', balance: '0' },
+      ];
+      await db.insert(suppliers).values(defaultSuppliers);
+    }
+  } catch (error) {
+    console.error('Error seeding database default data:', error);
+  }
+}
+
+// 9. Purchasing API
+app.post('/api/purchases', async (req, res) => {
+  try {
+    const { supplierId, date, items, paymentMethod, invoiceNumber, taxAmount, totalWithoutTax, grandTotal } = req.body;
+    
+    // items: Array of { productId, purchasePrice, quantity }
+    for (const item of items) {
+      const [product] = await db.select().from(products).where(eq(products.id, item.productId));
+      if (product) {
+        const currentStock = parseFloat(product.stock || '0');
+        const nextStock = currentStock === 999 ? 999 : currentStock + item.quantity;
+        await db.update(products).set({
+          stock: nextStock.toString(),
+          purchasePrice: item.purchasePrice.toString()
+        }).where(eq(products.id, item.productId));
+      }
+    }
+
+    if (paymentMethod === 'credit' && supplierId) {
+      const [supplier] = await db.select().from(suppliers).where(eq(suppliers.id, supplierId));
+      if (supplier) {
+        const nextBalance = parseFloat(supplier.balance || '0') + grandTotal;
+        await db.update(suppliers).set({ balance: nextBalance.toString() }).where(eq(suppliers.id, supplierId));
+      }
+    }
+
+    const accountingLines = [];
+    accountingLines.push({ accountId: 'acc_inventory', debit: totalWithoutTax, credit: 0 });
+    if (taxAmount > 0) {
+      accountingLines.push({ accountId: 'acc_tax', debit: taxAmount, credit: 0 });
+    }
+
+    if (paymentMethod === 'cash') {
+      accountingLines.push({ accountId: 'acc_cash', debit: 0, credit: grandTotal });
+    } else if (paymentMethod === 'card') {
+      accountingLines.push({ accountId: 'acc_bank', debit: 0, credit: grandTotal });
+    } else if (paymentMethod === 'credit') {
+      accountingLines.push({ accountId: 'acc_payable', debit: 0, credit: grandTotal });
+    }
+
+    await postJournalEntry(
+      `JE-PUR-${invoiceNumber}`,
+      `فاتورة مشتريات رقم ${invoiceNumber}`,
+      date,
+      accountingLines
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    handleApiError(res, error, 'فشل تسجيل فاتورة المشتريات');
+  }
+});
+
+// 10. Customer Receipt Payments API
+app.post('/api/payments/customer', async (req, res) => {
+  try {
+    const { customerId, amount, paymentMethod, date, receiptNumber } = req.body;
+    
+    const [customer] = await db.select().from(customers).where(eq(customers.id, customerId));
+    if (!customer) throw new Error('العميل غير موجود');
+    
+    const nextBalance = parseFloat(customer.balance || '0') - amount;
+    await db.update(customers).set({ balance: nextBalance.toString() }).where(eq(customers.id, customerId));
+
+    const accountingLines = [];
+    if (paymentMethod === 'cash') {
+      accountingLines.push({ accountId: 'acc_cash', debit: amount, credit: 0 });
+    } else {
+      accountingLines.push({ accountId: 'acc_bank', debit: amount, credit: 0 });
+    }
+    accountingLines.push({ accountId: 'acc_receivable', debit: 0, credit: amount });
+
+    await postJournalEntry(
+      `JE-RCPT-${receiptNumber}`,
+      `سند قبض عميل: ${customer.name}`,
+      date,
+      accountingLines
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    handleApiError(res, error, 'فشل تسجيل سند القبض');
+  }
+});
+
+// 11. Supplier Payments API
+app.post('/api/payments/supplier', async (req, res) => {
+  try {
+    const { supplierId, amount, paymentMethod, date, paymentNumber } = req.body;
+    
+    const [supplier] = await db.select().from(suppliers).where(eq(suppliers.id, supplierId));
+    if (!supplier) throw new Error('المورد غير موجود');
+    
+    const nextBalance = parseFloat(supplier.balance || '0') - amount;
+    await db.update(suppliers).set({ balance: nextBalance.toString() }).where(eq(suppliers.id, supplierId));
+
+    const accountingLines = [];
+    accountingLines.push({ accountId: 'acc_payable', debit: amount, credit: 0 });
+    if (paymentMethod === 'cash') {
+      accountingLines.push({ accountId: 'acc_cash', debit: 0, credit: amount });
+    } else {
+      accountingLines.push({ accountId: 'acc_bank', debit: 0, credit: amount });
+    }
+
+    await postJournalEntry(
+      `JE-PAY-${paymentNumber}`,
+      `سند صرف مورد: ${supplier.name}`,
+      date,
+      accountingLines
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    handleApiError(res, error, 'فشل تسجيل سند الصرف');
+  }
+});
 
 
 // Vite Dev / Prod Middleware Integration
 async function startServer() {
+  await seedDefaultData();
+
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },

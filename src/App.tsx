@@ -8,6 +8,8 @@ import Invoices from './components/Invoices';
 import Reports from './components/Reports';
 import Settings from './components/Settings';
 import Accounting from './components/Accounting';
+import Purchases from './components/Purchases';
+import Login from './components/Login';
 import { 
   LayoutDashboard, 
   ShoppingBag, 
@@ -20,13 +22,66 @@ import {
   Briefcase,
   Bell,
   AlertTriangle,
-  Landmark
+  Landmark,
+  Truck,
+  LogOut
 } from 'lucide-react';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<string>('dashboard');
+  const [currentUser, setCurrentUser] = useState<{ name: string; role: string; code: string } | null>(() => {
+    const stored = localStorage.getItem('erp_active_user');
+    if (stored) {
+      try { return JSON.parse(stored); } catch (e) {}
+    }
+    return null;
+  });
+
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    const storedUser = localStorage.getItem('erp_active_user');
+    if (storedUser) {
+      try {
+        const u = JSON.parse(storedUser);
+        if (u.role === 'cashier') return 'pos';
+        if (u.role === 'inventory') return 'inventory';
+      } catch (e) {}
+    }
+    return 'dashboard';
+  });
   const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'offline'>('synced');
   const [showNotifications, setShowNotifications] = useState<boolean>(false);
+
+  const handleLoginSuccess = (user: { name: string; role: string; code: string }) => {
+    setCurrentUser(user);
+    localStorage.setItem('erp_active_user', JSON.stringify(user));
+    if (user.role === 'cashier') {
+      setActiveTab('pos');
+    } else if (user.role === 'inventory') {
+      setActiveTab('inventory');
+    } else {
+      setActiveTab('dashboard');
+    }
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    localStorage.removeItem('erp_active_user');
+  };
+
+  const isTabAllowed = (tab: string): boolean => {
+    if (!currentUser) return false;
+    const role = currentUser.role;
+    if (role === 'manager') return true;
+    if (role === 'accountant') {
+      return ['dashboard', 'pos', 'purchases', 'invoices', 'reports', 'accounting'].includes(tab);
+    }
+    if (role === 'inventory') {
+      return ['dashboard', 'inventory', 'purchases'].includes(tab);
+    }
+    if (role === 'cashier') {
+      return ['pos', 'invoices'].includes(tab);
+    }
+    return false;
+  };
 
   // Core State
   const [settings, setSettings] = useState<StoreSettings>(INITIAL_SETTINGS);
@@ -321,6 +376,10 @@ export default function App() {
     window.location.reload();
   };
 
+  if (!currentUser) {
+    return <Login onLoginSuccess={handleLoginSuccess} settings={settings} />;
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col antialiased">
       {/* Upper Navigation Header bar */}
@@ -453,99 +512,139 @@ export default function App() {
 
           {/* Navigation Links */}
           <nav className="flex-1 px-3 space-y-1">
-            <button
-              onClick={() => setActiveTab('dashboard')}
-              className={`w-full py-3 px-4 rounded-l-md text-xs sm:text-sm font-bold flex items-center gap-3 transition-all ${
-                activeTab === 'dashboard' 
-                  ? 'bg-emerald-600/20 text-emerald-400 border-r-4 border-emerald-500' 
-                  : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
-              }`}
-            >
-              <LayoutDashboard className="w-4 h-4" />
-              <span>لوحة التحكم الرئيسية</span>
-            </button>
+            {isTabAllowed('dashboard') && (
+              <button
+                onClick={() => setActiveTab('dashboard')}
+                className={`w-full py-3 px-4 rounded-l-md text-xs sm:text-sm font-bold flex items-center gap-3 transition-all ${
+                  activeTab === 'dashboard' 
+                    ? 'bg-emerald-600/20 text-emerald-400 border-r-4 border-emerald-500' 
+                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                }`}
+              >
+                <LayoutDashboard className="w-4 h-4" />
+                <span>لوحة التحكم الرئيسية</span>
+              </button>
+            )}
 
-            <button
-              onClick={() => setActiveTab('pos')}
-              className={`w-full py-3 px-4 rounded-l-md text-xs sm:text-sm font-bold flex items-center gap-3 transition-all ${
-                activeTab === 'pos' 
-                  ? 'bg-emerald-600/20 text-emerald-400 border-r-4 border-emerald-500' 
-                  : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
-              }`}
-            >
-              <ShoppingBag className="w-4 h-4" />
-              <span>نقطة البيع الكاشير (POS)</span>
-            </button>
+            {isTabAllowed('pos') && (
+              <button
+                onClick={() => setActiveTab('pos')}
+                className={`w-full py-3 px-4 rounded-l-md text-xs sm:text-sm font-bold flex items-center gap-3 transition-all ${
+                  activeTab === 'pos' 
+                    ? 'bg-emerald-600/20 text-emerald-400 border-r-4 border-emerald-500' 
+                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                }`}
+              >
+                <ShoppingBag className="w-4 h-4" />
+                <span>نقطة البيع الكاشير (POS)</span>
+              </button>
+            )}
 
-            <button
-              onClick={() => setActiveTab('inventory')}
-              className={`w-full py-3 px-4 rounded-l-md text-xs sm:text-sm font-bold flex items-center gap-3 transition-all ${
-                activeTab === 'inventory' 
-                  ? 'bg-emerald-600/20 text-emerald-400 border-r-4 border-emerald-500' 
-                  : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
-              }`}
-            >
-              <Warehouse className="w-4 h-4" />
-              <span>إدارة المنتجات والمخزن</span>
-            </button>
+            {isTabAllowed('inventory') && (
+              <button
+                onClick={() => setActiveTab('inventory')}
+                className={`w-full py-3 px-4 rounded-l-md text-xs sm:text-sm font-bold flex items-center gap-3 transition-all ${
+                  activeTab === 'inventory' 
+                    ? 'bg-emerald-600/20 text-emerald-400 border-r-4 border-emerald-500' 
+                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                }`}
+              >
+                <Warehouse className="w-4 h-4" />
+                <span>إدارة المنتجات والمخزن</span>
+              </button>
+            )}
 
-            <button
-              onClick={() => setActiveTab('invoices')}
-              className={`w-full py-3 px-4 rounded-l-md text-xs sm:text-sm font-bold flex items-center gap-3 transition-all ${
-                activeTab === 'invoices' 
-                  ? 'bg-emerald-600/20 text-emerald-400 border-r-4 border-emerald-500' 
-                  : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
-              }`}
-            >
-              <Receipt className="w-4 h-4" />
-              <span>سجل الفواتير والضرائب</span>
-            </button>
+            {isTabAllowed('purchases') && (
+              <button
+                onClick={() => setActiveTab('purchases')}
+                className={`w-full py-3 px-4 rounded-l-md text-xs sm:text-sm font-bold flex items-center gap-3 transition-all ${
+                  activeTab === 'purchases' 
+                    ? 'bg-emerald-600/20 text-emerald-400 border-r-4 border-emerald-500' 
+                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                }`}
+              >
+                <Truck className="w-4 h-4" />
+                <span>المشتريات والمدفوعات</span>
+              </button>
+            )}
 
-            <button
-              onClick={() => setActiveTab('reports')}
-              className={`w-full py-3 px-4 rounded-l-md text-xs sm:text-sm font-bold flex items-center gap-3 transition-all ${
-                activeTab === 'reports' 
-                  ? 'bg-emerald-600/20 text-emerald-400 border-r-4 border-emerald-500' 
-                  : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
-              }`}
-            >
-              <BarChart3 className="w-4 h-4" />
-              <span>التقارير المالية والأرباح</span>
-            </button>
+            {isTabAllowed('invoices') && (
+              <button
+                onClick={() => setActiveTab('invoices')}
+                className={`w-full py-3 px-4 rounded-l-md text-xs sm:text-sm font-bold flex items-center gap-3 transition-all ${
+                  activeTab === 'invoices' 
+                    ? 'bg-emerald-600/20 text-emerald-400 border-r-4 border-emerald-500' 
+                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                }`}
+              >
+                <Receipt className="w-4 h-4" />
+                <span>سجل الفواتير والضرائب</span>
+              </button>
+            )}
 
-            <button
-              onClick={() => setActiveTab('accounting')}
-              className={`w-full py-3 px-4 rounded-l-md text-xs sm:text-sm font-bold flex items-center gap-3 transition-all ${
-                activeTab === 'accounting' 
-                  ? 'bg-emerald-600/20 text-emerald-400 border-r-4 border-emerald-500' 
-                  : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
-              }`}
-            >
-              <Landmark className="w-4 h-4" />
-              <span>القيود والحسابات المالية</span>
-            </button>
+            {isTabAllowed('reports') && (
+              <button
+                onClick={() => setActiveTab('reports')}
+                className={`w-full py-3 px-4 rounded-l-md text-xs sm:text-sm font-bold flex items-center gap-3 transition-all ${
+                  activeTab === 'reports' 
+                    ? 'bg-emerald-600/20 text-emerald-400 border-r-4 border-emerald-500' 
+                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                }`}
+              >
+                <BarChart3 className="w-4 h-4" />
+                <span>التقارير المالية والأرباح</span>
+              </button>
+            )}
 
-            <button
-              onClick={() => setActiveTab('settings')}
-              className={`w-full py-3 px-4 rounded-l-md text-xs sm:text-sm font-bold flex items-center gap-3 transition-all ${
-                activeTab === 'settings' 
-                  ? 'bg-emerald-600/20 text-emerald-400 border-r-4 border-emerald-500' 
-                  : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
-              }`}
-            >
-              <Settings2 className="w-4 h-4" />
-              <span>إعدادات النظام والضريبة</span>
-            </button>
+            {isTabAllowed('accounting') && (
+              <button
+                onClick={() => setActiveTab('accounting')}
+                className={`w-full py-3 px-4 rounded-l-md text-xs sm:text-sm font-bold flex items-center gap-3 transition-all ${
+                  activeTab === 'accounting' 
+                    ? 'bg-emerald-600/20 text-emerald-400 border-r-4 border-emerald-500' 
+                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                }`}
+              >
+                <Landmark className="w-4 h-4" />
+                <span>القيود والحسابات المالية</span>
+              </button>
+            )}
+
+            {isTabAllowed('settings') && (
+              <button
+                onClick={() => setActiveTab('settings')}
+                className={`w-full py-3 px-4 rounded-l-md text-xs sm:text-sm font-bold flex items-center gap-3 transition-all ${
+                  activeTab === 'settings' 
+                    ? 'bg-emerald-600/20 text-emerald-400 border-r-4 border-emerald-500' 
+                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                }`}
+              >
+                <Settings2 className="w-4 h-4" />
+                <span>إعدادات النظام والضريبة</span>
+              </button>
+            )}
           </nav>
 
           {/* Sidebar Footer with user & database info */}
           <div className="p-4 border-t border-slate-700 bg-slate-900/40 text-slate-300 text-[11px] mt-auto hidden md:block">
-            <div className="flex items-center gap-2.5 mb-2 px-1">
-              <div className="w-8 h-8 rounded-full bg-slate-600 border border-slate-500 flex items-center justify-center text-xs font-bold text-white">ك</div>
-              <div className="flex flex-col">
-                <span className="text-xs font-semibold text-slate-100">أحمد الكاشير</span>
-                <span className="text-[10px] text-slate-400">كود الموظف: 004</span>
+            <div className="flex items-center justify-between gap-1 mb-3 px-1">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-full bg-slate-600 border border-slate-500 flex items-center justify-center text-xs font-extrabold text-white">
+                  {currentUser?.name.charAt(0)}
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[11px] font-black text-slate-100 line-clamp-1">{currentUser?.name}</span>
+                  <span className="text-[10px] text-slate-400">الدور: {currentUser?.role === 'manager' ? 'المدير العام' : currentUser?.role === 'accountant' ? 'المحاسب' : currentUser?.role === 'inventory' ? 'أمين المستودع' : 'كاشير'}</span>
+                </div>
               </div>
+
+              <button
+                onClick={handleLogout}
+                title="تسجيل الخروج"
+                className="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-rose-400 rounded-lg transition"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
             </div>
             <div className="h-[1px] bg-slate-700/60 my-2"></div>
             <div className="flex items-center gap-1.5 font-bold text-slate-300">
@@ -608,6 +707,15 @@ export default function App() {
               products={products}
               categories={categories}
               settings={settings}
+            />
+          )}
+
+          {activeTab === 'purchases' && (
+            <Purchases
+              products={products}
+              customers={customers}
+              settings={settings}
+              onRefreshData={fetchAllData}
             />
           )}
 
