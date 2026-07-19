@@ -7,6 +7,7 @@ import Inventory from './components/Inventory';
 import Invoices from './components/Invoices';
 import Reports from './components/Reports';
 import Settings from './components/Settings';
+import Accounting from './components/Accounting';
 import { 
   LayoutDashboard, 
   ShoppingBag, 
@@ -18,7 +19,8 @@ import {
   DollarSign,
   Briefcase,
   Bell,
-  AlertTriangle
+  AlertTriangle,
+  Landmark
 } from 'lucide-react';
 
 export default function App() {
@@ -34,81 +36,94 @@ export default function App() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
 
-  // Load Initial State from LocalStorage or Fallbacks
-  useEffect(() => {
-    // Settings
-    const storedSettings = localStorage.getItem('cashier_settings');
-    if (storedSettings) {
-      try { setSettings(JSON.parse(storedSettings)); } catch(e) { console.error(e); }
-    } else {
-      localStorage.setItem('cashier_settings', JSON.stringify(INITIAL_SETTINGS));
-    }
+  // Load Initial State and Synchronize with Server API
+  const fetchAllData = async () => {
+    setSyncStatus('syncing');
+    try {
+      const pRes = await fetch('/api/products');
+      if (pRes.ok) {
+        const pData = await pRes.json();
+        setProducts(pData);
+        localStorage.setItem('cashier_products', JSON.stringify(pData));
+      }
 
-    // Units
+      const cRes = await fetch('/api/customers');
+      if (cRes.ok) {
+        const cData = await cRes.json();
+        setCustomers(cData);
+        localStorage.setItem('cashier_customers', JSON.stringify(cData));
+      }
+
+      const iRes = await fetch('/api/invoices');
+      if (iRes.ok) {
+        const iData = await iRes.json();
+        setInvoices(iData);
+        localStorage.setItem('cashier_invoices', JSON.stringify(iData));
+      }
+
+      const sRes = await fetch('/api/settings');
+      if (sRes.ok) {
+        const sData = await sRes.json();
+        setSettings(sData);
+        localStorage.setItem('cashier_settings', JSON.stringify(sData));
+      }
+
+      setSyncStatus('synced');
+    } catch (err) {
+      console.error('Error fetching data from server:', err);
+      setSyncStatus('offline');
+      // Fallback to local storage if server is unreachable
+      const storedSettings = localStorage.getItem('cashier_settings');
+      if (storedSettings) {
+        try { setSettings(JSON.parse(storedSettings)); } catch(e) {}
+      }
+      const storedProducts = localStorage.getItem('cashier_products');
+      if (storedProducts) {
+        try { setProducts(JSON.parse(storedProducts)); } catch(e) {}
+      }
+      const storedCustomers = localStorage.getItem('cashier_customers');
+      if (storedCustomers) {
+        try { setCustomers(JSON.parse(storedCustomers)); } catch(e) {}
+      }
+      const storedInvoices = localStorage.getItem('cashier_invoices');
+      if (storedInvoices) {
+        try { setInvoices(JSON.parse(storedInvoices)); } catch(e) {}
+      }
+    }
+  };
+
+  useEffect(() => {
+    fetchAllData();
+
+    // Load static items
     const storedUnits = localStorage.getItem('cashier_units');
     if (storedUnits) {
       try { setUnits(JSON.parse(storedUnits)); } catch(e) { console.error(e); }
-    } else {
-      localStorage.setItem('cashier_units', JSON.stringify(INITIAL_UNITS));
     }
-
-    // Categories
     const storedCategories = localStorage.getItem('cashier_categories');
-    let loadedCategories: Category[] = DEMO_DATASETS.supermarket.categories;
     if (storedCategories) {
-      try { 
-        loadedCategories = JSON.parse(storedCategories);
-        setCategories(loadedCategories); 
-      } catch(e) { console.error(e); }
-    } else {
-      localStorage.setItem('cashier_categories', JSON.stringify(DEMO_DATASETS.supermarket.categories));
-    }
-
-    // Products
-    const storedProducts = localStorage.getItem('cashier_products');
-    let loadedProducts: Product[] = DEMO_DATASETS.supermarket.products;
-    if (storedProducts) {
-      try { 
-        loadedProducts = JSON.parse(storedProducts);
-        setProducts(loadedProducts); 
-      } catch(e) { console.error(e); }
-    } else {
-      setProducts(DEMO_DATASETS.supermarket.products);
-      localStorage.setItem('cashier_products', JSON.stringify(DEMO_DATASETS.supermarket.products));
-    }
-
-    // Customers
-    const storedCustomers = localStorage.getItem('cashier_customers');
-    if (storedCustomers) {
-      try { setCustomers(JSON.parse(storedCustomers)); } catch(e) { console.error(e); }
-    } else {
-      setCustomers(DEMO_DATASETS.supermarket.customers);
-      localStorage.setItem('cashier_customers', JSON.stringify(DEMO_DATASETS.supermarket.customers));
-    }
-
-    // Invoices
-    const storedInvoices = localStorage.getItem('cashier_invoices');
-    if (storedInvoices) {
-      try { setInvoices(JSON.parse(storedInvoices)); } catch(e) { console.error(e); }
-    } else {
-      // Seed 12 gorgeous invoices to make reports and charts pop!
-      const initialInvs = GENERATE_INITIAL_INVOICES(loadedProducts);
-      setInvoices(initialInvs);
-      localStorage.setItem('cashier_invoices', JSON.stringify(initialInvs));
+      try { setCategories(JSON.parse(storedCategories)); } catch(e) { console.error(e); }
     }
   }, []);
 
   // Sync helpers
-  const handleForceSync = () => {
-    setSyncStatus('syncing');
-    setTimeout(() => {
-      setSyncStatus('synced');
-    }, 1200);
+  const handleForceSync = async () => {
+    await fetchAllData();
   };
 
-  const handleUpdateSettings = (newSettings: StoreSettings) => {
+  const handleUpdateSettings = async (newSettings: StoreSettings) => {
     setSettings(newSettings);
     localStorage.setItem('cashier_settings', JSON.stringify(newSettings));
+    try {
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newSettings)
+      });
+      await fetchAllData();
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   const handleAddUnit = (u: Unit) => {
@@ -127,36 +142,59 @@ export default function App() {
     });
   };
 
-  const handleAddProduct = (p: Product) => {
-    setProducts(prev => {
-      const next = [p, ...prev];
-      localStorage.setItem('cashier_products', JSON.stringify(next));
-      return next;
-    });
+  const handleAddProduct = async (p: Product) => {
+    setProducts(prev => [p, ...prev]);
+    try {
+      await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(p)
+      });
+      await fetchAllData();
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const handleUpdateProduct = (p: Product) => {
-    setProducts(prev => {
-      const next = prev.map(item => item.id === p.id ? p : item);
-      localStorage.setItem('cashier_products', JSON.stringify(next));
-      return next;
-    });
+  const handleUpdateProduct = async (p: Product) => {
+    setProducts(prev => prev.map(item => item.id === p.id ? p : item));
+    try {
+      await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(p)
+      });
+      await fetchAllData();
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const handleUpdateProductStock = (id: string, newStock: number) => {
-    setProducts(prev => {
-      const next = prev.map(item => item.id === id ? { ...item, stock: newStock } : item);
-      localStorage.setItem('cashier_products', JSON.stringify(next));
-      return next;
-    });
+  const handleUpdateProductStock = async (id: string, newStock: number) => {
+    const prod = products.find(p => p.id === id);
+    if (!prod) return;
+    const updated = { ...prod, stock: newStock };
+    setProducts(prev => prev.map(item => item.id === id ? updated : item));
+    try {
+      await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated)
+      });
+      await fetchAllData();
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const handleDeleteProduct = (id: string) => {
-    setProducts(prev => {
-      const next = prev.filter(item => item.id !== id);
-      localStorage.setItem('cashier_products', JSON.stringify(next));
-      return next;
-    });
+  const handleDeleteProduct = async (id: string) => {
+    setProducts(prev => prev.filter(item => item.id !== id));
+    try {
+      await fetch(`/api/products/${id}`, { method: 'DELETE' });
+      await fetchAllData();
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   const handleAddCategory = (c: Category) => {
@@ -175,58 +213,64 @@ export default function App() {
     });
   };
 
-  const handleAddCustomer = (c: Customer) => {
-    setCustomers(prev => {
-      const next = [c, ...prev];
-      localStorage.setItem('cashier_customers', JSON.stringify(next));
-      return next;
-    });
+  const handleAddCustomer = async (c: Customer) => {
+    setCustomers(prev => [c, ...prev]);
+    try {
+      await fetch('/api/customers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(c)
+      });
+      await fetchAllData();
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const handleAddInvoice = (inv: Invoice) => {
-    setInvoices(prev => {
-      const next = [inv, ...prev];
-      localStorage.setItem('cashier_invoices', JSON.stringify(next));
-      return next;
-    });
-
-    // If it is credit (آجل), update customer balance
-    if (inv.paymentMethod === 'credit' && inv.customerId) {
-      setCustomers(prevCust => {
-        const nextCust = prevCust.map(c => 
-          c.id === inv.customerId ? { ...c, balance: c.balance + inv.grandTotal } : c
-        );
-        localStorage.setItem('cashier_customers', JSON.stringify(nextCust));
-        return nextCust;
+  const handleAddInvoice = async (inv: Invoice) => {
+    setInvoices(prev => [inv, ...prev]);
+    try {
+      await fetch('/api/invoices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(inv)
       });
+      await fetchAllData();
+    } catch (e) {
+      console.error(e);
     }
   };
 
   // Sector Loader
-  const handleLoadDemoDataset = (sectorKey: string) => {
+  const handleLoadDemoDataset = async (sectorKey: string) => {
     const dataset = DEMO_DATASETS[sectorKey];
-    if (dataset) {
-      setCategories(dataset.categories);
-      setProducts(dataset.products);
-      setCustomers(dataset.customers);
+    if (!dataset) return;
 
-      // Save to localStorage
-      localStorage.setItem('cashier_categories', JSON.stringify(dataset.categories));
-      localStorage.setItem('cashier_products', JSON.stringify(dataset.products));
-      localStorage.setItem('cashier_customers', JSON.stringify(dataset.customers));
+    setSyncStatus('syncing');
+    try {
+      // Clear database lists where possible or update
+      // Post all products
+      for (const p of dataset.products) {
+        await fetch('/api/products', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(p),
+        });
+      }
 
-      // Re-seed invoices appropriate for new products
-      const newInvs = GENERATE_INITIAL_INVOICES(dataset.products);
-      setInvoices(newInvs);
-      localStorage.setItem('cashier_invoices', JSON.stringify(newInvs));
+      // Post all customers
+      for (const c of dataset.customers) {
+        await fetch('/api/customers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(c),
+        });
+      }
 
-      // Update store name appropriately
-      let sectorName = "";
-      let sectorAddress = "";
-      if (sectorKey === 'supermarket') {
-        sectorName = "سوبرماركت الخيرات";
-        sectorAddress = "الرياض، السليمانية";
-      } else if (sectorKey === 'pharmacy') {
+      // Set default name and address
+      let sectorName = "سوبرماركت الخيرات";
+      let sectorAddress = "الرياض، السليمانية";
+      if (sectorKey === 'pharmacy') {
         sectorName = "صيدلية الترياق الطبية";
         sectorAddress = "جدة، شارع فلسطين";
       } else if (sectorKey === 'cafe') {
@@ -242,10 +286,28 @@ export default function App() {
         name: sectorName,
         address: sectorAddress
       };
-      setSettings(updatedSettings);
-      localStorage.setItem('cashier_settings', JSON.stringify(updatedSettings));
 
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedSettings),
+      });
+
+      // Post 12 invoices to the database to pop reports and charts
+      const initialInvs = GENERATE_INITIAL_INVOICES(dataset.products);
+      for (const inv of initialInvs) {
+        await fetch('/api/invoices', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(inv),
+        });
+      }
+
+      await fetchAllData();
       setActiveTab('dashboard');
+    } catch (err) {
+      console.error('Error loading demo dataset:', err);
+      setSyncStatus('offline');
     }
   };
 
@@ -452,6 +514,18 @@ export default function App() {
             </button>
 
             <button
+              onClick={() => setActiveTab('accounting')}
+              className={`w-full py-3 px-4 rounded-l-md text-xs sm:text-sm font-bold flex items-center gap-3 transition-all ${
+                activeTab === 'accounting' 
+                  ? 'bg-emerald-600/20 text-emerald-400 border-r-4 border-emerald-500' 
+                  : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+              }`}
+            >
+              <Landmark className="w-4 h-4" />
+              <span>القيود والحسابات المالية</span>
+            </button>
+
+            <button
               onClick={() => setActiveTab('settings')}
               className={`w-full py-3 px-4 rounded-l-md text-xs sm:text-sm font-bold flex items-center gap-3 transition-all ${
                 activeTab === 'settings' 
@@ -476,7 +550,7 @@ export default function App() {
             <div className="h-[1px] bg-slate-700/60 my-2"></div>
             <div className="flex items-center gap-1.5 font-bold text-slate-300">
               <Briefcase className="w-3.5 h-3.5 text-emerald-500" />
-              <span>قاعدة بيانات محلية مشفرة</span>
+              <span>نظام ERP متكامل (PostgreSQL)</span>
             </div>
           </div>
         </aside>
@@ -533,6 +607,12 @@ export default function App() {
               invoices={invoices}
               products={products}
               categories={categories}
+              settings={settings}
+            />
+          )}
+
+          {activeTab === 'accounting' && (
+            <Accounting
               settings={settings}
             />
           )}
