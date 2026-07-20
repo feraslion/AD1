@@ -1,0 +1,164 @@
+ERP_DEVELOPMENT_WORKFLOW:
+
+  project:
+    name: "AD1 ERP System"
+    target: "Enterprise ERP مثل Odoo / SAP Business One"
+
+  rules:
+    - "لا تنتقل للمرحلة التالية قبل اختبار المرحلة الحالية"
+    - "كل Module يجب أن يحتوي Database + API + UI + Permissions + Reports"
+    - "الحفاظ على Architecture الحالية"
+
+  phases:
+
+    phase_01_architecture:
+      status: done
+      tasks:
+        - مراجعة React Structure
+        - تثبيت Coding Standards
+        - إنشاء Core Services
+        - إنشاء Error Handling
+
+    phase_02_database_engine:
+      tasks:
+        - مراجعة schema.ts
+        - إضافة migrations
+        - إضافة relations
+        - إضافة audit_logs
+        - إضافة company_settings
+        - إضافة fiscal_years
+
+    phase_03_authentication:
+      tasks:
+        - Firebase Authentication
+        - Role Based Access Control
+        - Users Management
+        - Permissions Matrix
+
+    phase_04_accounting_engine:
+      priority: critical
+      tasks:
+        - Chart Of Accounts
+        - Journal Entries
+        - Debit Credit Engine
+        - General Ledger
+        - Trial Balance
+        - Balance Sheet
+        - Income Statement
+
+      database:
+        tables:
+          - accounts
+          - journals
+          - journal_lines
+          - fiscal_periods
+
+    phase_05_inventory:
+      tasks:
+        - Products
+        - Warehouses
+        - Stock Movement
+        - Stock Valuation
+        - Minimum Stock Alerts
+
+      tables:
+        - products
+        - warehouses
+        - stock_moves
+        - stock_balance
+
+    phase_06_sales:
+      tasks:
+        - POS Upgrade
+        - Sales Orders
+        - Quotations
+        - Customer Credit
+        - Invoice Automation
+
+    phase_07_purchases:
+      tasks:
+        - Purchase Orders
+        - Supplier Management
+        - Receiving
+        - Supplier Payments
+
+    phase_08_finance:
+      tasks:
+        - Cashbox
+        - Banks
+        - Payments
+        - Expenses
+        - Receipts
+
+    phase_09_reports:
+      tasks:
+        - Dashboard Analytics
+        - Financial Reports
+        - Inventory Reports
+        - Sales Reports
+
+    phase_10_ai_features:
+      tasks:
+        - AI Business Assistant
+        - Sales Prediction
+        - Stock Prediction
+        - Automatic Reports
+
+
+execution_engine:
+
+  before_each_phase:
+    - read_existing_code
+    - inspect_database
+    - create_plan
+    - implement
+    - test
+    - fix_errors
+    - update_documentation
+
+
+code_generation_rules:
+
+  backend:
+    framework: "Express + TypeScript"
+    pattern:
+      - controllers
+      - services
+      - repositories
+      - validators
+
+  frontend:
+    framework: "React"
+    pattern:
+      - components
+      - hooks
+      - services
+      - types
+
+  database:
+    orm: "Drizzle"
+    rules:
+      - migrations_required
+      - foreign_keys_required
+      - indexes_required
+
+
+testing:
+
+  required:
+    - npm run lint
+    - npm run build
+    - database migration test
+    - API test
+
+
+final_goal:
+
+  deliver:
+    - Complete ERP
+    - Multi company support
+    - Accounting accuracy
+    - Inventory control
+    - POS
+    - Reports
+    - AI assistant
