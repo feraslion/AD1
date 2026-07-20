@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Invoice, Product, StoreSettings } from '../types';
+import { Invoice, Product, StoreSettings } from '../../types';
 import { TrendingUp, ShoppingBag, AlertTriangle, FileText, Landmark, Users, Clock, ArrowLeft, RefreshCw, ChevronDown, ChevronUp, Check } from 'lucide-react';
 import StatCard from './ui/StatCard';
 

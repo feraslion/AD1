@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Invoice, Product, Category, StoreSettings } from '../types';
+import { Invoice, Product, Category, StoreSettings } from '../../types';
 import { Calendar, Download, TrendingUp, DollarSign, ShoppingCart, Percent, Tag, ArrowUpRight, ArrowDownRight, Layers, FileSpreadsheet } from 'lucide-react';
 
 interface ReportsProps {

@@ -1,7 +1,7 @@
 import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
-import { db } from './src/db/index.ts';
+import { db } from './src/core/database/index.ts';
 import {
   products,
   customers,
@@ -16,8 +16,12 @@ import {
   users,
   categories,
   units,
-  cashboxes
-} from './src/db/schema.ts';
+  cashboxes,
+  roles,
+  permissions,
+  rolePermissions,
+  postingRules
+} from './src/core/database/schema.ts';
 import { eq, desc, and, or, like, sql, inArray } from 'drizzle-orm';
 
 const app = express();
@@ -59,7 +63,40 @@ async function authenticate(req: any, res: any, next: any) {
     // Default manager user fallback for seamless development/testing session
     if (!userRecord) {
       const [master] = await db.select().from(users).where(eq(users.id, '001'));
-      userRecord = master || { id: '001', uid: '001', email: 'manager@system.com', name: 'عبدالرحمن (المدير العام)', role: 'manager' };
+      userRecord = master || { id: '001', uid: '001', email: 'manager@system.com', name: 'عبدالرحمن (المدير العام)', role: 'manager', roleId: 'role_manager' };
+    }
+
+    // Load permissions for userRecord
+    if (userRecord) {
+      let userPermissions: string[] = [];
+      try {
+        if (userRecord.roleId) {
+          const perms = await db
+            .select({ code: permissions.code })
+            .from(rolePermissions)
+            .innerJoin(permissions, eq(rolePermissions.permissionId, permissions.id))
+            .where(eq(rolePermissions.roleId, userRecord.roleId));
+          userPermissions = perms.map(p => p.code);
+        }
+      } catch (dbErr) {
+        console.error('Error fetching db permissions, falling back to defaults:', dbErr);
+      }
+
+      // Default fallback mappings if db query is empty or failed
+      if (userPermissions.length === 0) {
+        const fallbackRole = userRecord.role || 'cashier';
+        if (fallbackRole === 'manager') {
+          userPermissions = ['view_dashboard', 'pos_access', 'manage_inventory', 'view_invoices', 'view_reports', 'view_purchases', 'view_accounting', 'view_settings', 'manage_users'];
+        } else if (fallbackRole === 'accountant') {
+          userPermissions = ['view_dashboard', 'pos_access', 'view_invoices', 'view_reports', 'view_purchases', 'view_accounting'];
+        } else if (fallbackRole === 'inventory') {
+          userPermissions = ['view_dashboard', 'manage_inventory', 'view_purchases'];
+        } else if (fallbackRole === 'cashier') {
+          userPermissions = ['pos_access', 'view_invoices'];
+        }
+      }
+
+      userRecord.permissions = userPermissions;
     }
 
     req.user = userRecord;
@@ -69,14 +106,35 @@ async function authenticate(req: any, res: any, next: any) {
   }
 }
 
-function authorize(allowedRoles: string[]) {
+function authorize(requirements: string[]) {
   return (req: any, res: any, next: any) => {
-    if (!req.user || !allowedRoles.includes(req.user.role)) {
-      return res.status(403).json({
+    if (!req.user) {
+      return res.status(401).json({
         success: false,
-        error: `صلاحيات غير كافية! هذه العملية تتطلب دور: ${allowedRoles.join(' أو ')}`
+        error: 'غير مصرح به - الرجاء تسجيل الدخول أولاً'
       });
     }
+
+    // Manager role always has all permissions/full bypass
+    if (req.user.role === 'manager') {
+      return next();
+    }
+
+    const hasMatch = requirements.some(reqStr => {
+      // Check if matches direct role
+      if (reqStr === req.user.role) return true;
+      // Check if matches a permission code
+      if (req.user.permissions && req.user.permissions.includes(reqStr)) return true;
+      return false;
+    });
+
+    if (!hasMatch) {
+      return res.status(403).json({
+        success: false,
+        error: `صلاحيات غير كافية! هذه العملية تتطلب أحد الصلاحيات أو الأدوار التالية: ${requirements.join(' أو ')}`
+      });
+    }
+
     next();
   };
 }
@@ -157,6 +215,16 @@ async function postJournalEntry(entryNumber: string, description: string, date: 
   });
 
   await Promise.all(updatePromises);
+}
+
+async function getAccountByRule(ruleCode: string, defaultAccountId: string): Promise<string> {
+  try {
+    const [rule] = await db.select().from(postingRules).where(eq(postingRules.ruleCode, ruleCode));
+    return rule ? rule.accountId : defaultAccountId;
+  } catch (error) {
+    console.error(`Error resolving account for rule ${ruleCode}:`, error);
+    return defaultAccountId;
+  }
 }
 
 // ─── VALIDATION HELPERS ───
@@ -733,12 +801,20 @@ app.post('/api/invoices', authorize(['manager', 'cashier']), async (req, res) =>
     // Double-entry ledger integration
     const accountingLines = [];
 
+    const cashAcc = await getAccountByRule('sales_cash_debit', 'acc_cash');
+    const bankAcc = await getAccountByRule('sales_bank_debit', 'acc_bank');
+    const recAcc = await getAccountByRule('sales_credit_debit', 'acc_receivable');
+    const salesAcc = await getAccountByRule('sales_revenue_credit', 'acc_sales');
+    const taxAcc = await getAccountByRule('sales_tax_credit', 'acc_tax');
+    const cogsAcc = await getAccountByRule('sales_cogs_debit', 'acc_cogs');
+    const invAcc = await getAccountByRule('sales_inventory_credit', 'acc_inventory');
+
     if (inv.paymentMethod === 'cash') {
-      accountingLines.push({ accountId: 'acc_cash', debit: inv.grandTotal, credit: 0 });
+      accountingLines.push({ accountId: cashAcc, debit: inv.grandTotal, credit: 0 });
     } else if (inv.paymentMethod === 'card') {
-      accountingLines.push({ accountId: 'acc_bank', debit: inv.grandTotal, credit: 0 });
+      accountingLines.push({ accountId: bankAcc, debit: inv.grandTotal, credit: 0 });
     } else if (inv.paymentMethod === 'credit') {
-      accountingLines.push({ accountId: 'acc_receivable', debit: inv.grandTotal, credit: 0 });
+      accountingLines.push({ accountId: recAcc, debit: inv.grandTotal, credit: 0 });
       if (inv.customerId) {
         const [customer] = await db.select().from(customers).where(eq(customers.id, inv.customerId));
         if (customer) {
@@ -749,19 +825,19 @@ app.post('/api/invoices', authorize(['manager', 'cashier']), async (req, res) =>
     } else if (inv.paymentMethod === 'split') {
       const cashAmt = inv.paymentDetails?.cashAmount || 0;
       const cardAmt = inv.paymentDetails?.cardAmount || 0;
-      if (cashAmt > 0) accountingLines.push({ accountId: 'acc_cash', debit: cashAmt, credit: 0 });
-      if (cardAmt > 0) accountingLines.push({ accountId: 'acc_bank', debit: cardAmt, credit: 0 });
+      if (cashAmt > 0) accountingLines.push({ accountId: cashAcc, debit: cashAmt, credit: 0 });
+      if (cardAmt > 0) accountingLines.push({ accountId: bankAcc, debit: cardAmt, credit: 0 });
     }
 
-    accountingLines.push({ accountId: 'acc_sales', debit: 0, credit: inv.totalWithoutTax });
+    accountingLines.push({ accountId: salesAcc, debit: 0, credit: inv.totalWithoutTax });
 
     if (inv.taxAmount > 0) {
-      accountingLines.push({ accountId: 'acc_tax', debit: 0, credit: inv.taxAmount });
+      accountingLines.push({ accountId: taxAcc, debit: 0, credit: inv.taxAmount });
     }
 
     if (totalCogs > 0) {
-      accountingLines.push({ accountId: 'acc_cogs', debit: totalCogs, credit: 0 });
-      accountingLines.push({ accountId: 'acc_inventory', debit: 0, credit: totalCogs });
+      accountingLines.push({ accountId: cogsAcc, debit: totalCogs, credit: 0 });
+      accountingLines.push({ accountId: invAcc, debit: 0, credit: totalCogs });
     }
 
     await postJournalEntry(
@@ -834,11 +910,14 @@ app.post('/api/expenses', authorize(['manager', 'accountant']), async (req, res)
 
     const id = 'exp_' + Math.random().toString(36).substr(2, 9);
     
+    const expDeb = await getAccountByRule('expense_debit', 'acc_expense');
+    const expCred = await getAccountByRule('expense_credit', 'acc_cash');
+
     await db.insert(expenses).values({
       id,
       description: exp.description,
       amount: exp.amount.toString(),
-      accountId: 'acc_expense',
+      accountId: expDeb,
       date: exp.date
     });
 
@@ -847,8 +926,8 @@ app.post('/api/expenses', authorize(['manager', 'accountant']), async (req, res)
       `مصروف: ${exp.description}`,
       exp.date,
       [
-        { accountId: 'acc_expense', debit: parseFloat(exp.amount), credit: 0 },
-        { accountId: 'acc_cash', debit: 0, credit: parseFloat(exp.amount) }
+        { accountId: expDeb, debit: parseFloat(exp.amount), credit: 0 },
+        { accountId: expCred, debit: 0, credit: parseFloat(exp.amount) }
       ]
     );
 
@@ -1037,6 +1116,36 @@ app.post('/api/accounting/journal-entries', authorize(['manager', 'accountant'])
   }
 });
 
+// Posting Rules APIs
+app.get('/api/accounting/posting-rules', authorize(['manager', 'accountant']), async (req, res) => {
+  try {
+    const rules = await db.select().from(postingRules);
+    sendResponse(res, rules);
+  } catch (error) {
+    sendError(res, 'فشل جلب قواعد الترحيل المحاسبي', error);
+  }
+});
+
+app.post('/api/accounting/posting-rules', authorize(['manager', 'accountant']), async (req, res) => {
+  try {
+    const { ruleCode, accountId } = req.body;
+    if (!ruleCode || !accountId) {
+      return sendError(res, 'رمز القاعدة ومعرف الحساب مطلوبان', null, 400);
+    }
+    
+    // Check if account exists
+    const [acc] = await db.select().from(accounts).where(eq(accounts.id, accountId));
+    if (!acc) {
+      return sendError(res, 'الحساب المحدد غير موجود', null, 404);
+    }
+
+    await db.update(postingRules).set({ accountId }).where(eq(postingRules.ruleCode, ruleCode));
+    sendResponse(res, { success: true });
+  } catch (error) {
+    sendError(res, 'فشل تحديث قاعدة الترحيل', error);
+  }
+});
+
 // 9. Store Settings API
 app.get('/api/settings', async (req, res) => {
   try {
@@ -1096,8 +1205,113 @@ app.post('/api/settings', authorize(['manager']), async (req, res) => {
   }
 });
 
-// 10. Users API (Manager restricted, with validation, pagination & filter)
-app.get('/api/users', authorize(['manager']), async (req, res) => {
+// 10. Users, Roles & Permissions APIs (Manager restricted)
+
+// GET all roles with their associated permissions
+app.get('/api/roles', authorize(['manager', 'manage_users']), async (req, res) => {
+  try {
+    const allRoles = await db.select().from(roles);
+    
+    // For each role, fetch its permissions
+    const rolesWithPermissions = await Promise.all(
+      allRoles.map(async (r) => {
+        const rps = await db
+          .select({
+            id: permissions.id,
+            code: permissions.code,
+            name: permissions.name,
+            module: permissions.module,
+            description: permissions.description
+          })
+          .from(rolePermissions)
+          .innerJoin(permissions, eq(rolePermissions.permissionId, permissions.id))
+          .where(eq(rolePermissions.roleId, r.id));
+        return {
+          ...r,
+          permissions: rps
+        };
+      })
+    );
+    
+    sendResponse(res, rolesWithPermissions);
+  } catch (error) {
+    sendError(res, 'فشل جلب الأدوار والصلاحيات', error);
+  }
+});
+
+// CREATE or UPDATE a role with custom permissions
+app.post('/api/roles', authorize(['manager', 'manage_users']), async (req, res) => {
+  try {
+    const { id, name, code, description, permissionIds } = req.body;
+    if (!name || !code) {
+      return sendError(res, 'الاسم والرمز مطلوبان لتسجيل دور جديد', null, 400);
+    }
+
+    const roleId = id || 'role_' + Math.random().toString(36).substr(2, 9);
+    const existing = await db.select().from(roles).where(eq(roles.id, roleId));
+
+    const dbValue = {
+      id: roleId,
+      name,
+      code,
+      description,
+      updatedAt: new Date()
+    };
+
+    if (existing.length > 0) {
+      await db.update(roles).set(dbValue).where(eq(roles.id, roleId));
+    } else {
+      await db.insert(roles).values(dbValue);
+    }
+
+    // Update role permissions mappings
+    if (Array.isArray(permissionIds)) {
+      // Clear old permissions
+      await db.delete(rolePermissions).where(eq(rolePermissions.roleId, roleId));
+      
+      // Insert new ones
+      if (permissionIds.length > 0) {
+        const rpsValues = permissionIds.map((pId, idx) => ({
+          id: `rp_${roleId}_${idx}_${Math.random().toString(36).substr(2, 5)}`,
+          roleId,
+          permissionId: pId
+        }));
+        await db.insert(rolePermissions).values(rpsValues);
+      }
+    }
+
+    sendResponse(res, { id: roleId, name, code, description, permissionIds });
+  } catch (error) {
+    sendError(res, 'فشل حفظ الدور والصلاحيات', error);
+  }
+});
+
+// DELETE a role
+app.delete('/api/roles/:id', authorize(['manager', 'manage_users']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (['role_manager', 'role_accountant', 'role_inventory', 'role_cashier'].includes(id)) {
+      return sendError(res, 'لا يمكن حذف الأدوار النظامية الأساسية للمؤسسة', null, 400);
+    }
+    await db.delete(roles).where(eq(roles.id, id));
+    sendResponse(res, { success: true });
+  } catch (error) {
+    sendError(res, 'فشل حذف الدور', error);
+  }
+});
+
+// GET all available permissions
+app.get('/api/permissions', authorize(['manager', 'manage_users']), async (req, res) => {
+  try {
+    const allPermissions = await db.select().from(permissions);
+    sendResponse(res, allPermissions);
+  } catch (error) {
+    sendError(res, 'فشل جلب الصلاحيات', error);
+  }
+});
+
+// GET all users (with associated role details)
+app.get('/api/users', authorize(['manager', 'manage_users']), async (req, res) => {
   try {
     const { page, limit, role } = req.query;
     const conditions = [];
@@ -1115,7 +1329,22 @@ app.get('/api/users', authorize(['manager']), async (req, res) => {
       total = Number(countResult[0]?.count || 0);
     }
 
-    let query = db.select().from(users);
+    let query = db
+      .select({
+        id: users.id,
+        uid: users.uid,
+        email: users.email,
+        name: users.name,
+        role: users.role,
+        roleId: users.roleId,
+        createdAt: users.createdAt,
+        updatedAt: users.updatedAt,
+        roleName: roles.name,
+        roleCode: roles.code
+      })
+      .from(users)
+      .leftJoin(roles, eq(users.roleId, roles.id));
+
     if (whereClause) {
       query = query.where(whereClause) as any;
     }
@@ -1140,7 +1369,8 @@ app.get('/api/users', authorize(['manager']), async (req, res) => {
   }
 });
 
-app.post('/api/users', authorize(['manager']), async (req, res) => {
+// CREATE or UPDATE a user (including roleId link and compatibility sync)
+app.post('/api/users', authorize(['manager', 'manage_users']), async (req, res) => {
   try {
     const u = req.body;
     const errors = validateUser(u);
@@ -1151,12 +1381,23 @@ app.post('/api/users', authorize(['manager']), async (req, res) => {
     const id = u.id || 'user_' + Math.random().toString(36).substr(2, 9);
     const existing = await db.select().from(users).where(eq(users.id, id));
 
+    // Resolve compatible role string code from roleId
+    let finalRole = u.role || 'cashier';
+    if (u.roleId) {
+      const [r] = await db.select().from(roles).where(eq(roles.id, u.roleId));
+      if (r) {
+        finalRole = r.code;
+      }
+    }
+
     const dbValue = {
       id,
       uid: u.uid || id,
       email: u.email,
       name: u.name,
-      role: u.role
+      role: finalRole,
+      roleId: u.roleId || null,
+      updatedAt: new Date()
     };
 
     if (existing.length > 0) {
@@ -1170,7 +1411,8 @@ app.post('/api/users', authorize(['manager']), async (req, res) => {
   }
 });
 
-app.delete('/api/users/:id', authorize(['manager']), async (req: any, res) => {
+// DELETE a user
+app.delete('/api/users/:id', authorize(['manager', 'manage_users']), async (req: any, res) => {
   try {
     const { id } = req.params;
     if (id === '001' || id === req.user.id) {
@@ -1302,18 +1544,24 @@ app.post('/api/purchases', authorize(['manager', 'inventory', 'accountant']), as
       }
     }
 
+    const cashAcc = await getAccountByRule('purchase_cash_credit', 'acc_cash');
+    const bankAcc = await getAccountByRule('purchase_bank_credit', 'acc_bank');
+    const payAcc = await getAccountByRule('purchase_credit_credit', 'acc_payable');
+    const invAcc = await getAccountByRule('purchase_inventory_debit', 'acc_inventory');
+    const taxAcc = await getAccountByRule('purchase_tax_debit', 'acc_tax');
+
     const accountingLines = [];
-    accountingLines.push({ accountId: 'acc_inventory', debit: totalWithoutTax, credit: 0 });
+    accountingLines.push({ accountId: invAcc, debit: totalWithoutTax, credit: 0 });
     if (taxAmount > 0) {
-      accountingLines.push({ accountId: 'acc_tax', debit: taxAmount, credit: 0 });
+      accountingLines.push({ accountId: taxAcc, debit: taxAmount, credit: 0 });
     }
 
     if (paymentMethod === 'cash') {
-      accountingLines.push({ accountId: 'acc_cash', debit: 0, credit: grandTotal });
+      accountingLines.push({ accountId: cashAcc, debit: 0, credit: grandTotal });
     } else if (paymentMethod === 'card') {
-      accountingLines.push({ accountId: 'acc_bank', debit: 0, credit: grandTotal });
+      accountingLines.push({ accountId: bankAcc, debit: 0, credit: grandTotal });
     } else if (paymentMethod === 'credit') {
-      accountingLines.push({ accountId: 'acc_payable', debit: 0, credit: grandTotal });
+      accountingLines.push({ accountId: payAcc, debit: 0, credit: grandTotal });
     }
 
     await postJournalEntry(
@@ -1343,13 +1591,17 @@ app.post('/api/payments/customer', authorize(['manager', 'cashier', 'accountant'
     const nextBalance = parseFloat(customer.balance || '0') - amount;
     await db.update(customers).set({ balance: nextBalance.toString() }).where(eq(customers.id, customerId));
 
+    const cashAcc = await getAccountByRule('payment_customer_debit_cash', 'acc_cash');
+    const bankAcc = await getAccountByRule('payment_customer_debit_bank', 'acc_bank');
+    const custCreditAcc = await getAccountByRule('payment_customer_credit', 'acc_receivable');
+
     const accountingLines = [];
     if (paymentMethod === 'cash') {
-      accountingLines.push({ accountId: 'acc_cash', debit: amount, credit: 0 });
+      accountingLines.push({ accountId: cashAcc, debit: amount, credit: 0 });
     } else {
-      accountingLines.push({ accountId: 'acc_bank', debit: amount, credit: 0 });
+      accountingLines.push({ accountId: bankAcc, debit: amount, credit: 0 });
     }
-    accountingLines.push({ accountId: 'acc_receivable', debit: 0, credit: amount });
+    accountingLines.push({ accountId: custCreditAcc, debit: 0, credit: amount });
 
     await postJournalEntry(
       `JE-RCPT-${receiptNumber}`,
@@ -1378,12 +1630,16 @@ app.post('/api/payments/supplier', authorize(['manager', 'inventory', 'accountan
     const nextBalance = parseFloat(supplier.balance || '0') - amount;
     await db.update(suppliers).set({ balance: nextBalance.toString() }).where(eq(suppliers.id, supplierId));
 
+    const payDebAcc = await getAccountByRule('payment_supplier_debit', 'acc_payable');
+    const cashAcc = await getAccountByRule('payment_supplier_credit_cash', 'acc_cash');
+    const bankAcc = await getAccountByRule('payment_supplier_credit_bank', 'acc_bank');
+
     const accountingLines = [];
-    accountingLines.push({ accountId: 'acc_payable', debit: amount, credit: 0 });
+    accountingLines.push({ accountId: payDebAcc, debit: amount, credit: 0 });
     if (paymentMethod === 'cash') {
-      accountingLines.push({ accountId: 'acc_cash', debit: 0, credit: amount });
+      accountingLines.push({ accountId: cashAcc, debit: 0, credit: amount });
     } else {
-      accountingLines.push({ accountId: 'acc_bank', debit: 0, credit: amount });
+      accountingLines.push({ accountId: bankAcc, debit: 0, credit: amount });
     }
 
     await postJournalEntry(
@@ -1460,17 +1716,93 @@ async function seedDefaultData() {
       await db.insert(categories).values(defaultCategories);
     }
 
+    const existingRoles = await db.select().from(roles);
+    if (existingRoles.length === 0) {
+      console.log('Seeding default ERP Roles...');
+      const defaultRoles = [
+        { id: 'role_manager', name: 'المدير العام', code: 'manager', description: 'صلاحيات كاملة على كافة النظام والتحكم بالصلاحيات والمستخدمين' },
+        { id: 'role_accountant', name: 'المحاسب المالي', code: 'accountant', description: 'إدارة الحسابات وقيود اليومية والتقارير المالية والضريبية' },
+        { id: 'role_inventory', name: 'أمين المستودع', code: 'inventory', description: 'إدارة المنتجات، الكميات، التحركات المخزنية وفواتير المشتريات' },
+        { id: 'role_cashier', name: 'موظف الكاشير', code: 'cashier', description: 'إجراء المبيعات وإصدار فواتير نقاط البيع السريعة' }
+      ];
+      await db.insert(roles).values(defaultRoles);
+    }
+
+    const existingPermissions = await db.select().from(permissions);
+    if (existingPermissions.length === 0) {
+      console.log('Seeding default ERP Permissions...');
+      const defaultPermissions = [
+        { id: 'p_view_dashboard', name: 'عرض لوحة التحكم', code: 'view_dashboard', module: 'dashboard', description: 'عرض الإحصائيات العامة للمؤسسة' },
+        { id: 'p_pos_access', name: 'الوصول لنقطة البيع', code: 'pos_access', module: 'sales', description: 'استخدام كاشير المبيعات ونقاط البيع' },
+        { id: 'p_manage_inventory', name: 'إدارة المنتجات والمخزن', code: 'manage_inventory', module: 'inventory', description: 'إضافة وتعديل المنتجات وإدارة الكميات والتحركات' },
+        { id: 'p_view_invoices', name: 'عرض الفواتير والضرائب', code: 'view_invoices', module: 'sales', description: 'الاطلاع على فواتير المبيعات والتقارير الضريبية' },
+        { id: 'p_view_reports', name: 'عرض التقارير والأرباح', code: 'view_reports', module: 'dashboard', description: 'عرض التقارير المالية التفصيلية وحساب الأربائر والخسائر' },
+        { id: 'p_view_purchases', name: 'المشتريات والمدفوعات', code: 'view_purchases', module: 'purchases', description: 'إدارة فواتير المشتريات ومستحقات الموردين' },
+        { id: 'p_view_accounting', name: 'القيود والحسابات المالية', code: 'view_accounting', module: 'accounting', description: 'إدارة الدفاتر المحاسبية وشجرة الحسابات وقيود اليومية' },
+        { id: 'p_view_settings', name: 'إعدادات النظام والضريبة', code: 'view_settings', module: 'settings', description: 'إعدادات المتجر وبيانات الضريبة والطباعة الحرارية' },
+        { id: 'p_manage_users', name: 'إدارة المستخدمين والصلاحيات', code: 'manage_users', module: 'users', description: 'إدارة ملفات الموظفين وأدوارهم وصلاحياتهم' }
+      ];
+      await db.insert(permissions).values(defaultPermissions);
+    }
+
+    const existingRolePerms = await db.select().from(rolePermissions);
+    if (existingRolePerms.length === 0) {
+      console.log('Seeding default Role Permissions...');
+      const defaultRolePerms = [
+        // Manager gets everything
+        { id: 'rp1', roleId: 'role_manager', permissionId: 'p_view_dashboard' },
+        { id: 'rp2', roleId: 'role_manager', permissionId: 'p_pos_access' },
+        { id: 'rp3', roleId: 'role_manager', permissionId: 'p_manage_inventory' },
+        { id: 'rp4', roleId: 'role_manager', permissionId: 'p_view_invoices' },
+        { id: 'rp5', roleId: 'role_manager', permissionId: 'p_view_reports' },
+        { id: 'rp6', roleId: 'role_manager', permissionId: 'p_view_purchases' },
+        { id: 'rp7', roleId: 'role_manager', permissionId: 'p_view_accounting' },
+        { id: 'rp8', roleId: 'role_manager', permissionId: 'p_view_settings' },
+        { id: 'rp9', roleId: 'role_manager', permissionId: 'p_manage_users' },
+
+        // Accountant
+        { id: 'rp10', roleId: 'role_accountant', permissionId: 'p_view_dashboard' },
+        { id: 'rp11', roleId: 'role_accountant', permissionId: 'p_pos_access' },
+        { id: 'rp12', roleId: 'role_accountant', permissionId: 'p_view_invoices' },
+        { id: 'rp13', roleId: 'role_accountant', permissionId: 'p_view_reports' },
+        { id: 'rp14', roleId: 'role_accountant', permissionId: 'p_view_purchases' },
+        { id: 'rp15', roleId: 'role_accountant', permissionId: 'p_view_accounting' },
+
+        // Inventory
+        { id: 'rp16', roleId: 'role_inventory', permissionId: 'p_view_dashboard' },
+        { id: 'rp17', roleId: 'role_inventory', permissionId: 'p_manage_inventory' },
+        { id: 'rp18', roleId: 'role_inventory', permissionId: 'p_view_purchases' },
+
+        // Cashier
+        { id: 'rp19', roleId: 'role_cashier', permissionId: 'p_pos_access' },
+        { id: 'rp20', roleId: 'role_cashier', permissionId: 'p_view_invoices' }
+      ];
+      await db.insert(rolePermissions).values(defaultRolePerms);
+    }
+
     const existingUsers = await db.select().from(users);
     if (existingUsers.length === 0) {
-      console.log('Seeding default ERP Users...');
+      console.log('Seeding default ERP Users with Role IDs...');
       const defaultUsers = [
-        { id: '001', uid: '001', email: 'manager@system.com', name: 'عبدالرحمن (المدير العام)', role: 'manager' },
-        { id: '002', uid: '002', email: 'accountant@system.com', name: 'ياسر (المحاسب المالي)', role: 'accountant' },
-        { id: '003', uid: '003', email: 'inventory@system.com', name: 'أنس (أمين المستودع)', role: 'inventory' },
-        { id: '004', uid: '004', email: 'cashier@system.com', name: 'أحمد (موظف الكاشير)', role: 'cashier' }
+        { id: '001', uid: '001', email: 'manager@system.com', name: 'عبدالرحمن (المدير العام)', role: 'manager', roleId: 'role_manager' },
+        { id: '002', uid: '002', email: 'accountant@system.com', name: 'ياسر (المحاسب المالي)', role: 'accountant', roleId: 'role_accountant' },
+        { id: '003', uid: '003', email: 'inventory@system.com', name: 'أنس (أمين المستودع)', role: 'inventory', roleId: 'role_inventory' },
+        { id: '004', uid: '004', email: 'cashier@system.com', name: 'أحمد (موظف الكاشير)', role: 'cashier', roleId: 'role_cashier' }
       ];
       await db.insert(users).values(defaultUsers);
       console.log('ERP Users seeded successfully.');
+    } else {
+      // For existing users, update roleId if it is null
+      for (const u of existingUsers) {
+        if (!u.roleId) {
+          let roleId = 'role_cashier';
+          if (u.role === 'manager') roleId = 'role_manager';
+          else if (u.role === 'accountant') roleId = 'role_accountant';
+          else if (u.role === 'inventory') roleId = 'role_inventory';
+          
+          await db.update(users).set({ roleId }).where(eq(users.id, u.id));
+        }
+      }
     }
 
     const existingBoxes = await db.select().from(cashboxes);
@@ -1481,6 +1813,35 @@ async function seedDefaultData() {
         { id: 'box_spare', name: 'صندوق الطوارئ الاحتياطي', status: 'closed', currentBalance: '0' }
       ];
       await db.insert(cashboxes).values(defaultBoxes);
+    }
+
+    const existingRules = await db.select().from(postingRules);
+    if (existingRules.length === 0) {
+      console.log('Seeding default Posting Rules...');
+      const defaultRules = [
+        { id: 'pr_s_cash', ruleCode: 'sales_cash_debit', accountId: 'acc_cash', description: 'حساب مدين المبيعات النقدية (الصندوق)' },
+        { id: 'pr_s_bank', ruleCode: 'sales_bank_debit', accountId: 'acc_bank', description: 'حساب مدين المبيعات البنكية (الشبكة)' },
+        { id: 'pr_s_credit', ruleCode: 'sales_credit_debit', accountId: 'acc_receivable', description: 'حساب مدين المبيعات الآجلة (العملاء)' },
+        { id: 'pr_s_rev', ruleCode: 'sales_revenue_credit', accountId: 'acc_sales', description: 'حساب دائن إيرادات المبيعات' },
+        { id: 'pr_s_tax', ruleCode: 'sales_tax_credit', accountId: 'acc_tax', description: 'حساب دائن ضريبة القيمة المضافة المحتسبة' },
+        { id: 'pr_s_cogs', ruleCode: 'sales_cogs_debit', accountId: 'acc_cogs', description: 'حساب مدين تكلفة البضاعة المباعة' },
+        { id: 'pr_s_inv', ruleCode: 'sales_inventory_credit', accountId: 'acc_inventory', description: 'حساب دائن المخزون (المبيعات)' },
+        { id: 'pr_p_cash', ruleCode: 'purchase_cash_credit', accountId: 'acc_cash', description: 'حساب دائن المشتريات النقدية (الصندوق)' },
+        { id: 'pr_p_bank', ruleCode: 'purchase_bank_credit', accountId: 'acc_bank', description: 'حساب دائن المشتريات البنكية (الشبكة)' },
+        { id: 'pr_p_credit', ruleCode: 'purchase_credit_credit', accountId: 'acc_payable', description: 'حساب دائن المشتريات الآجلة (الموردين)' },
+        { id: 'pr_p_inv', ruleCode: 'purchase_inventory_debit', accountId: 'acc_inventory', description: 'حساب مدين المخزون (المشتريات)' },
+        { id: 'pr_p_tax', ruleCode: 'purchase_tax_debit', accountId: 'acc_tax', description: 'حساب مدين ضريبة مدخلات المشتريات' },
+        { id: 'pr_e_deb', ruleCode: 'expense_debit', accountId: 'acc_expense', description: 'حساب مدين المصاريف التشغيلية' },
+        { id: 'pr_e_cred', ruleCode: 'expense_credit', accountId: 'acc_cash', description: 'حساب دائن سداد المصاريف (الصندوق)' },
+        { id: 'pr_pm_c_deb_cash', ruleCode: 'payment_customer_debit_cash', accountId: 'acc_cash', description: 'حساب مدين سندات القبض نقدًا (الصندوق)' },
+        { id: 'pr_pm_c_deb_bank', ruleCode: 'payment_customer_debit_bank', accountId: 'acc_bank', description: 'حساب مدين سندات القبض بنكًا (الشبكة)' },
+        { id: 'pr_pm_c_cred', ruleCode: 'payment_customer_credit', accountId: 'acc_receivable', description: 'حساب دائن تسوية عميل (سند قبض)' },
+        { id: 'pr_pm_s_deb', ruleCode: 'payment_supplier_debit', accountId: 'acc_payable', description: 'حساب مدين تسوية مورد (سند صرف)' },
+        { id: 'pr_pm_s_cred_cash', ruleCode: 'payment_supplier_credit_cash', accountId: 'acc_cash', description: 'حساب دائن سندات الصرف نقدًا (الصندوق)' },
+        { id: 'pr_pm_s_cred_bank', ruleCode: 'payment_supplier_credit_bank', accountId: 'acc_bank', description: 'حساب دائن سندات الصرف بنكًا (الشبكة)' },
+      ];
+      await db.insert(postingRules).values(defaultRules);
+      console.log('Posting Rules seeded successfully.');
     }
   } catch (error) {
     console.error('Error seeding database default data:', error);

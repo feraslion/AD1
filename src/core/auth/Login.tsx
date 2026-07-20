@@ -1,25 +1,58 @@
-import React, { useState } from 'react';
-import { StoreSettings } from '../types';
-import { Lock, UserCheck, ShieldAlert, KeyRound, ArrowRightLeft } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { StoreSettings } from '../../types';
+import { Lock, UserCheck, ShieldAlert, KeyRound, ArrowRightLeft, RefreshCw } from 'lucide-react';
+import { UserService } from '../../services/api';
 
 interface LoginProps {
-  onLoginSuccess: (user: { name: string; role: string; code: string }) => void;
+  onLoginSuccess: (user: { name: string; role: string; code: string; roleId?: string }) => void;
   settings: StoreSettings;
 }
 
-const ERP_EMPLOYEES = [
-  { name: 'عبدالرحمن (المدير العام)', role: 'manager', code: '001', pin: '1111', color: 'bg-indigo-50 border-indigo-200 text-indigo-700' },
-  { name: 'ياسر (المحاسب المالي)', role: 'accountant', code: '002', pin: '2222', color: 'bg-emerald-50 border-emerald-200 text-emerald-700' },
-  { name: 'أنس (أمين المستودع)', role: 'inventory', code: '003', pin: '3333', color: 'bg-amber-50 border-amber-200 text-amber-700' },
-  { name: 'أحمد (موظف الكاشير)', role: 'cashier', code: '004', pin: '4444', color: 'bg-blue-50 border-blue-200 text-blue-700' }
-];
-
 export default function Login({ onLoginSuccess, settings }: LoginProps) {
-  const [selectedUser, setSelectedUser] = useState<typeof ERP_EMPLOYEES[0] | null>(null);
+  const [employees, setEmployees] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedUser, setSelectedUser] = useState<any | null>(null);
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
 
-  const handleUserClick = (user: typeof ERP_EMPLOYEES[0]) => {
+  useEffect(() => {
+    UserService.getUsers()
+      .then(res => {
+        const mapped = res.map((u: any) => {
+          let pin = '1234';
+          if (u.id === '001') pin = '1111';
+          else if (u.id === '002') pin = '2222';
+          else if (u.id === '003') pin = '3333';
+          else if (u.id === '004') pin = '4444';
+          
+          return {
+            ...u,
+            pin,
+            code: u.id,
+            color: u.role === 'manager' ? 'bg-indigo-50 border-indigo-200 text-indigo-700' :
+                   u.role === 'accountant' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
+                   u.role === 'inventory' ? 'bg-amber-50 border-amber-200 text-amber-700' :
+                   'bg-blue-50 border-blue-200 text-blue-700'
+          };
+        });
+        setEmployees(mapped);
+      })
+      .catch(err => {
+        console.error('Error fetching employees, falling back to static list:', err);
+        const staticList = [
+          { id: '001', code: '001', name: 'عبدالرحمن (المدير العام)', role: 'manager', pin: '1111' },
+          { id: '002', code: '002', name: 'ياسر (المحاسب المالي)', role: 'accountant', pin: '2222' },
+          { id: '003', code: '003', name: 'أنس (أمين المستودع)', role: 'inventory', pin: '3333' },
+          { id: '004', code: '004', name: 'أحمد (موظف الكاشير)', role: 'cashier', pin: '4444' }
+        ];
+        setEmployees(staticList);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, []);
+
+  const handleUserClick = (user: any) => {
     setSelectedUser(user);
     setPin('');
     setError('');
@@ -37,7 +70,8 @@ export default function Login({ onLoginSuccess, settings }: LoginProps) {
           onLoginSuccess({
             name: selectedUser.name,
             role: selectedUser.role,
-            code: selectedUser.code
+            code: selectedUser.code,
+            roleId: selectedUser.roleId
           });
         } else {
           setError('رمز PIN الذي أدخلته غير صحيح. يرجى المحاولة مرة أخرى.');
@@ -72,28 +106,33 @@ export default function Login({ onLoginSuccess, settings }: LoginProps) {
           </div>
         )}
 
-        {/* Phase 1: Select Profile */}
-        {!selectedUser ? (
+        {loading ? (
+          <div className="py-8 flex flex-col items-center justify-center space-y-3">
+            <RefreshCw className="w-7 h-7 text-emerald-600 animate-spin" />
+            <span className="text-xs text-slate-500 font-bold">جاري تحميل ملفات الموظفين الآمنة...</span>
+          </div>
+        ) : !selectedUser ? (
+          /* Phase 1: Select Profile */
           <div className="space-y-4">
             <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
               <Lock className="w-4 h-4 text-slate-500" />
               <h3 className="text-xs sm:text-sm font-black text-slate-700">اختر ملف موظف لتسجيل الدخول:</h3>
             </div>
 
-            <div className="grid grid-cols-1 gap-2.5">
-              {ERP_EMPLOYEES.map(emp => (
+            <div className="grid grid-cols-1 gap-2.5 max-h-[300px] overflow-y-auto pr-1">
+              {employees.map(emp => (
                 <button
                   key={emp.code}
                   onClick={() => handleUserClick(emp)}
-                  className={`p-4 border rounded-2xl flex items-center justify-between hover:shadow-md transition text-slate-700 font-semibold text-xs sm:text-sm text-right bg-slate-50 border-slate-100 hover:border-slate-300`}
+                  className="p-4 border rounded-2xl flex items-center justify-between hover:shadow-md transition text-slate-700 font-semibold text-xs sm:text-sm text-right bg-slate-50 border-slate-100 hover:border-slate-300"
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center font-black text-slate-600 text-xs">
                       {emp.code}
                     </div>
                     <div>
-                      <span className="font-extrabold block text-slate-800">{emp.name}</span>
-                      <span className="text-[10px] text-slate-400 font-medium block">
+                      <span className="font-extrabold block text-slate-800 text-right">{emp.name}</span>
+                      <span className="text-[10px] text-slate-400 font-medium block text-right">
                         {emp.role === 'manager' ? 'التحكم بالصلاحيات الكاملة' :
                          emp.role === 'accountant' ? 'الحسابات والميزانية والأستاذ العام' :
                          emp.role === 'inventory' ? 'مراقبة المخازن وفواتير المشتريات' :

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Product, Customer, StoreSettings } from '../types';
-import { SupplierService, PurchaseService, PaymentService } from '../services/api';
+import { Product, Customer, StoreSettings } from '../../types';
+import { SupplierService, PurchaseService, PaymentService } from '../../services/api';
 import { 
   PlusCircle, 
   Receipt, 
@@ -143,13 +143,10 @@ export default function Purchases({ products, customers, settings, onRefreshData
     setSubmitting(true);
     try {
       // Calculate subtotals and VAT
-      let totalWithoutTax = 0;
-      purItems.forEach(item => {
-        totalWithoutTax += item.purchasePrice * item.quantity;
-      });
+      const totalWithoutTax = PurchaseService.calculatePurchaseSubtotal(purItems);
       const taxRateVal = settings.taxRate || 15;
-      const taxAmount = totalWithoutTax * (taxRateVal / 100);
-      const grandTotal = totalWithoutTax + taxAmount;
+      const taxAmount = PurchaseService.calculatePurchaseTax(totalWithoutTax, taxRateVal);
+      const grandTotal = PurchaseService.calculatePurchaseGrandTotal(totalWithoutTax, taxAmount);
 
       await PurchaseService.createPurchase({
         supplierId: purSupplierId || null,

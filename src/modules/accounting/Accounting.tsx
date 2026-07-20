@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StoreSettings } from '../types';
+import { StoreSettings } from '../../types';
 import { 
   Landmark, 
   FileSpreadsheet, 
@@ -13,10 +13,10 @@ import {
   Coins, 
   RefreshCw 
 } from 'lucide-react';
-import StatCard from './ui/StatCard';
-import Badge from './ui/Badge';
-import Modal from './ui/Modal';
-import { AccountingService } from '../services/api';
+import StatCard from '../../shared/components/ui/StatCard';
+import Badge from '../../shared/components/ui/Badge';
+import Modal from '../../shared/components/ui/Modal';
+import { AccountingService } from '../../services/api';
 
 interface Account {
   id: string;
@@ -46,9 +46,10 @@ interface AccountingProps {
 }
 
 export default function Accounting({ settings }: AccountingProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'chart' | 'entries' | 'ledger' | 'trial' | 'income' | 'balance' | 'cashflow'>('chart');
+  const [activeSubTab, setActiveSubTab] = useState<'chart' | 'entries' | 'ledger' | 'trial' | 'income' | 'balance' | 'cashflow' | 'postingRules'>('chart');
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [entries, setEntries] = useState<JournalEntry[]>([]);
+  const [postingRulesList, setPostingRulesList] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -85,6 +86,9 @@ export default function Accounting({ settings }: AccountingProps) {
       
       const entryData = await AccountingService.getJournalEntries();
       setEntries(entryData);
+
+      const rulesData = await AccountingService.getPostingRules();
+      setPostingRulesList(rulesData);
     } catch (e) {
       console.error("Error fetching accounting data:", e);
     } finally {
@@ -155,37 +159,24 @@ export default function Accounting({ settings }: AccountingProps) {
   };
 
   // Accounting calculations
-  const totalAssets = accounts.filter(a => a.type === 'asset').reduce((sum, a) => sum + a.balance, 0);
-  const totalLiabilities = accounts.filter(a => a.type === 'liability').reduce((sum, a) => sum + a.balance, 0);
-  const totalEquity = accounts.filter(a => a.type === 'equity').reduce((sum, a) => sum + a.balance, 0);
+  const totalAssets = AccountingService.totalAssets(accounts);
+  const totalLiabilities = AccountingService.totalLiabilities(accounts);
+  const totalEquity = AccountingService.totalEquity(accounts);
   
-  const salesRevenue = accounts.filter(a => a.type === 'revenue').reduce((sum, a) => sum + a.balance, 0);
-  const totalExpenses = accounts.filter(a => a.type === 'expense').reduce((sum, a) => sum + a.balance, 0);
-  const cogs = accounts.find(a => a.code === '5101')?.balance || 0;
-  const operatingExpenses = accounts.filter(a => a.type === 'expense' && a.code !== '5101').reduce((sum, a) => sum + a.balance, 0);
-  const netProfit = salesRevenue - totalExpenses;
+  const salesRevenue = AccountingService.salesRevenue(accounts);
+  const totalExpenses = AccountingService.totalExpenses(accounts);
+  const cogs = AccountingService.cogs(accounts);
+  const operatingExpenses = AccountingService.operatingExpenses(accounts);
+  const netProfit = AccountingService.netProfit(accounts);
 
   // Manual entry submission
   const handleAddManualEntry = async (e: React.FormEvent) => {
     e.preventDefault();
     setModalError('');
 
-    // Validation: Total Debit must equal Total Credit
-    const totalDebit = entryLines.reduce((sum, l) => sum + Number(l.debit), 0);
-    const totalCredit = entryLines.reduce((sum, l) => sum + Number(l.credit), 0);
-
-    if (totalDebit <= 0 || totalCredit <= 0) {
-      setModalError('يجب إدخال قيم دائنة ومدينة أكبر من الصفر.');
-      return;
-    }
-
-    if (totalDebit !== totalCredit) {
-      setModalError(`القيد غير متزن! إجمالي المدين (${totalDebit} ${settings.currency}) لا يساوي إجمالي الدائن (${totalCredit} ${settings.currency}).`);
-      return;
-    }
-
-    if (!entryDesc.trim()) {
-      setModalError('الرجاء كتابة وصف القيد المحاسبي.');
+    const validationError = AccountingService.validateJournalEntry(entryLines, entryDesc, settings.currency);
+    if (validationError) {
+      setModalError(validationError);
       return;
     }
 
@@ -385,6 +376,20 @@ export default function Accounting({ settings }: AccountingProps) {
           <div className="flex items-center gap-1.5">
             <Coins className="w-4 h-4" />
             <span>قائمة التدفقات النقدية</span>
+          </div>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('postingRules')}
+          className={`pb-3 text-xs sm:text-sm font-extrabold transition whitespace-nowrap px-2.5 ${
+            activeSubTab === 'postingRules' 
+              ? 'border-b-2 border-slate-900 text-slate-900' 
+              : 'text-slate-400 hover:text-slate-700'
+          }`}
+        >
+          <div className="flex items-center gap-1.5">
+            <Scale className="w-4 h-4" />
+            <span>قواعد الترحيل التلقائي</span>
           </div>
         </button>
       </div>
@@ -970,6 +975,85 @@ export default function Accounting({ settings }: AccountingProps) {
               </div>
             );
           })()}
+        </div>
+      )}
+
+      {activeSubTab === 'postingRules' && (
+        <div className="space-y-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 text-white flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-md">
+            <div className="space-y-1">
+              <h4 className="font-black text-lg flex items-center gap-2">
+                <span className="p-1.5 bg-emerald-500/10 text-emerald-400 rounded-lg">⚙️</span>
+                محرك الترحيل التلقائي وقواعد الحسابات
+              </h4>
+              <p className="text-slate-300 text-xs sm:text-sm">
+                تحكم بالربط المحاسبي التلقائي للمعاملات والعمليات التشغيلية (فواتير، مشتريات، سندات، مصاريف) بـ دليل الحسابات العام لتوليد القيود بشكل فوري ودقيق بمستوى Odoo/SAP.
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-right border-collapse">
+                <thead>
+                  <tr className="bg-slate-50/50 border-b border-slate-100 text-xs font-bold text-slate-500">
+                    <th className="p-4">الحدث المالي</th>
+                    <th className="p-4">كود النظام الدولي</th>
+                    <th className="p-4">الحساب المرتبط حالياً</th>
+                    <th className="p-4">تحديث الربط</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs sm:text-sm text-slate-700">
+                  {postingRulesList.map((rule) => {
+                    const currentAcc = accounts.find(a => a.id === rule.accountId);
+                    return (
+                      <tr key={rule.id} className="hover:bg-slate-50/50 transition">
+                        <td className="p-4 font-bold text-slate-900">{rule.description}</td>
+                        <td className="p-4 font-mono text-xs text-slate-400">{rule.ruleCode}</td>
+                        <td className="p-4">
+                          {currentAcc ? (
+                            <div className="flex items-center gap-2">
+                              <span className="px-2.5 py-1 bg-slate-100 text-slate-800 rounded font-mono font-bold text-xs">
+                                {currentAcc.code}
+                              </span>
+                              <span className="font-extrabold text-slate-800">{currentAcc.name}</span>
+                            </div>
+                          ) : (
+                            <span className="text-rose-500 font-bold">غير مرتبط بحساب!</span>
+                          )}
+                        </td>
+                        <td className="p-4">
+                          <select
+                            value={rule.accountId}
+                            onChange={async (e) => {
+                              const newAccId = e.target.value;
+                              try {
+                                await AccountingService.updatePostingRule(rule.ruleCode, newAccId);
+                                // update local state
+                                setPostingRulesList(prev => prev.map(item => 
+                                  item.ruleCode === rule.ruleCode ? { ...item, accountId: newAccId } : item
+                                ));
+                                fetchAccountingData();
+                              } catch (err) {
+                                console.error("Error updating posting rule:", err);
+                              }
+                            }}
+                            className="bg-slate-50 border border-slate-200 text-slate-800 font-bold text-xs rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                          >
+                            {accounts.map(acc => (
+                              <option key={acc.id} value={acc.id}>
+                                {acc.code} - {acc.name}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
 

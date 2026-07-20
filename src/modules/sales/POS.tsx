@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Product, Category, Customer, CartItem, StoreSettings, Invoice } from '../types';
+import { Product, Category, Customer, CartItem, StoreSettings, Invoice } from '../../types';
 import { ShoppingCart, Search, Plus, Minus, Trash2, UserPlus, CreditCard, DollarSign, Wallet, FileText, CheckCircle, X, Printer, QrCode, Scan, AlertCircle } from 'lucide-react';
+import { SalesService } from '../../services/SalesService';
 
 interface POSProps {
   products: Product[];
@@ -145,39 +146,18 @@ export default function POS({ products, categories, customers, settings, onAddIn
   };
 
   // Calculations
-  const subtotal = cart.reduce((acc, item) => {
-    let itemPrice = item.product.price * item.quantity;
-    let itemDiscount = 0;
-    if (item.discount > 0) {
-      if (item.discountType === 'percentage') {
-        itemDiscount = itemPrice * (item.discount / 100);
-      } else {
-        itemDiscount = item.discount * item.quantity;
-      }
-    }
-    return acc + (itemPrice - itemDiscount);
-  }, 0);
+  const subtotal = SalesService.calculateSubtotal(cart);
 
   // General discount calculation
-  const totalDiscount = (() => {
-    let disc = 0;
-    if (invoiceDiscount > 0) {
-      if (invoiceDiscountType === 'percentage') {
-        disc = subtotal * (invoiceDiscount / 100);
-      } else {
-        disc = invoiceDiscount;
-      }
-    }
-    return parseFloat(disc.toFixed(2));
-  })();
+  const totalDiscount = SalesService.calculateTotalDiscount(subtotal, invoiceDiscount, invoiceDiscountType);
 
-  const taxableAmount = Math.max(0, subtotal - totalDiscount);
+  const taxableAmount = SalesService.calculateTaxableAmount(subtotal, totalDiscount);
   
   // Tax calculations (inclusive or exclusive? Standard KSA VAT is calculated on net)
   // Let's calculate VAT (15% by default) on the taxable amount
   const taxRate = settings.taxRate;
-  const taxAmount = parseFloat((taxableAmount * (taxRate / 100)).toFixed(2));
-  const grandTotal = parseFloat((taxableAmount + taxAmount).toFixed(2));
+  const taxAmount = SalesService.calculateTaxAmount(taxableAmount, taxRate);
+  const grandTotal = SalesService.calculateGrandTotal(taxableAmount, taxAmount);
 
   // Handle quick customer creation
   const handleCreateCustomer = (e: React.FormEvent) => {
@@ -221,28 +201,7 @@ export default function POS({ products, categories, customers, settings, onAddIn
       id: invoiceId,
       invoiceNumber: invoiceNo,
       date: new Date().toISOString(),
-      items: cart.map(item => {
-        let itemPrice = item.product.price;
-        let discountVal = item.discount;
-        let total = itemPrice * item.quantity;
-        if (discountVal > 0) {
-          if (item.discountType === 'percentage') {
-            total -= total * (discountVal / 100);
-          } else {
-            total -= discountVal * item.quantity;
-          }
-        }
-        return {
-          productId: item.product.id,
-          productName: item.product.name,
-          price: itemPrice,
-          quantity: item.quantity,
-          discount: item.discount,
-          discountType: item.discountType,
-          total: parseFloat(total.toFixed(2)),
-          taxAmount: parseFloat((total * (settings.taxRate / 100)).toFixed(2))
-        };
-      }),
+      items: SalesService.prepareInvoiceItems(cart, settings.taxRate),
       totalWithoutTax: parseFloat(taxableAmount.toFixed(2)),
       taxAmount: taxAmount,
       discountAmount: totalDiscount,

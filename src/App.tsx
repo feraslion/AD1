@@ -1,16 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { Product, Category, Customer, Unit, StoreSettings, Invoice } from './types';
 import { INITIAL_SETTINGS, INITIAL_UNITS, DEMO_DATASETS, GENERATE_INITIAL_INVOICES } from './data';
-import { ProductService, CustomerService, InvoiceService, CategoryService, UnitService, SettingsService } from './services/api';
-import Dashboard from './components/Dashboard';
-import POS from './components/POS';
-import Inventory from './components/Inventory';
-import Invoices from './components/Invoices';
-import Reports from './components/Reports';
-import Settings from './components/Settings';
-import Accounting from './components/Accounting';
-import Purchases from './components/Purchases';
-import Login from './components/Login';
+import { ProductService, CustomerService, InvoiceService, CategoryService, UnitService, SettingsService, UserService } from './services/api';
+import Dashboard from './shared/components/Dashboard';
+import POS from './modules/sales/POS';
+import Inventory from './modules/inventory/Inventory';
+import Invoices from './modules/sales/Invoices';
+import Reports from './shared/components/Reports';
+import Settings from './shared/components/Settings';
+import Accounting from './modules/accounting/Accounting';
+import Purchases from './modules/purchases/Purchases';
+import UsersAndPermissions from './shared/components/UsersAndPermissions';
+import Login from './core/auth/Login';
 import { 
   LayoutDashboard, 
   ShoppingBag, 
@@ -25,7 +26,8 @@ import {
   AlertTriangle,
   Landmark,
   Truck,
-  LogOut
+  LogOut,
+  Users
 } from 'lucide-react';
 
 export default function App() {
@@ -51,9 +53,32 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'offline'>('synced');
   const [showNotifications, setShowNotifications] = useState<boolean>(false);
 
-  const handleLoginSuccess = (user: { name: string; role: string; code: string }) => {
-    setCurrentUser(user);
-    localStorage.setItem('erp_active_user', JSON.stringify(user));
+  const handleLoginSuccess = async (user: { name: string; role: string; code: string; roleId?: string }) => {
+    let fullUser: any = { ...user };
+    try {
+      const allRoles = await UserService.getRoles();
+      const userRole = allRoles.find(r => r.code === user.role || r.id === user.roleId);
+      if (userRole && userRole.permissions) {
+        fullUser.permissions = userRole.permissions.map((p: any) => p.code);
+      }
+    } catch (e) {
+      console.error('Error fetching permissions during login:', e);
+    }
+
+    if (!fullUser.permissions || fullUser.permissions.length === 0) {
+      if (user.role === 'manager') {
+        fullUser.permissions = ['view_dashboard', 'pos_access', 'manage_inventory', 'view_invoices', 'view_reports', 'view_purchases', 'view_accounting', 'view_settings', 'manage_users'];
+      } else if (user.role === 'accountant') {
+        fullUser.permissions = ['view_dashboard', 'pos_access', 'view_invoices', 'view_reports', 'view_purchases', 'view_accounting'];
+      } else if (user.role === 'inventory') {
+        fullUser.permissions = ['view_dashboard', 'manage_inventory', 'view_purchases'];
+      } else if (user.role === 'cashier') {
+        fullUser.permissions = ['pos_access', 'view_invoices'];
+      }
+    }
+
+    setCurrentUser(fullUser);
+    localStorage.setItem('erp_active_user', JSON.stringify(fullUser));
     if (user.role === 'cashier') {
       setActiveTab('pos');
     } else if (user.role === 'inventory') {
@@ -70,6 +95,22 @@ export default function App() {
 
   const isTabAllowed = (tab: string): boolean => {
     if (!currentUser) return false;
+    
+    // Check permission-based lists
+    const perms: string[] = (currentUser as any).permissions || [];
+    if (perms.length > 0) {
+      if (tab === 'dashboard') return perms.includes('view_dashboard');
+      if (tab === 'pos') return perms.includes('pos_access');
+      if (tab === 'inventory') return perms.includes('manage_inventory');
+      if (tab === 'invoices') return perms.includes('view_invoices');
+      if (tab === 'reports') return perms.includes('view_reports');
+      if (tab === 'purchases') return perms.includes('view_purchases');
+      if (tab === 'accounting') return perms.includes('view_accounting');
+      if (tab === 'settings') return perms.includes('view_settings');
+      if (tab === 'users_permissions') return perms.includes('manage_users');
+      return false;
+    }
+
     const role = currentUser.role;
     if (role === 'manager') return true;
     if (role === 'accountant') {
@@ -605,6 +646,20 @@ export default function App() {
               </button>
             )}
 
+            {isTabAllowed('users_permissions') && (
+              <button
+                onClick={() => setActiveTab('users_permissions')}
+                className={`w-full py-3 px-4 rounded-l-md text-xs sm:text-sm font-bold flex items-center gap-3 transition-all ${
+                  activeTab === 'users_permissions' 
+                    ? 'bg-emerald-600/20 text-emerald-400 border-r-4 border-emerald-500' 
+                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                }`}
+              >
+                <Users className="w-4 h-4" />
+                <span>الموظفين والصلاحيات</span>
+              </button>
+            )}
+
             {isTabAllowed('settings') && (
               <button
                 onClick={() => setActiveTab('settings')}
@@ -732,6 +787,10 @@ export default function App() {
               onForceSync={handleForceSync}
               onRestoreDefaults={handleRestoreDefaults}
             />
+          )}
+
+          {activeTab === 'users_permissions' && (
+            <UsersAndPermissions />
           )}
         </main>
       </div>

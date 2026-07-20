@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Product, Category, Unit, StoreSettings } from '../types';
+import { Product, Category, Unit, StoreSettings } from '../../types';
 import { Plus, Search, Edit2, Trash2, Tag, Percent, ArrowLeft, RefreshCw, Layers, AlertCircle, ShoppingCart } from 'lucide-react';
+import { InventoryService } from '../../services/InventoryService';
 
 interface InventoryProps {
   products: Product[];
@@ -118,24 +119,12 @@ export default function Inventory({
   };
 
   // Filters
-  const filteredProducts = products.filter(p => {
-    const matchesSearch = p.name.includes(searchQuery) || p.barcode.includes(searchQuery);
-    const matchesCategory = categoryFilter === 'all' || p.category === categoryFilter;
-    
-    let matchesStock = true;
-    if (stockFilter === 'low') {
-      matchesStock = p.stock <= p.minStock && p.minStock > 0 && p.stock > 0;
-    } else if (stockFilter === 'out') {
-      matchesStock = p.stock <= 0 && p.minStock > 0;
-    }
-
-    return matchesSearch && matchesCategory && matchesStock;
-  });
+  const filteredProducts = InventoryService.filterProducts(products, searchQuery, categoryFilter, stockFilter);
 
   // Calculate stats
-  const totalStockItems = products.reduce((acc, p) => acc + (p.stock || 0), 0);
-  const totalPurchaseVal = products.reduce((acc, p) => acc + (p.stock * p.purchasePrice), 0);
-  const totalSaleVal = products.reduce((acc, p) => acc + (p.stock * p.price), 0);
+  const totalStockItems = InventoryService.totalStockItems(products);
+  const totalPurchaseVal = InventoryService.totalPurchaseValue(products);
+  const totalSaleVal = InventoryService.totalSaleValue(products);
 
   return (
     <div className="space-y-6">

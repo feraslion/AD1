@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StoreSettings, Unit, Category } from '../types';
+import { StoreSettings, Unit, Category } from '../../types';
 import { Save, RefreshCw, Database, ShieldCheck, Check } from 'lucide-react';
 
 interface SettingsProps {

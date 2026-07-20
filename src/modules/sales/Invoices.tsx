@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Invoice, StoreSettings } from '../types';
+import { Invoice, StoreSettings } from '../../types';
 import { Search, Printer, Calendar, ShieldAlert, Share2, Eye, Download, Mail, ArrowLeft, QrCode } from 'lucide-react';
 
 interface InvoicesProps {
