@@ -677,7 +677,7 @@ app.post('/api/invoices', authorize(['manager', 'cashier']), async (req, res) =>
     });
 
     let totalCogs = 0;
-    const itemIds = Array.from(new Set(inv.items.map((item: any) => item.productId)));
+    const itemIds = Array.from(new Set(inv.items.map((item: any) => item.productId))) as string[];
 
     // Bulk fetch all relevant products at once!
     const productsList = itemIds.length > 0
@@ -1274,7 +1274,7 @@ app.post('/api/purchases', authorize(['manager', 'inventory', 'accountant']), as
       return sendError(res, 'بيانات المشتريات غير مكتملة', null, 400);
     }
     
-    const itemIds = Array.from(new Set(items.map((item: any) => item.productId)));
+    const itemIds = Array.from(new Set(items.map((item: any) => item.productId))) as string[];
     const productsList = itemIds.length > 0
       ? await db.select().from(products).where(inArray(products.id, itemIds))
       : [];
