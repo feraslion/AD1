@@ -6,6 +6,8 @@ import {
   products,
   customers,
   suppliers,
+  purchases,
+  purchaseItems,
   invoices,
   invoiceItems,
   accounts,
@@ -20,8 +22,15 @@ import {
   roles,
   permissions,
   rolePermissions,
-  postingRules
+  postingRules,
+  warehouses,
+  currencies,
+  taxes,
+  paymentMethods
 } from './src/core/database/schema.ts';
+import { AccountingRepository } from './src/core/repositories/AccountingRepository.ts';
+import { InventoryRepository } from './src/core/repositories/InventoryRepository.ts';
+import { PurchaseRepository } from './src/core/repositories/PurchaseRepository.ts';
 import { eq, desc, and, or, like, sql, inArray } from 'drizzle-orm';
 
 const app = express();
@@ -147,74 +156,12 @@ function requestLogger(req: any, res: any, next: any) {
   next();
 }
 
-app.use(authenticate);
-app.use(requestLogger);
+app.use('/api', authenticate);
+app.use('/api', requestLogger);
 
 // ─── ACCOUNTING JOURNAL POST ENGINE ───
 async function postJournalEntry(entryNumber: string, description: string, date: string, lines: { accountId: string, debit: number, credit: number }[]) {
-  const totalDebit = lines.reduce((sum, l) => sum + l.debit, 0);
-  const totalCredit = lines.reduce((sum, l) => sum + l.credit, 0);
-  
-  const roundedDebit = Math.round(totalDebit * 100) / 100;
-  const roundedCredit = Math.round(totalCredit * 100) / 100;
-
-  if (Math.abs(roundedDebit - roundedCredit) > 0.01) {
-    throw new Error(`القيد غير متزن! إجمالي المدين (${roundedDebit}) لا يساوي إجمالي الدائن (${roundedCredit})`);
-  }
-
-  const entryId = 'je_' + Math.random().toString(36).substr(2, 9);
-  
-  await db.insert(journalEntries).values({
-    id: entryId,
-    entryNumber,
-    description,
-    date
-  });
-
-  const detailValues = [];
-  const accountIds = Array.from(new Set(lines.map(line => line.accountId)));
-
-  // Fetch all accounts involved in a single query
-  const accountsList = accountIds.length > 0 
-    ? await db.select().from(accounts).where(inArray(accounts.id, accountIds))
-    : [];
-
-  const accountsMap = new Map(accountsList.map(acc => [acc.id, acc]));
-
-  for (const line of lines) {
-    const detailId = 'jd_' + Math.random().toString(36).substr(2, 9);
-    detailValues.push({
-      id: detailId,
-      journalEntryId: entryId,
-      accountId: line.accountId,
-      debit: line.debit.toString(),
-      credit: line.credit.toString()
-    });
-  }
-
-  // Bulk insert journal details in one query!
-  if (detailValues.length > 0) {
-    await db.insert(journalDetails).values(detailValues);
-  }
-
-  // Parallelize balance updates to minimize round-trip database latency!
-  const updatePromises = lines.map(async (line) => {
-    const account = accountsMap.get(line.accountId);
-    if (account) {
-      let currentBal = parseFloat(account.balance || '0');
-      const change = line.debit - line.credit;
-      
-      if (account.type === 'asset' || account.type === 'expense') {
-        currentBal += change;
-      } else {
-        currentBal -= change; // Credit increases balance for liabilities, equity, and revenues
-      }
-
-      await db.update(accounts).set({ balance: currentBal.toString() }).where(eq(accounts.id, line.accountId));
-    }
-  });
-
-  await Promise.all(updatePromises);
+  return await AccountingRepository.postJournalEntry(entryNumber, description, date, lines);
 }
 
 async function getAccountByRule(ruleCode: string, defaultAccountId: string): Promise<string> {
@@ -481,6 +428,250 @@ app.delete('/api/units/:id', authorize(['manager', 'inventory']), async (req, re
   }
 });
 
+// 3.5 Warehouses & Inventory Engine API
+app.get('/api/warehouses', async (req, res) => {
+  try {
+    const list = await InventoryRepository.getWarehouses();
+    sendResponse(res, list);
+  } catch (error) {
+    sendError(res, 'فشل جلب المستودعات', error);
+  }
+});
+
+app.post('/api/warehouses', authorize(['manager', 'inventory']), async (req, res) => {
+  try {
+    const data = req.body;
+    if (!data.name || !data.code) {
+      return sendError(res, 'اسم وكود المستودع مطلوبان', null, 400);
+    }
+    const result = await InventoryRepository.upsertWarehouse(data);
+    sendResponse(res, result);
+  } catch (error) {
+    sendError(res, 'فشل حفظ المستودع', error);
+  }
+});
+
+app.delete('/api/warehouses/:id', authorize(['manager', 'inventory']), async (req, res) => {
+  try {
+    const result = await InventoryRepository.deleteWarehouse(req.params.id);
+    sendResponse(res, result);
+  } catch (error: any) {
+    sendError(res, error.message || 'فشل حذف المستودع', error);
+  }
+});
+
+// Stock Moves History API
+app.get('/api/stock-moves', authorize(['manager', 'inventory', 'accountant']), async (req, res) => {
+  try {
+    const { productId, warehouseId, type } = req.query;
+    const moves = await InventoryRepository.getStockMoves(
+      productId as string,
+      warehouseId as string,
+      type as string
+    );
+    sendResponse(res, moves);
+  } catch (error) {
+    sendError(res, 'فشل جلب حركات المخزون', error);
+  }
+});
+
+// Warehouse Transfer API
+app.post('/api/stock-moves/transfer', authorize(['manager', 'inventory']), async (req, res) => {
+  try {
+    const { productId, fromWarehouseId, toWarehouseId, quantity, notes } = req.body;
+    if (!productId || !fromWarehouseId || !toWarehouseId || !quantity) {
+      return sendError(res, 'جميع الحقول الأساسية للتحويل مطلوبة', null, 400);
+    }
+    const result = await InventoryRepository.transferStock(
+      productId,
+      fromWarehouseId,
+      toWarehouseId,
+      parseFloat(quantity),
+      notes
+    );
+    sendResponse(res, { success: true, transfer: result });
+  } catch (error: any) {
+    sendError(res, error.message || 'فشل تنفيذ تحويل المخزون', error);
+  }
+});
+
+// Inventory Physical Adjustment API (with Accounting Journal Integration)
+app.post('/api/stock-moves/adjustment', authorize(['manager', 'inventory', 'accountant']), async (req, res) => {
+  try {
+    const { productId, warehouseId, actualQuantity, notes } = req.body;
+    if (!productId || !warehouseId || actualQuantity === undefined || actualQuantity === null) {
+      return sendError(res, 'بيانات التسوية غير مكتملة', null, 400);
+    }
+    const result = await InventoryRepository.adjustPhysicalStock(
+      productId,
+      warehouseId,
+      parseFloat(actualQuantity),
+      notes
+    );
+    sendResponse(res, result);
+  } catch (error: any) {
+    sendError(res, error.message || 'فشل تنفيذ التسوية الجردية', error);
+  }
+});
+
+// Stock Ledger for Product API
+app.get('/api/inventory/ledger/:productId', authorize(['manager', 'inventory', 'accountant']), async (req, res) => {
+  try {
+    const ledger = await InventoryRepository.getProductStockLedger(req.params.productId);
+    sendResponse(res, ledger);
+  } catch (error: any) {
+    sendError(res, error.message || 'فشل جلب سجل استاد المنتج', error);
+  }
+});
+
+// Inventory Valuation Report API
+app.get('/api/inventory/valuation', authorize(['manager', 'inventory', 'accountant']), async (req, res) => {
+  try {
+    const valuation = await InventoryRepository.getInventoryValuation();
+    sendResponse(res, valuation);
+  } catch (error) {
+    sendError(res, 'فشل حساب تقييم المخزون', error);
+  }
+});
+
+// 3.6 Currencies API
+app.get('/api/currencies', async (req, res) => {
+  try {
+    const list = await db.select().from(currencies);
+    sendResponse(res, list);
+  } catch (error) {
+    sendError(res, 'فشل جلب العملات', error);
+  }
+});
+
+app.post('/api/currencies', authorize(['manager', 'accountant']), async (req, res) => {
+  try {
+    const data = req.body;
+    if (!data.code || !data.name || !data.symbol) {
+      return sendError(res, 'كود واسم ورمز العملة مطلوبة', null, 400);
+    }
+    const id = data.id || 'curr_' + Math.random().toString(36).substr(2, 9);
+    const dbValue = {
+      id,
+      code: data.code,
+      name: data.name,
+      symbol: data.symbol,
+      exchangeRate: (data.exchangeRate || 1.0).toString(),
+      isDefault: data.isDefault ? 'true' : 'false',
+      companyId: data.companyId || null
+    };
+    const existing = await db.select().from(currencies).where(eq(currencies.id, id));
+    if (existing.length > 0) {
+      await db.update(currencies).set(dbValue).where(eq(currencies.id, id));
+    } else {
+      await db.insert(currencies).values(dbValue);
+    }
+    sendResponse(res, dbValue);
+  } catch (error) {
+    sendError(res, 'فشل حفظ العملة', error);
+  }
+});
+
+app.delete('/api/currencies/:id', authorize(['manager', 'accountant']), async (req, res) => {
+  try {
+    await db.delete(currencies).where(eq(currencies.id, req.params.id));
+    sendResponse(res, { success: true });
+  } catch (error) {
+    sendError(res, 'فشل حذف العملة', error);
+  }
+});
+
+// 3.7 Taxes API
+app.get('/api/taxes', async (req, res) => {
+  try {
+    const list = await db.select().from(taxes);
+    sendResponse(res, list);
+  } catch (error) {
+    sendError(res, 'فشل جلب الضرائب', error);
+  }
+});
+
+app.post('/api/taxes', authorize(['manager', 'accountant']), async (req, res) => {
+  try {
+    const data = req.body;
+    if (!data.name || !data.code || data.rate === undefined) {
+      return sendError(res, 'اسم وكود ونسبة الضريبة مطلوبة', null, 400);
+    }
+    const id = data.id || 'tax_' + Math.random().toString(36).substr(2, 9);
+    const dbValue = {
+      id,
+      name: data.name,
+      code: data.code,
+      rate: data.rate.toString(),
+      isInclusive: data.isInclusive ? 'true' : 'false',
+      companyId: data.companyId || null
+    };
+    const existing = await db.select().from(taxes).where(eq(taxes.id, id));
+    if (existing.length > 0) {
+      await db.update(taxes).set(dbValue).where(eq(taxes.id, id));
+    } else {
+      await db.insert(taxes).values(dbValue);
+    }
+    sendResponse(res, dbValue);
+  } catch (error) {
+    sendError(res, 'فشل حفظ الضريبة', error);
+  }
+});
+
+app.delete('/api/taxes/:id', authorize(['manager', 'accountant']), async (req, res) => {
+  try {
+    await db.delete(taxes).where(eq(taxes.id, req.params.id));
+    sendResponse(res, { success: true });
+  } catch (error) {
+    sendError(res, 'فشل حذف الضريبة', error);
+  }
+});
+
+// 3.8 Payment Methods API
+app.get('/api/payment-methods', async (req, res) => {
+  try {
+    const list = await db.select().from(paymentMethods);
+    sendResponse(res, list);
+  } catch (error) {
+    sendError(res, 'فشل جلب طرق الدفع', error);
+  }
+});
+
+app.post('/api/payment-methods', authorize(['manager', 'accountant']), async (req, res) => {
+  try {
+    const data = req.body;
+    if (!data.name || !data.code) {
+      return sendError(res, 'اسم وكود طريقة الدفع مطلوبة', null, 400);
+    }
+    const id = data.id || 'pm_' + Math.random().toString(36).substr(2, 9);
+    const dbValue = {
+      id,
+      code: data.code,
+      name: data.name,
+      accountId: data.accountId || null,
+      companyId: data.companyId || null
+    };
+    const existing = await db.select().from(paymentMethods).where(eq(paymentMethods.id, id));
+    if (existing.length > 0) {
+      await db.update(paymentMethods).set(dbValue).where(eq(paymentMethods.id, id));
+    } else {
+      await db.insert(paymentMethods).values(dbValue);
+    }
+    sendResponse(res, dbValue);
+  } catch (error) {
+    sendError(res, 'فشل حفظ طريقة الدفع', error);
+  }
+});
+
+app.delete('/api/payment-methods/:id', authorize(['manager', 'accountant']), async (req, res) => {
+  try {
+    await db.delete(paymentMethods).where(eq(paymentMethods.id, req.params.id));
+    sendResponse(res, { success: true });
+  } catch (error) {
+    sendError(res, 'فشل حذف طريقة الدفع', error);
+  }
+});
+
 // 4. Customers API (With pagination and search filtering)
 app.get('/api/customers', async (req, res) => {
   try {
@@ -624,6 +815,86 @@ app.delete('/api/suppliers/:id', authorize(['manager']), async (req, res) => {
     sendResponse(res, { success: true });
   } catch (error) {
     sendError(res, 'فشل حذف المورد', error);
+  }
+});
+
+app.get('/api/suppliers/:id/ledger', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [supplier] = await db.select().from(suppliers).where(eq(suppliers.id, id));
+    if (!supplier) {
+      return sendError(res, 'المورد غير موجود', null, 404);
+    }
+
+    // Get all purchases for this supplier
+    const supplierPurchases = await db.select().from(purchases).where(eq(purchases.supplierId, id)).orderBy(desc(purchases.createdAt));
+
+    // Get all journal entries related to this supplier (JE-PUR and JE-PAY)
+    const allEntries = await AccountingRepository.getJournalEntries();
+    const supplierEntries = allEntries.filter(e => 
+      e.description?.includes(supplier.name) || 
+      e.entryNumber?.includes(`PAY-`) || 
+      supplierPurchases.some(p => p.purchaseNumber && e.entryNumber?.includes(String(p.purchaseNumber)))
+    );
+
+    let runningBalance = 0;
+    const ledgerLines = [];
+
+    for (const pur of supplierPurchases) {
+      const gTotal = parseFloat(pur.grandTotal || '0');
+      if (pur.paymentMethod === 'credit') {
+        runningBalance += gTotal;
+        ledgerLines.push({
+          id: `pur-${pur.id}`,
+          date: pur.date,
+          type: 'purchase_invoice',
+          typeLabel: 'فاتورة مشتريات آجلة',
+          reference: pur.purchaseNumber,
+          invoiceNumber: pur.supplierInvoiceNumber || pur.purchaseNumber,
+          debit: 0,
+          credit: gTotal, // Supplier balance increases (liability)
+          runningBalance,
+          notes: pur.notes || `فاتورة مشتريات رقم ${pur.purchaseNumber}`
+        });
+      }
+    }
+
+    // Process payments
+    for (const entry of supplierEntries) {
+      if (entry.entryNumber.startsWith('JE-PAY-') && entry.description.includes(supplier.name)) {
+        // Debit detail to payable account is payment amount
+        const debitDetail = entry.details.find((d: any) => Number(d.debit || 0) > 0);
+        const amount = debitDetail ? Number(debitDetail.debit || 0) : 0;
+        if (amount > 0) {
+          runningBalance -= amount;
+          ledgerLines.push({
+            id: `pay-${entry.id}`,
+            date: entry.date,
+            type: 'supplier_payment',
+            typeLabel: 'سند صرف مورد',
+            reference: entry.entryNumber.replace('JE-', ''),
+            invoiceNumber: '-',
+            debit: amount, // Reduces supplier balance
+            credit: 0,
+            runningBalance,
+            notes: entry.description
+          });
+        }
+      }
+    }
+
+    ledgerLines.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    sendResponse(res, {
+      supplier: {
+        ...supplier,
+        balance: parseFloat(supplier.balance || '0')
+      },
+      currentBalance: parseFloat(supplier.balance || '0'),
+      ledgerLines
+    });
+  } catch (error) {
+    sendError(res, 'فشل جلب كشف حساب المورد', error);
   }
 });
 
@@ -792,6 +1063,15 @@ app.post('/api/invoices', authorize(['manager', 'cashier']), async (req, res) =>
           await db.update(products).set({
             stock: nextStock.toString()
           }).where(eq(products.id, item.productId));
+
+          await InventoryRepository.recordStockMove({
+            productId: item.productId,
+            fromWarehouseId: 'wh_main',
+            quantity: item.quantity,
+            type: 'sale',
+            referenceId: inv.id,
+            notes: `فاتورة مبيعات رقم ${inv.invoiceNumber}`
+          });
         }
       }
     });
@@ -850,6 +1130,119 @@ app.post('/api/invoices', authorize(['manager', 'cashier']), async (req, res) =>
     sendResponse(res, { success: true, invoiceId: invId });
   } catch (error) {
     sendError(res, 'فشل إنشاء الفاتورة', error);
+  }
+});
+
+app.post('/api/invoices/:id/return', authorize(['manager', 'cashier', 'accountant']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [inv] = await db.select().from(invoices).where(eq(invoices.id, id));
+    if (!inv) {
+      return sendError(res, 'الفاتورة غير موجودة', null, 404);
+    }
+    if (inv.status === 'returned') {
+      return sendError(res, 'تم إرجاع هذه الفاتورة مسبقاً', null, 400);
+    }
+
+    // 1. Mark invoice as returned
+    await db.update(invoices).set({ status: 'returned' }).where(eq(invoices.id, id));
+
+    // 2. Fetch items and restore Inventory stock
+    const items = await db.select().from(invoiceItems).where(eq(invoiceItems.invoiceId, id));
+    let totalCogs = 0;
+
+    const itemIds = Array.from(new Set(items.map((item) => item.productId))) as string[];
+    const productsList = itemIds.length > 0 
+      ? await db.select().from(products).where(inArray(products.id, itemIds)) 
+      : [];
+    const productsMap = new Map(productsList.map(p => [p.id, p]));
+
+    for (const item of items) {
+      const product = productsMap.get(item.productId);
+      if (product) {
+        const currentStock = parseFloat(product.stock || '0');
+        const qty = parseFloat(item.quantity || '0');
+        const purchasePrice = parseFloat(product.purchasePrice || '0');
+        totalCogs += purchasePrice * qty;
+
+        if (currentStock !== 999) {
+          await db.update(products).set({
+            stock: (currentStock + qty).toString()
+          }).where(eq(products.id, item.productId));
+
+          await InventoryRepository.recordStockMove({
+            productId: item.productId,
+            toWarehouseId: 'wh_main',
+            quantity: qty,
+            type: 'sale',
+            referenceId: id,
+            notes: `مرتجع مبيعات للفاتورة رقم ${inv.invoiceNumber}`
+          });
+        }
+      }
+    }
+
+    // 3. Customer balance update if credit sale
+    const grandTotal = parseFloat(inv.grandTotal || '0');
+    const totalWithoutTax = parseFloat(inv.totalWithoutTax || '0');
+    const taxAmount = parseFloat(inv.taxAmount || '0');
+
+    if (inv.paymentMethod === 'credit' && inv.customerId) {
+      const [customer] = await db.select().from(customers).where(eq(customers.id, inv.customerId));
+      if (customer) {
+        const currentBal = parseFloat(customer.balance || '0');
+        const newBal = Math.max(0, currentBal - grandTotal);
+        await db.update(customers).set({ balance: newBal.toString() }).where(eq(customers.id, inv.customerId));
+      }
+    }
+
+    // 4. Create reverse accounting journal entries
+    const cashAcc = await getAccountByRule('sales_cash_debit', 'acc_cash');
+    const bankAcc = await getAccountByRule('sales_bank_debit', 'acc_bank');
+    const recAcc = await getAccountByRule('sales_credit_debit', 'acc_receivable');
+    const salesAcc = await getAccountByRule('sales_revenue_credit', 'acc_sales');
+    const taxAcc = await getAccountByRule('sales_tax_credit', 'acc_tax');
+    const cogsAcc = await getAccountByRule('sales_cogs_debit', 'acc_cogs');
+    const invAcc = await getAccountByRule('sales_inventory_credit', 'acc_inventory');
+
+    const accountingLines = [];
+
+    // Reverse revenue & tax (Debit Revenue, Debit Tax)
+    accountingLines.push({ accountId: salesAcc, debit: totalWithoutTax, credit: 0 });
+    if (taxAmount > 0) {
+      accountingLines.push({ accountId: taxAcc, debit: taxAmount, credit: 0 });
+    }
+
+    // Credit Cash / Bank / Customer
+    if (inv.paymentMethod === 'cash') {
+      accountingLines.push({ accountId: cashAcc, debit: 0, credit: grandTotal });
+    } else if (inv.paymentMethod === 'card') {
+      accountingLines.push({ accountId: bankAcc, debit: 0, credit: grandTotal });
+    } else if (inv.paymentMethod === 'credit') {
+      accountingLines.push({ accountId: recAcc, debit: 0, credit: grandTotal });
+    } else if (inv.paymentMethod === 'split') {
+      const cashAmt = parseFloat(inv.cashAmount || '0');
+      const cardAmt = parseFloat(inv.cardAmount || '0');
+      if (cashAmt > 0) accountingLines.push({ accountId: cashAcc, debit: 0, credit: cashAmt });
+      if (cardAmt > 0) accountingLines.push({ accountId: bankAcc, debit: 0, credit: cardAmt });
+    }
+
+    // Reverse Inventory & COGS (Debit Inventory, Credit COGS)
+    if (totalCogs > 0) {
+      accountingLines.push({ accountId: invAcc, debit: totalCogs, credit: 0 });
+      accountingLines.push({ accountId: cogsAcc, debit: 0, credit: totalCogs });
+    }
+
+    const journalResult = await AccountingRepository.postJournalEntry(
+      `JE-RET-${inv.invoiceNumber}`,
+      `مرتجع مبيعات للفاتورة رقم ${inv.invoiceNumber}`,
+      new Date().toISOString().split('T')[0],
+      accountingLines
+    );
+
+    sendResponse(res, { success: true, journalEntry: journalResult });
+  } catch (error: any) {
+    sendError(res, error.message || 'فشل معالجة مرتجع الفاتورة', error);
   }
 });
 
@@ -950,7 +1343,7 @@ app.delete('/api/expenses/:id', authorize(['manager', 'accountant']), async (req
 // 8. Accounting Reports & Ledger API
 app.get('/api/accounting/accounts', authorize(['manager', 'accountant']), async (req, res) => {
   try {
-    const allAccounts = await db.select().from(accounts);
+    const allAccounts = await AccountingRepository.getAccounts();
     sendResponse(res, allAccounts.map(acc => ({
       ...acc,
       balance: parseFloat(acc.balance || '0')
@@ -962,25 +1355,12 @@ app.get('/api/accounting/accounts', authorize(['manager', 'accountant']), async 
 
 app.post('/api/accounting/accounts', authorize(['manager', 'accountant']), async (req, res) => {
   try {
-    const { id, code, name, type, balance } = req.body;
+    const { code, name, type } = req.body;
     if (!code || !name || !type) {
-      return sendError(res, 'جميع الحقول الأساسية للحساب مطلوبة', null, 400);
+      return sendError(res, 'جميع الحقول الأساسية للحساب مطلوبة (الرمز، الاسم، النوع)', null, 400);
     }
-    const accountId = id || 'acc_' + Math.random().toString(36).substr(2, 9);
-    const dbValue = {
-      id: accountId,
-      code,
-      name,
-      type,
-      balance: (balance || 0).toString()
-    };
-    const existing = await db.select().from(accounts).where(eq(accounts.id, accountId));
-    if (existing.length > 0) {
-      await db.update(accounts).set(dbValue).where(eq(accounts.id, accountId));
-    } else {
-      await db.insert(accounts).values(dbValue);
-    }
-    sendResponse(res, dbValue);
+    const saved = await AccountingRepository.upsertAccount(req.body);
+    sendResponse(res, saved);
   } catch (error) {
     sendError(res, 'فشل حفظ الحساب', error);
   }
@@ -989,114 +1369,45 @@ app.post('/api/accounting/accounts', authorize(['manager', 'accountant']), async
 app.delete('/api/accounting/accounts/:id', authorize(['manager', 'accountant']), async (req, res) => {
   try {
     const { id } = req.params;
-    const existingDetails = await db.select().from(journalDetails).where(eq(journalDetails.accountId, id));
-    if (existingDetails.length > 0) {
-      return sendError(res, 'لا يمكن حذف الحساب نظراً لوجود قيود محاسبية مسجلة عليه.', null, 400);
-    }
-    await db.delete(accounts).where(eq(accounts.id, id));
+    await AccountingRepository.deleteAccount(id);
     sendResponse(res, { success: true });
-  } catch (error) {
-    sendError(res, 'فشل حذف الحساب', error);
+  } catch (error: any) {
+    sendError(res, error.message || 'فشل حذف الحساب', error, 400);
   }
 });
 
 app.get('/api/accounting/ledger', authorize(['manager', 'accountant']), async (req, res) => {
   try {
-    const { accountId } = req.query;
+    const { accountId, startDate, endDate } = req.query;
     if (!accountId) {
       return sendError(res, 'يجب تحديد معرف الحساب accountId', null, 400);
     }
     
-    const [account] = await db.select().from(accounts).where(eq(accounts.id, accountId as string));
-    if (!account) {
-      return sendError(res, 'الحساب غير موجود', null, 404);
-    }
+    const result = await AccountingRepository.getGeneralLedger(
+      accountId as string, 
+      startDate as string, 
+      endDate as string
+    );
+    sendResponse(res, result);
+  } catch (error: any) {
+    sendError(res, error.message || 'فشل جلب دفتر الأستاذ للحساب', error);
+  }
+});
 
-    const details = await db.select().from(journalDetails).where(eq(journalDetails.accountId, accountId as string));
-    const entryIds = Array.from(new Set(details.map(d => d.journalEntryId)));
-    const entries = entryIds.length > 0
-      ? await db.select().from(journalEntries).where(inArray(journalEntries.id, entryIds))
-      : [];
-
-    const ledgerLines = details.map(d => {
-      const parent = entries.find(e => e.id === d.journalEntryId);
-      return {
-        id: d.id,
-        entryNumber: parent ? parent.entryNumber : 'N/A',
-        description: parent ? parent.description : 'N/A',
-        date: parent ? parent.date : '',
-        debit: parseFloat(d.debit || '0'),
-        credit: parseFloat(d.credit || '0')
-      };
-    }).sort((a, b) => a.date.localeCompare(b.date));
-
-    sendResponse(res, {
-      account: {
-        ...account,
-        balance: parseFloat(account.balance || '0')
-      },
-      lines: ledgerLines
-    });
+app.get('/api/accounting/trial-balance', authorize(['manager', 'accountant']), async (req, res) => {
+  try {
+    const trialBalanceData = await AccountingRepository.getTrialBalance();
+    sendResponse(res, trialBalanceData);
   } catch (error) {
-    sendError(res, 'فشل جلب دفتر الأستاذ للحساب', error);
+    sendError(res, 'فشل جلب ميزان المراجعة', error);
   }
 });
 
 app.get('/api/accounting/journal-entries', authorize(['manager', 'accountant']), async (req, res) => {
   try {
-    const { page, limit, search, date } = req.query;
-    const conditions = [];
-    if (search) {
-      conditions.push(like(journalEntries.description, `%${search}%`));
-    }
-    if (date) {
-      conditions.push(eq(journalEntries.date, date as string));
-    }
-    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
-
-    let total = 0;
-    if (page || limit) {
-      const countResult = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(journalEntries)
-        .where(whereClause);
-      total = Number(countResult[0]?.count || 0);
-    }
-
-    let query = db.select().from(journalEntries).orderBy(desc(journalEntries.createdAt));
-    if (whereClause) {
-      query = query.where(whereClause) as any;
-    }
-
-    if (page && limit) {
-      const p = parseInt(page as string) || 1;
-      const l = parseInt(limit as string) || 10;
-      query = query.limit(l).offset((p - 1) * l) as any;
-    }
-
-    const allEntries = await query;
-    const entryIds = allEntries.map(e => e.id);
-    const allDetails = entryIds.length > 0
-      ? await db.select().from(journalDetails).where(inArray(journalDetails.journalEntryId, entryIds))
-      : [];
-
-    const mapped = allEntries.map(entry => {
-      const details = allDetails.filter(d => d.journalEntryId === entry.id).map(d => ({
-        id: d.id,
-        accountId: d.accountId,
-        debit: parseFloat(d.debit || '0'),
-        credit: parseFloat(d.credit || '0')
-      }));
-      return { ...entry, details };
-    });
-
-    if (page || limit) {
-      const p = parseInt(page as string) || 1;
-      const l = parseInt(limit as string) || 10;
-      sendResponse(res, mapped, 200, { page: p, limit: l, total });
-    } else {
-      sendResponse(res, mapped);
-    }
+    const { search, date } = req.query;
+    const entries = await AccountingRepository.getJournalEntries(search as string, date as string);
+    sendResponse(res, entries);
   } catch (error) {
     sendError(res, 'فشل جلب قيود اليومية', error);
   }
@@ -1109,17 +1420,17 @@ app.post('/api/accounting/journal-entries', authorize(['manager', 'accountant'])
       return sendError(res, 'بيانات قيد اليومية غير مكتملة', null, 400);
     }
     const entryNum = 'JE-MAN-' + Math.floor(1000 + Math.random() * 9000);
-    await postJournalEntry(entryNum, description, date, lines);
-    sendResponse(res, { success: true, entryNumber: entryNum });
-  } catch (error) {
-    sendError(res, 'فشل حفظ القيد المحاسبي اليدوي', error.message || error);
+    const result = await AccountingRepository.postJournalEntry(entryNum, description, date, lines);
+    sendResponse(res, { success: true, ...result });
+  } catch (error: any) {
+    sendError(res, error.message || 'فشل حفظ القيد المحاسبي اليدوي', error, 400);
   }
 });
 
 // Posting Rules APIs
 app.get('/api/accounting/posting-rules', authorize(['manager', 'accountant']), async (req, res) => {
   try {
-    const rules = await db.select().from(postingRules);
+    const rules = await AccountingRepository.getPostingRules();
     sendResponse(res, rules);
   } catch (error) {
     sendError(res, 'فشل جلب قواعد الترحيل المحاسبي', error);
@@ -1133,14 +1444,8 @@ app.post('/api/accounting/posting-rules', authorize(['manager', 'accountant']), 
       return sendError(res, 'رمز القاعدة ومعرف الحساب مطلوبان', null, 400);
     }
     
-    // Check if account exists
-    const [acc] = await db.select().from(accounts).where(eq(accounts.id, accountId));
-    if (!acc) {
-      return sendError(res, 'الحساب المحدد غير موجود', null, 404);
-    }
-
-    await db.update(postingRules).set({ accountId }).where(eq(postingRules.ruleCode, ruleCode));
-    sendResponse(res, { success: true });
+    const saved = await AccountingRepository.upsertPostingRule(ruleCode, accountId);
+    sendResponse(res, { success: true, ...saved });
   } catch (error) {
     sendError(res, 'فشل تحديث قاعدة الترحيل', error);
   }
@@ -1508,39 +1813,169 @@ app.post('/api/cashboxes/close', authorize(['manager', 'cashier']), async (req, 
   }
 });
 
-// 12. Purchasing API
+// 12. Purchasing API (ERP Procurement Workflow)
+app.get('/api/purchases', async (req, res) => {
+  try {
+    const list = await PurchaseRepository.findAllPurchases();
+    sendResponse(res, list);
+  } catch (error) {
+    sendError(res, 'فشل جلب قائمة المشتريات وأوامر الشراء', error);
+  }
+});
+
 app.post('/api/purchases', authorize(['manager', 'inventory', 'accountant']), async (req, res) => {
   try {
-    const { supplierId, date, items, paymentMethod, invoiceNumber, taxAmount, totalWithoutTax, grandTotal } = req.body;
+    const { supplierId, date, items, paymentMethod = 'cash', invoiceNumber, taxAmount = 0, totalWithoutTax = 0, grandTotal = 0, status = 'completed', warehouseId = 'wh_main', notes = '' } = req.body;
     if (!invoiceNumber || !items || items.length === 0) {
       return sendError(res, 'بيانات المشتريات غير مكتملة', null, 400);
     }
     
-    const itemIds = Array.from(new Set(items.map((item: any) => item.productId))) as string[];
-    const productsList = itemIds.length > 0
-      ? await db.select().from(products).where(inArray(products.id, itemIds))
-      : [];
-    const productsMap = new Map(productsList.map(p => [p.id, p]));
+    const purId = `pur_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    const compId = 'comp_default';
 
-    const updatePromises = items.map(async (item: any) => {
-      const product = productsMap.get(item.productId);
-      if (product) {
-        const currentStock = parseFloat(product.stock || '0');
-        const nextStock = currentStock === 999 ? 999 : currentStock + item.quantity;
-        await db.update(products).set({
-          stock: nextStock.toString(),
-          purchasePrice: item.purchasePrice.toString()
-        }).where(eq(products.id, item.productId));
+    // 1. Create Purchase record in database
+    const purchaseVal = {
+      id: purId,
+      companyId: compId,
+      purchaseNumber: invoiceNumber,
+      supplierInvoiceNumber: req.body.supplierInvoiceNumber || invoiceNumber,
+      date: date || new Date().toISOString().split('T')[0],
+      subtotal: totalWithoutTax.toString(),
+      taxAmount: taxAmount.toString(),
+      grandTotal: grandTotal.toString(),
+      status: status, // 'draft' | 'ordered' | 'received' | 'completed'
+      paymentMethod: paymentMethod,
+      warehouseId: warehouseId,
+      supplierId: supplierId || null,
+      notes: notes
+    };
+
+    const pItemsVal = items.map((item: any) => ({
+      id: `pi_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      purchaseId: purId,
+      productId: item.productId,
+      purchasePrice: (item.purchasePrice || 0).toString(),
+      quantity: (item.quantity || 0).toString(),
+      total: ((item.quantity || 0) * (item.purchasePrice || 0)).toString(),
+      taxAmount: ((item.taxAmount || 0)).toString()
+    }));
+
+    await PurchaseRepository.createPurchaseOrder(purchaseVal, pItemsVal);
+
+    // 2. If status is 'completed' or 'received', perform receiving & inventory update immediately
+    if (status === 'completed' || status === 'received') {
+      const updatePromises = items.map(async (item: any) => {
+        await InventoryRepository.updateWeightedAverageCostOnPurchase(
+          item.productId,
+          parseFloat(item.quantity || '0'),
+          parseFloat(item.purchasePrice || '0')
+        );
+        await InventoryRepository.recordStockMove({
+          productId: item.productId,
+          toWarehouseId: warehouseId,
+          quantity: parseFloat(item.quantity || '0'),
+          type: 'purchase',
+          referenceId: invoiceNumber,
+          notes: `استلام مشتريات رقم ${invoiceNumber}`
+        });
+      });
+      await Promise.all(updatePromises);
+    }
+
+    // 3. If status is 'completed', post accounting journal entry and update supplier balance if credit
+    if (status === 'completed') {
+      if (paymentMethod === 'credit' && supplierId) {
+        const [supplier] = await db.select().from(suppliers).where(eq(suppliers.id, supplierId));
+        if (supplier) {
+          const nextBalance = parseFloat(supplier.balance || '0') + grandTotal;
+          await db.update(suppliers).set({ balance: nextBalance.toString() }).where(eq(suppliers.id, supplierId));
+        }
       }
+
+      const cashAcc = await getAccountByRule('purchase_cash_credit', 'acc_cash');
+      const bankAcc = await getAccountByRule('purchase_bank_credit', 'acc_bank');
+      const payAcc = await getAccountByRule('purchase_credit_credit', 'acc_payable');
+      const invAcc = await getAccountByRule('purchase_inventory_debit', 'acc_inventory');
+      const taxAcc = await getAccountByRule('purchase_tax_debit', 'acc_tax');
+
+      const accountingLines = [];
+      accountingLines.push({ accountId: invAcc, debit: totalWithoutTax, credit: 0 });
+      if (taxAmount > 0) {
+        accountingLines.push({ accountId: taxAcc, debit: taxAmount, credit: 0 });
+      }
+
+      if (paymentMethod === 'cash') {
+        accountingLines.push({ accountId: cashAcc, debit: 0, credit: grandTotal });
+      } else if (paymentMethod === 'card') {
+        accountingLines.push({ accountId: bankAcc, debit: 0, credit: grandTotal });
+      } else if (paymentMethod === 'credit') {
+        accountingLines.push({ accountId: payAcc, debit: 0, credit: grandTotal });
+      }
+
+      await postJournalEntry(
+        `JE-PUR-${invoiceNumber}`,
+        `فاتورة مشتريات رقم ${invoiceNumber}`,
+        date,
+        accountingLines
+      );
+    }
+
+    sendResponse(res, { success: true, purchaseId: purId });
+  } catch (error) {
+    sendError(res, 'فشل تسجيل فاتورة أو أمر المشتريات', error);
+  }
+});
+
+// Receive Goods for a Purchase Order (إذن استلام البضائع)
+app.post('/api/purchases/:id/receive', authorize(['manager', 'inventory']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { warehouseId = 'wh_main', notes = '' } = req.body;
+    const pur = await PurchaseRepository.findById(id);
+    if (!pur) return sendError(res, 'أمر الشراء غير موجود', null, 404);
+
+    const updatePromises = pur.items.map(async (item: any) => {
+      await InventoryRepository.updateWeightedAverageCostOnPurchase(
+        item.productId,
+        parseFloat(item.quantity || '0'),
+        parseFloat(item.purchasePrice || '0')
+      );
+      await InventoryRepository.recordStockMove({
+        productId: item.productId,
+        toWarehouseId: warehouseId,
+        quantity: parseFloat(item.quantity || '0'),
+        type: 'purchase',
+        referenceId: pur.purchaseNumber,
+        notes: `إذن استلام مخزني لأمر الشراء ${pur.purchaseNumber} ${notes}`
+      });
     });
 
     await Promise.all(updatePromises);
+    await PurchaseRepository.updatePurchaseStatus(id, 'received', { warehouseId, notes });
 
-    if (paymentMethod === 'credit' && supplierId) {
-      const [supplier] = await db.select().from(suppliers).where(eq(suppliers.id, supplierId));
+    sendResponse(res, { success: true, message: 'تم استلام وتحديث المخزون بنجاح' });
+  } catch (error) {
+    sendError(res, 'فشل استلام البضائع', error);
+  }
+});
+
+// Issue Supplier Invoice & Post Accounting for a Received Purchase Order
+app.post('/api/purchases/:id/invoice', authorize(['manager', 'accountant']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { supplierInvoiceNumber, paymentMethod = 'credit', date = new Date().toISOString().split('T')[0] } = req.body;
+    const pur = await PurchaseRepository.findById(id);
+    if (!pur) return sendError(res, 'أمر الشراء غير موجود', null, 404);
+
+    const subtotal = parseFloat(pur.subtotal || '0');
+    const taxAmount = parseFloat(pur.taxAmount || '0');
+    const grandTotal = parseFloat(pur.grandTotal || '0');
+
+    if (paymentMethod === 'credit' && pur.supplierId) {
+      const [supplier] = await db.select().from(suppliers).where(eq(suppliers.id, pur.supplierId));
       if (supplier) {
         const nextBalance = parseFloat(supplier.balance || '0') + grandTotal;
-        await db.update(suppliers).set({ balance: nextBalance.toString() }).where(eq(suppliers.id, supplierId));
+        await db.update(suppliers).set({ balance: nextBalance.toString() }).where(eq(suppliers.id, pur.supplierId));
       }
     }
 
@@ -1551,7 +1986,7 @@ app.post('/api/purchases', authorize(['manager', 'inventory', 'accountant']), as
     const taxAcc = await getAccountByRule('purchase_tax_debit', 'acc_tax');
 
     const accountingLines = [];
-    accountingLines.push({ accountId: invAcc, debit: totalWithoutTax, credit: 0 });
+    accountingLines.push({ accountId: invAcc, debit: subtotal, credit: 0 });
     if (taxAmount > 0) {
       accountingLines.push({ accountId: taxAcc, debit: taxAmount, credit: 0 });
     }
@@ -1565,15 +2000,20 @@ app.post('/api/purchases', authorize(['manager', 'inventory', 'accountant']), as
     }
 
     await postJournalEntry(
-      `JE-PUR-${invoiceNumber}`,
-      `فاتورة مشتريات رقم ${invoiceNumber}`,
+      `JE-PUR-${supplierInvoiceNumber || pur.purchaseNumber}`,
+      `فاتورة مورد رقم ${supplierInvoiceNumber || pur.purchaseNumber}`,
       date,
       accountingLines
     );
 
-    sendResponse(res, { success: true });
+    await PurchaseRepository.updatePurchaseStatus(id, 'completed', {
+      supplierInvoiceNumber: supplierInvoiceNumber || pur.purchaseNumber,
+      paymentMethod
+    });
+
+    sendResponse(res, { success: true, message: 'تم إصدار فاتورة المورد وتطبيق القيد المحاسبي المزدوج بنجاح' });
   } catch (error) {
-    sendError(res, 'فشل تسجيل فاتورة المشتريات', error);
+    sendError(res, 'فشل اعتماد فاتورة المورد', error);
   }
 });
 

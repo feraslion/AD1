@@ -1,16 +1,19 @@
 import React, { useState } from 'react';
 import { Invoice, StoreSettings } from '../../types';
-import { Search, Printer, Calendar, ShieldAlert, Share2, Eye, Download, Mail, ArrowLeft, QrCode } from 'lucide-react';
+import { Search, Printer, Calendar, ShieldAlert, Share2, Eye, Download, Mail, ArrowLeft, QrCode, RotateCcw } from 'lucide-react';
+import { SalesService } from '../../services/SalesService';
 
 interface InvoicesProps {
   invoices: Invoice[];
   settings: StoreSettings;
+  onRefresh?: () => void;
 }
 
-export default function Invoices({ invoices, settings }: InvoicesProps) {
+export default function Invoices({ invoices, settings, onRefresh }: InvoicesProps) {
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'unpaid'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'unpaid' | 'returned'>('all');
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [isReturning, setIsReturning] = useState<boolean>(false);
 
   // Filters
   const filteredInvoices = invoices.filter(inv => {
@@ -21,6 +24,27 @@ export default function Invoices({ invoices, settings }: InvoicesProps) {
     
     return matchesSearch && matchesStatus;
   });
+
+  const handleReturnInvoice = async (inv: Invoice) => {
+    if (inv.status === 'returned') return;
+    if (!window.confirm(`هل أنت أؤكد طلب مرتجع الفاتورة رقم ${inv.invoiceNumber}؟ سيتم تحديث المخزون وقيد العكس المحاسبي وإلغاء رصيد الآجل إن وجد.`)) {
+      return;
+    }
+
+    setIsReturning(true);
+    try {
+      await SalesService.returnInvoice(inv.id);
+      alert(`تم تسجيل مرتجع المبيعات للفاتورة ${inv.invoiceNumber} بنجاح وقيد العكس المحاسبي القيدي لتقليل المبيعات وإعادة المخزون.`);
+      if (selectedInvoice && selectedInvoice.id === inv.id) {
+        setSelectedInvoice({ ...selectedInvoice, status: 'returned' });
+      }
+      if (onRefresh) onRefresh();
+    } catch (e: any) {
+      alert(e.message || 'فشل معالجة مرتجع الفاتورة');
+    } finally {
+      setIsReturning(false);
+    }
+  };
 
   const handleShareWhatsApp = (inv: Invoice) => {
     alert(`محاكاة: تم تحويل الفاتورة رقم ${inv.invoiceNumber} بصيغة PDF ومشاركتها عبر الواتساب بنجاح للهاتف المرتبط بالعميل.`);
@@ -54,12 +78,13 @@ export default function Invoices({ invoices, settings }: InvoicesProps) {
 
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as 'all' | 'paid' | 'unpaid')}
+              onChange={(e) => setStatusFilter(e.target.value as 'all' | 'paid' | 'unpaid' | 'returned')}
               className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold text-slate-700 focus:outline-none"
             >
               <option value="all">📂 كل الفواتير</option>
               <option value="paid">🟢 الفواتير المدفوعة</option>
               <option value="unpaid">⏳ فواتير الآجل (المتبقي)</option>
+              <option value="returned">🔴 مرتجع مبيعات</option>
             </select>
           </div>
         </div>
@@ -86,9 +111,11 @@ export default function Invoices({ invoices, settings }: InvoicesProps) {
                   <div className="flex items-center gap-2">
                     <span className="font-extrabold text-slate-800 text-sm sm:text-base">{inv.invoiceNumber}</span>
                     <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                      inv.status === 'paid' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+                      inv.status === 'returned' ? 'bg-rose-100 text-rose-800' :
+                      inv.status === 'paid' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
                     }`}>
-                      {inv.status === 'paid' ? 'مدفوعة' : 'غير مدفوعة (آجل)'}
+                      {inv.status === 'returned' ? 'مرتجع مبيعات' :
+                       inv.status === 'paid' ? 'مدفوعة' : 'غير مدفوعة (آجل)'}
                     </span>
                   </div>
                   <div className="text-xs text-slate-400 flex gap-2">
@@ -120,7 +147,18 @@ export default function Invoices({ invoices, settings }: InvoicesProps) {
                 <p className="text-xs text-slate-400">{new Date(selectedInvoice.date).toLocaleString('ar-SA')}</p>
               </div>
 
-              <div className="flex gap-1.5">
+              <div className="flex gap-1.5 items-center">
+                {selectedInvoice.status !== 'returned' && (
+                  <button
+                    onClick={() => handleReturnInvoice(selectedInvoice)}
+                    disabled={isReturning}
+                    className="p-1.5 px-2.5 text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition flex items-center gap-1"
+                    title="إرجاع الفاتورة بالكامل (مرتجع مبيعات)"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>مرتجع</span>
+                  </button>
+                )}
                 <button
                   onClick={() => window.print()}
                   className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition"
@@ -154,7 +192,14 @@ export default function Invoices({ invoices, settings }: InvoicesProps) {
               >
                 {/* Store Header */}
                 <div className="text-center space-y-1">
-                  <div className="text-lg font-black">{settings.logo} {settings.name}</div>
+                  <div className="flex items-center justify-center gap-1.5 text-lg font-black">
+                    {settings.logo && (settings.logo.startsWith('http') || settings.logo.startsWith('/') || settings.logo.startsWith('data:image')) ? (
+                      <img src={settings.logo} alt="Logo" className="w-6 h-6 object-contain" referrerPolicy="no-referrer" />
+                    ) : (
+                      settings.logo
+                    )}
+                    <span>{settings.name}</span>
+                  </div>
                   <div className="text-[10px] text-slate-500">{settings.address}</div>
                   <div className="text-[10px] text-slate-500">جوال: {settings.phone}</div>
                   <div className="text-[10px] font-bold">الرقم الضريبي: {settings.taxNumber}</div>

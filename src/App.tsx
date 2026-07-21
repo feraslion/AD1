@@ -12,6 +12,9 @@ import Accounting from './modules/accounting/Accounting';
 import Purchases from './modules/purchases/Purchases';
 import UsersAndPermissions from './shared/components/UsersAndPermissions';
 import Login from './core/auth/Login';
+import ProtectedRoute from './core/auth/ProtectedRoute';
+import { PermissionService } from './core/permissions/PermissionService';
+import { logoutFirebase } from './core/auth/firebase';
 import { 
   LayoutDashboard, 
   ShoppingBag, 
@@ -27,7 +30,9 @@ import {
   Landmark,
   Truck,
   LogOut,
-  Users
+  Users,
+  ShieldCheck,
+  UserCheck
 } from 'lucide-react';
 
 export default function App() {
@@ -90,7 +95,8 @@ export default function App() {
 
   const handleLogout = () => {
     setCurrentUser(null);
-    localStorage.removeItem('erp_active_user');
+    PermissionService.clearSession();
+    logoutFirebase();
   };
 
   const isTabAllowed = (tab: string): boolean => {
@@ -421,7 +427,13 @@ export default function App() {
       {/* Upper Navigation Header bar */}
       <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 sm:px-8 shadow-sm text-slate-800">
         <div className="flex items-center gap-3">
-          <span className="text-2xl w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center border border-slate-200 shadow-sm">{settings.logo}</span>
+          <span className="text-2xl w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center border border-slate-200 shadow-sm overflow-hidden">
+            {settings.logo && (settings.logo.startsWith('http') || settings.logo.startsWith('/') || settings.logo.startsWith('data:image')) ? (
+              <img src={settings.logo} alt="Logo" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+            ) : (
+              settings.logo
+            )}
+          </span>
           <div>
             <h1 className="font-extrabold text-sm sm:text-base text-slate-800 leading-tight">{settings.name}</h1>
             <span className="text-[10px] text-slate-500 font-bold block">نظام الكاشير والمحاسبة الذكي (VAT 15%)</span>
@@ -539,8 +551,12 @@ export default function App() {
         <aside className="w-full md:w-64 bg-[#1e293b] text-white flex flex-col border-l border-slate-700 shadow-xl md:min-h-[calc(100vh-64px)]">
           {/* Quick Stats sidebar header */}
           <div className="p-5 flex flex-col items-center border-b border-slate-700 mb-4 bg-slate-900/20 text-center">
-            <div className="w-12 h-12 bg-emerald-500 rounded-xl flex items-center justify-center mb-2.5 text-2xl font-bold shadow-lg shadow-emerald-500/20 text-white">
-              {settings.logo || '⚖️'}
+            <div className="w-12 h-12 bg-emerald-500 rounded-xl flex items-center justify-center mb-2.5 text-2xl font-bold shadow-lg shadow-emerald-500/20 text-white overflow-hidden">
+              {settings.logo && (settings.logo.startsWith('http') || settings.logo.startsWith('/') || settings.logo.startsWith('data:image')) ? (
+                <img src={settings.logo} alt="Logo" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              ) : (
+                settings.logo || '⚖️'
+              )}
             </div>
             <h1 className="text-sm font-extrabold text-white tracking-tight leading-tight">{settings.name}</h1>
             <span className="text-[10px] text-emerald-400 mt-1 uppercase font-bold tracking-wider opacity-90">الوردية الحالية: نشطة 🟢</span>
@@ -707,90 +723,110 @@ export default function App() {
         {/* Main interactive viewport container */}
         <main className="flex-1 p-4 sm:p-6 overflow-y-auto">
           {activeTab === 'dashboard' && (
-            <Dashboard
-              invoices={invoices}
-              products={products}
-              settings={settings}
-              onNavigate={setActiveTab}
-              syncStatus={syncStatus}
-              onForceSync={handleForceSync}
-              onUpdateProductStock={handleUpdateProductStock}
-            />
+            <ProtectedRoute user={currentUser} module="dashboard" onNavigateToAllowed={(m) => setActiveTab(m === 'sales' ? 'pos' : m)} onLogout={handleLogout}>
+              <Dashboard
+                invoices={invoices}
+                products={products}
+                settings={settings}
+                onNavigate={setActiveTab}
+                syncStatus={syncStatus}
+                onForceSync={handleForceSync}
+                onUpdateProductStock={handleUpdateProductStock}
+              />
+            </ProtectedRoute>
           )}
 
           {activeTab === 'pos' && (
-            <POS
-              products={products}
-              categories={categories}
-              customers={customers}
-              settings={settings}
-              onAddInvoice={handleAddInvoice}
-              onUpdateProductStock={handleUpdateProductStock}
-              onAddCustomer={handleAddCustomer}
-            />
+            <ProtectedRoute user={currentUser} module="sales" onNavigateToAllowed={(m) => setActiveTab(m === 'sales' ? 'pos' : m)} onLogout={handleLogout}>
+              <POS
+                products={products}
+                categories={categories}
+                customers={customers}
+                settings={settings}
+                onAddInvoice={handleAddInvoice}
+                onUpdateProductStock={handleUpdateProductStock}
+                onAddCustomer={handleAddCustomer}
+              />
+            </ProtectedRoute>
           )}
 
           {activeTab === 'inventory' && (
-            <Inventory
-              products={products}
-              categories={categories}
-              units={units}
-              settings={settings}
-              onAddProduct={handleAddProduct}
-              onUpdateProduct={handleUpdateProduct}
-              onDeleteProduct={handleDeleteProduct}
-              onAddCategory={handleAddCategory}
-              onDeleteCategory={handleDeleteCategory}
-            />
+            <ProtectedRoute user={currentUser} module="inventory" onNavigateToAllowed={(m) => setActiveTab(m === 'sales' ? 'pos' : m)} onLogout={handleLogout}>
+              <Inventory
+                products={products}
+                categories={categories}
+                units={units}
+                settings={settings}
+                onAddProduct={handleAddProduct}
+                onUpdateProduct={handleUpdateProduct}
+                onDeleteProduct={handleDeleteProduct}
+                onAddCategory={handleAddCategory}
+                onDeleteCategory={handleDeleteCategory}
+                onRefresh={fetchAllData}
+              />
+            </ProtectedRoute>
           )}
 
           {activeTab === 'invoices' && (
-            <Invoices
-              invoices={invoices}
-              settings={settings}
-            />
+            <ProtectedRoute user={currentUser} module="sales" onNavigateToAllowed={(m) => setActiveTab(m === 'sales' ? 'pos' : m)} onLogout={handleLogout}>
+              <Invoices
+                invoices={invoices}
+                settings={settings}
+                onRefresh={fetchAllData}
+              />
+            </ProtectedRoute>
           )}
 
           {activeTab === 'reports' && (
-            <Reports
-              invoices={invoices}
-              products={products}
-              categories={categories}
-              settings={settings}
-            />
+            <ProtectedRoute user={currentUser} module="reports" onNavigateToAllowed={(m) => setActiveTab(m === 'sales' ? 'pos' : m)} onLogout={handleLogout}>
+              <Reports
+                invoices={invoices}
+                products={products}
+                categories={categories}
+                settings={settings}
+              />
+            </ProtectedRoute>
           )}
 
           {activeTab === 'purchases' && (
-            <Purchases
-              products={products}
-              customers={customers}
-              settings={settings}
-              onRefreshData={fetchAllData}
-            />
+            <ProtectedRoute user={currentUser} module="purchases" onNavigateToAllowed={(m) => setActiveTab(m === 'sales' ? 'pos' : m)} onLogout={handleLogout}>
+              <Purchases
+                products={products}
+                customers={customers}
+                settings={settings}
+                onRefreshData={fetchAllData}
+              />
+            </ProtectedRoute>
           )}
 
           {activeTab === 'accounting' && (
-            <Accounting
-              settings={settings}
-            />
+            <ProtectedRoute user={currentUser} module="accounting" onNavigateToAllowed={(m) => setActiveTab(m === 'sales' ? 'pos' : m)} onLogout={handleLogout}>
+              <Accounting
+                settings={settings}
+              />
+            </ProtectedRoute>
           )}
 
           {activeTab === 'settings' && (
-            <Settings
-              settings={settings}
-              onUpdateSettings={handleUpdateSettings}
-              units={units}
-              onAddUnit={handleAddUnit}
-              onDeleteUnit={handleDeleteUnit}
-              onLoadDemoDataset={handleLoadDemoDataset}
-              syncStatus={syncStatus}
-              onForceSync={handleForceSync}
-              onRestoreDefaults={handleRestoreDefaults}
-            />
+            <ProtectedRoute user={currentUser} module="settings" onNavigateToAllowed={(m) => setActiveTab(m === 'sales' ? 'pos' : m)} onLogout={handleLogout}>
+              <Settings
+                settings={settings}
+                onUpdateSettings={handleUpdateSettings}
+                units={units}
+                onAddUnit={handleAddUnit}
+                onDeleteUnit={handleDeleteUnit}
+                onLoadDemoDataset={handleLoadDemoDataset}
+                syncStatus={syncStatus}
+                onForceSync={handleForceSync}
+                onRestoreDefaults={handleRestoreDefaults}
+              />
+            </ProtectedRoute>
           )}
 
           {activeTab === 'users_permissions' && (
-            <UsersAndPermissions />
+            <ProtectedRoute user={currentUser} module="users" onNavigateToAllowed={(m) => setActiveTab(m === 'sales' ? 'pos' : m)} onLogout={handleLogout}>
+              <UsersAndPermissions />
+            </ProtectedRoute>
           )}
         </main>
       </div>

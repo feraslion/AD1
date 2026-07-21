@@ -1,5 +1,5 @@
 import { Product, Category, Unit } from '../types';
-import { ProductService, CategoryService, UnitService } from '../core/api/api';
+import { ProductService, CategoryService, UnitService, WarehouseService } from '../core/api/api';
 
 export const InventoryService = {
   // Underlying API services proxy
@@ -14,6 +14,16 @@ export const InventoryService = {
   getUnits: UnitService.getUnits,
   createUnit: UnitService.createUnit,
   deleteUnit: UnitService.deleteUnit,
+
+  getWarehouses: WarehouseService.getWarehouses,
+  createWarehouse: WarehouseService.createWarehouse,
+  deleteWarehouse: WarehouseService.deleteWarehouse,
+
+  getStockMoves: WarehouseService.getStockMoves,
+  transferStock: WarehouseService.transferStock,
+  adjustPhysicalStock: WarehouseService.adjustPhysicalStock,
+  getProductStockLedger: WarehouseService.getProductStockLedger,
+  getInventoryValuation: WarehouseService.getInventoryValuation,
 
   // Calculation and filtering business logic
   totalStockItems: (products: Product[]): number => {

@@ -6,6 +6,7 @@ export interface Account {
   name: string;
   type: string;
   balance: number;
+  parentId?: string | null;
 }
 
 export interface JournalLine {
@@ -22,6 +23,7 @@ export const AccountingService = {
   getLedger: RawAccountingService.getLedger,
   getJournalEntries: RawAccountingService.getJournalEntries,
   createJournalEntry: RawAccountingService.createJournalEntry,
+  getTrialBalance: RawAccountingService.getTrialBalance,
   getPostingRules: RawAccountingService.getPostingRules,
   updatePostingRule: RawAccountingService.updatePostingRule,
 

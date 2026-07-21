@@ -30,6 +30,52 @@ export interface Customer {
   phone: string;
   balance: number; // Outstandings for Credit (الآجل)
   email?: string;
+  creditLimit?: number;
+  companyId?: string;
+  branchId?: string;
+}
+
+export interface Supplier {
+  id: string;
+  name: string;
+  phone?: string;
+  email?: string;
+  balance: number;
+  companyId?: string;
+  branchId?: string;
+}
+
+export interface Warehouse {
+  id: string;
+  name: string;
+  code: string;
+  location?: string;
+  companyId?: string;
+  branchId?: string;
+}
+
+export interface Currency {
+  id: string;
+  code: string;
+  name: string;
+  symbol: string;
+  exchangeRate: number;
+  isDefault?: boolean;
+}
+
+export interface Tax {
+  id: string;
+  name: string;
+  code: string;
+  rate: number;
+  isInclusive?: boolean;
+}
+
+export interface PaymentMethod {
+  id: string;
+  code: string;
+  name: string;
+  accountId?: string;
 }
 
 export interface CartItem {
@@ -63,8 +109,9 @@ export interface Invoice {
   paymentDetails: {
     cashAmount: number;
     cardAmount: number;
+    creditAmount?: number;
   };
-  status: 'paid' | 'unpaid' | 'partially_paid';
+  status: 'paid' | 'unpaid' | 'partially_paid' | 'returned';
   customerId?: string;
   customerName?: string;
   taxNumber?: string;

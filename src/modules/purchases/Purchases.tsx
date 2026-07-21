@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Product, Customer, StoreSettings } from '../../types';
-import { SupplierService, PurchaseService, PaymentService } from '../../services/api';
+import { PurchaseService } from '../../services/PurchaseService';
 import { 
   PlusCircle, 
   Receipt, 
@@ -18,7 +18,16 @@ import {
   Calendar, 
   AlertTriangle,
   Plus,
-  Trash2
+  Trash2,
+  PackageCheck,
+  FileText,
+  Truck,
+  ArrowRightLeft,
+  ChevronRight,
+  ClipboardList,
+  CheckCircle2,
+  Clock,
+  ExternalLink
 } from 'lucide-react';
 
 interface Supplier {
@@ -29,6 +38,32 @@ interface Supplier {
   balance: number;
 }
 
+interface PurchaseOrder {
+  id: string;
+  purchaseNumber: string;
+  supplierInvoiceNumber?: string;
+  date: string;
+  subtotal: number;
+  taxAmount: number;
+  grandTotal: number;
+  status: 'draft' | 'ordered' | 'received' | 'completed' | 'cancelled';
+  paymentMethod: 'cash' | 'card' | 'credit';
+  supplierId?: string;
+  supplierName?: string;
+  supplierPhone?: string;
+  warehouseId?: string;
+  notes?: string;
+  items: {
+    id?: string;
+    productId: string;
+    productName?: string;
+    purchasePrice: number;
+    quantity: number;
+    total: number;
+    taxAmount?: number;
+  }[];
+}
+
 interface PurchasesProps {
   products: Product[];
   customers: Customer[];
@@ -37,13 +72,17 @@ interface PurchasesProps {
 }
 
 export default function Purchases({ products, customers, settings, onRefreshData }: PurchasesProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'purchase_invoice' | 'customer_receipt' | 'supplier_payment' | 'directory'>('purchase_invoice');
+  const [activeSubTab, setActiveSubTab] = useState<'orders' | 'purchase_invoice' | 'supplier_payment' | 'ledger' | 'directory'>('orders');
+  
+  // Data state
+  const [purchasesList, setPurchasesList] = useState<PurchaseOrder[]>([]);
+  const [loadingPurchases, setLoadingPurchases] = useState(false);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loadingSuppliers, setLoadingSuppliers] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // Directory Search
+  // Directory & Search Search
   const [searchQuery, setSearchQuery] = useState('');
   const [partnerType, setPartnerType] = useState<'all' | 'customers' | 'suppliers'>('all');
 
@@ -53,34 +92,51 @@ export default function Purchases({ products, customers, settings, onRefreshData
   const [newSuppPhone, setNewSuppPhone] = useState('');
   const [newSuppEmail, setNewSuppEmail] = useState('');
 
-  // 1. Purchase Invoice Form State
+  // Purchase Order / Invoice Form State
   const [purSupplierId, setPurSupplierId] = useState('');
-  const [purPaymentMethod, setPurPaymentMethod] = useState<'cash' | 'card' | 'credit'>('cash');
+  const [purPaymentMethod, setPurPaymentMethod] = useState<'cash' | 'card' | 'credit'>('credit');
   const [purInvoiceNumber, setPurInvoiceNumber] = useState('');
   const [purDate, setPurDate] = useState(new Date().toISOString().split('T')[0]);
+  const [purStatus, setPurStatus] = useState<'ordered' | 'completed'>('ordered');
+  const [purNotes, setPurNotes] = useState('');
   const [purItems, setPurItems] = useState<{ productId: string; purchasePrice: number; quantity: number }[]>([
     { productId: '', purchasePrice: 0, quantity: 1 }
   ]);
 
-  // 2. Customer Receipt Form State
-  const [rcptCustomerId, setRcptCustomerId] = useState('');
-  const [rcptAmount, setRcptAmount] = useState('');
-  const [rcptPaymentMethod, setRcptPaymentMethod] = useState<'cash' | 'card'>('cash');
-  const [rcptDate, setRcptDate] = useState(new Date().toISOString().split('T')[0]);
-  const [rcptNumber, setRcptNumber] = useState('');
-
-  // 3. Supplier Payment Form State
+  // Supplier Payment Form State
   const [paySupplierId, setPaySupplierId] = useState('');
   const [payAmount, setPayAmount] = useState('');
   const [payPaymentMethod, setPayPaymentMethod] = useState<'cash' | 'card'>('cash');
   const [payDate, setPayDate] = useState(new Date().toISOString().split('T')[0]);
   const [payNumber, setPayNumber] = useState('');
 
+  // Receiving Goods Modal State
+  const [showReceiveModal, setShowReceiveModal] = useState(false);
+  const [selectedOrderForReceive, setSelectedOrderForReceive] = useState<PurchaseOrder | null>(null);
+  const [receiveWarehouseId, setReceiveWarehouseId] = useState('wh_main');
+  const [receiveNotes, setReceiveNotes] = useState('');
+  const [receivingLoading, setReceivingLoading] = useState(false);
+
+  // Supplier Invoice Posting Modal State
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [selectedOrderForInvoice, setSelectedOrderForInvoice] = useState<PurchaseOrder | null>(null);
+  const [supplierInvoiceNo, setSupplierInvoiceNo] = useState('');
+  const [invoicePayMethod, setInvoicePayMethod] = useState<'cash' | 'card' | 'credit'>('credit');
+  const [invoicePostingLoading, setInvoicePostingLoading] = useState(false);
+
+  // Supplier Ledger State
+  const [selectedLedgerSupplierId, setSelectedLedgerSupplierId] = useState('');
+  const [supplierLedgerData, setSupplierLedgerData] = useState<any | null>(null);
+  const [ledgerLoading, setLedgerLoading] = useState(false);
+
   const fetchSuppliers = async () => {
     setLoadingSuppliers(true);
     try {
-      const data = await SupplierService.getSuppliers();
+      const data = await PurchaseService.getSuppliers();
       setSuppliers(data);
+      if (data.length > 0 && !selectedLedgerSupplierId) {
+        setSelectedLedgerSupplierId(data[0].id);
+      }
     } catch (e) {
       console.error('Error fetching suppliers:', e);
     } finally {
@@ -88,21 +144,52 @@ export default function Purchases({ products, customers, settings, onRefreshData
     }
   };
 
+  const fetchPurchases = async () => {
+    setLoadingPurchases(true);
+    try {
+      const data = await PurchaseService.getPurchases();
+      setPurchasesList(data);
+    } catch (e) {
+      console.error('Error fetching purchases:', e);
+    } finally {
+      setLoadingPurchases(false);
+    }
+  };
+
+  const fetchLedger = async (suppId: string) => {
+    if (!suppId) return;
+    setLedgerLoading(true);
+    try {
+      const res = await PurchaseService.getSupplierLedger(suppId);
+      setSupplierLedgerData(res);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLedgerLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchSuppliers();
-    // Auto-generate transaction reference numbers
-    setPurInvoiceNumber('PUR-' + Math.floor(100000 + Math.random() * 900000));
-    setRcptNumber('RCPT-' + Math.floor(100000 + Math.random() * 900000));
+    fetchPurchases();
+    // Auto-generate reference numbers
+    setPurInvoiceNumber('PO-' + Math.floor(100000 + Math.random() * 900000));
     setPayNumber('PAY-' + Math.floor(100000 + Math.random() * 900000));
   }, []);
 
-  // Inline Supplier Submission
+  useEffect(() => {
+    if (selectedLedgerSupplierId && activeSubTab === 'ledger') {
+      fetchLedger(selectedLedgerSupplierId);
+    }
+  }, [selectedLedgerSupplierId, activeSubTab]);
+
+  // Handle Supplier Creation
   const handleAddSupplier = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSuppName.trim()) return;
 
     try {
-      const data = await SupplierService.createSupplier({
+      const data = await PurchaseService.createSupplier({
         name: newSuppName,
         phone: newSuppPhone,
         email: newSuppEmail,
@@ -111,7 +198,6 @@ export default function Purchases({ products, customers, settings, onRefreshData
 
       await fetchSuppliers();
       if (data && data.id) {
-        // Auto-select in form
         setPurSupplierId(data.id);
         setPaySupplierId(data.id);
       }
@@ -124,7 +210,7 @@ export default function Purchases({ products, customers, settings, onRefreshData
     }
   };
 
-  // 1. Submit Purchase Invoice
+  // Submit New Purchase Order / Invoice
   const handlePurchaseSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setMessage(null);
@@ -142,7 +228,6 @@ export default function Purchases({ products, customers, settings, onRefreshData
 
     setSubmitting(true);
     try {
-      // Calculate subtotals and VAT
       const totalWithoutTax = PurchaseService.calculatePurchaseSubtotal(purItems);
       const taxRateVal = settings.taxRate || 15;
       const taxAmount = PurchaseService.calculatePurchaseTax(totalWithoutTax, taxRateVal);
@@ -156,736 +241,382 @@ export default function Purchases({ products, customers, settings, onRefreshData
         invoiceNumber: purInvoiceNumber,
         taxAmount,
         totalWithoutTax,
-        grandTotal
+        grandTotal,
+        status: purStatus, // 'ordered' (order) or 'completed' (direct invoice)
+        notes: purNotes
       });
 
-      setMessage({ type: 'success', text: `تم تسجيل فاتورة المشتريات رقم ${purInvoiceNumber} بنجاح وقيدها آلياً في الأستاذ العام.` });
+      setMessage({
+        type: 'success',
+        text: purStatus === 'ordered' 
+          ? `تم إنشاء أمر الشراء رقم (${purInvoiceNumber}) بنجاح وفي انتظار الاستلام.`
+          : `تم تسجيل فاتورة المشتريات رقم (${purInvoiceNumber}) وتحديث المخزون والقيد المحاسبي المزدوج آلياً.`
+      });
+
+      // Reset form
+      setPurInvoiceNumber('PO-' + Math.floor(100000 + Math.random() * 900000));
+      setPurNotes('');
       setPurItems([{ productId: '', purchasePrice: 0, quantity: 1 }]);
-      setPurInvoiceNumber('PUR-' + Math.floor(100000 + Math.random() * 900000));
-      await onRefreshData();
+
       await fetchSuppliers();
-    } catch (err) {
-      setMessage({ type: 'error', text: 'خطأ في الاتصال بالخادم.' });
+      await fetchPurchases();
+      if (onRefreshData) await onRefreshData();
+    } catch (err: any) {
+      console.error(err);
+      setMessage({ type: 'error', text: err.message || 'حدث خطأ أثناء حفظ الشراء.' });
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Add line to purchase invoice
-  const addPurItemLine = () => {
-    setPurItems([...purItems, { productId: '', purchasePrice: 0, quantity: 1 }]);
-  };
-
-  // Remove line from purchase invoice
-  const removePurItemLine = (index: number) => {
-    if (purItems.length === 1) return;
-    setPurItems(purItems.filter((_, i) => i !== index));
-  };
-
-  const updatePurItem = (index: number, field: keyof typeof purItems[0], value: any) => {
-    const updated = [...purItems];
-    if (field === 'productId') {
-      updated[index].productId = value;
-      // Auto populate purchase price
-      const prod = products.find(p => p.id === value);
-      if (prod) {
-        updated[index].purchasePrice = prod.purchasePrice;
-      }
-    } else {
-      updated[index][field] = Number(value);
-    }
-    setPurItems(updated);
-  };
-
-  // 2. Submit Customer Receipt Payment
-  const handleCustomerReceiptSubmit = async (e: React.FormEvent) => {
+  // Execute Goods Receiving Note (إذن الاستلام المخزني)
+  const handleReceiveGoods = async (e: React.FormEvent) => {
     e.preventDefault();
-    setMessage(null);
+    if (!selectedOrderForReceive) return;
 
-    const amt = parseFloat(rcptAmount);
-    if (!rcptCustomerId || isNaN(amt) || amt <= 0) {
-      setMessage({ type: 'error', text: 'الرجاء اختيار العميل وتحديد مبلغ السند.' });
-      return;
-    }
-
-    setSubmitting(true);
+    setReceivingLoading(true);
     try {
-      await PaymentService.payCustomer({
-        customerId: rcptCustomerId,
-        amount: amt,
-        paymentMethod: rcptPaymentMethod,
-        date: rcptDate,
-        receiptNumber: rcptNumber
+      await PurchaseService.receiveGoods(selectedOrderForReceive.id, {
+        warehouseId: receiveWarehouseId,
+        notes: receiveNotes
       });
 
-      setMessage({ type: 'success', text: `تم تسجيل سند قبض العميل بقيمة ${rcptAmount} ${settings.currency} وتخفيض حسابه آلياً.` });
-      setRcptAmount('');
-      setRcptNumber('RCPT-' + Math.floor(100000 + Math.random() * 900000));
-      await onRefreshData();
-    } catch (err) {
-      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'خطأ في تسجيل سند القبض.' });
+      alert(`تم تسجيل إذن الاستلام المخزني لأمر الشراء ${selectedOrderForReceive.purchaseNumber} وتحديث أرخص التكلفة والمخزون بنجاح!`);
+      setShowReceiveModal(false);
+      setSelectedOrderForReceive(null);
+      setReceiveNotes('');
+
+      await fetchPurchases();
+      if (onRefreshData) await onRefreshData();
+    } catch (e: any) {
+      alert(e.message || 'فشل تسجيل إذن الاستلام المخزني');
     } finally {
-      setSubmitting(false);
+      setReceivingLoading(false);
     }
   };
 
-  // 3. Submit Supplier Payment
+  // Post Supplier Invoice (إصدار فاتورة المورد والقيد المحاسبي)
+  const handleIssueSupplierInvoice = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedOrderForInvoice) return;
+
+    setInvoicePostingLoading(true);
+    try {
+      await PurchaseService.issueSupplierInvoice(selectedOrderForInvoice.id, {
+        supplierInvoiceNumber: supplierInvoiceNo || selectedOrderForInvoice.purchaseNumber,
+        paymentMethod: invoicePayMethod,
+        date: new Date().toISOString().split('T')[0]
+      });
+
+      alert(`تم إنشاء فاتورة المورد وتطبيق القيد المحاسبي وتأكيد المستحقات بنجاح!`);
+      setShowInvoiceModal(false);
+      setSelectedOrderForInvoice(null);
+      setSupplierInvoiceNo('');
+
+      await fetchSuppliers();
+      await fetchPurchases();
+      if (onRefreshData) await onRefreshData();
+    } catch (e: any) {
+      alert(e.message || 'فشل إصدار فاتورة المورد');
+    } finally {
+      setInvoicePostingLoading(false);
+    }
+  };
+
+  // Submit Supplier Payment Voucher
   const handleSupplierPaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setMessage(null);
 
-    const amt = parseFloat(payAmount);
-    if (!paySupplierId || isNaN(amt) || amt <= 0) {
-      setMessage({ type: 'error', text: 'الرجاء اختيار المورد وتحديد مبلغ السند.' });
+    const numericAmount = parseFloat(payAmount);
+    if (!paySupplierId || isNaN(numericAmount) || numericAmount <= 0) {
+      setMessage({ type: 'error', text: 'الرجاء اختيار المورد وإدخال مبلغ صحيح لسند الصرف.' });
       return;
     }
 
     setSubmitting(true);
     try {
-      await PaymentService.paySupplier({
+      await PurchaseService.paySupplier({
         supplierId: paySupplierId,
-        amount: amt,
+        amount: numericAmount,
         paymentMethod: payPaymentMethod,
         date: payDate,
         paymentNumber: payNumber
       });
 
-      setMessage({ type: 'success', text: `تم تسجيل سند صرف المورد بقيمة ${payAmount} ${settings.currency} وتخفيض مستحقاته بنجاح.` });
+      setMessage({ type: 'success', text: `تم تسجيل سند الصرف رقم (${payNumber}) بنجاح وتحديث رصيد المورد القائم.` });
+
       setPayAmount('');
       setPayNumber('PAY-' + Math.floor(100000 + Math.random() * 900000));
-      await onRefreshData();
+
       await fetchSuppliers();
-    } catch (err) {
-      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'خطأ في تسجيل سند الصرف.' });
+      if (onRefreshData) await onRefreshData();
+    } catch (err: any) {
+      console.error(err);
+      setMessage({ type: 'error', text: err.message || 'حدث خطأ أثناء تسجيل سند الصرف.' });
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Partner directory list
-  const getFilteredPartners = () => {
-    const list: { id: string; name: string; phone?: string; email?: string; balance: number; type: 'customer' | 'supplier' }[] = [];
+  // Helper calculation for new purchase order
+  const purSubtotal = PurchaseService.calculatePurchaseSubtotal(purItems);
+  const purTax = PurchaseService.calculatePurchaseTax(purSubtotal, settings.taxRate || 15);
+  const purGrandTotal = PurchaseService.calculatePurchaseGrandTotal(purSubtotal, purTax);
 
-    if (partnerType === 'all' || partnerType === 'customers') {
-      customers.forEach(c => {
-        list.push({ id: c.id, name: c.name, phone: c.phone, balance: c.balance, type: 'customer' });
-      });
+  // Status Badge Renderer
+  const renderStatusBadge = (status: PurchaseOrder['status']) => {
+    switch (status) {
+      case 'ordered':
+        return (
+          <span className="bg-amber-50 text-amber-800 border border-amber-200 text-xs px-2.5 py-1 rounded-lg font-bold inline-flex items-center gap-1">
+            <Clock className="w-3.5 h-3.5 text-amber-600" />
+            <span>أمر شراء معتمد (في انتظار الاستلام)</span>
+          </span>
+        );
+      case 'received':
+        return (
+          <span className="bg-blue-50 text-blue-800 border border-blue-200 text-xs px-2.5 py-1 rounded-lg font-bold inline-flex items-center gap-1">
+            <Truck className="w-3.5 h-3.5 text-blue-600" />
+            <span>تم استلام البضائع (في انتظار الفلترة)</span>
+          </span>
+        );
+      case 'completed':
+        return (
+          <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs px-2.5 py-1 rounded-lg font-bold inline-flex items-center gap-1">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+            <span>مكتمل ومرحل محاسبياً</span>
+          </span>
+        );
+      case 'draft':
+        return (
+          <span className="bg-slate-100 text-slate-700 border border-slate-200 text-xs px-2.5 py-1 rounded-lg font-bold">
+            مسودة أمر شراء
+          </span>
+        );
+      default:
+        return null;
     }
-
-    if (partnerType === 'all' || partnerType === 'suppliers') {
-      suppliers.forEach(s => {
-        list.push({ id: s.id, name: s.name, phone: s.phone, email: s.email, balance: s.balance, type: 'supplier' });
-      });
-    }
-
-    return list.filter(p => p.name.includes(searchQuery) || (p.phone && p.phone.includes(searchQuery)));
-  };
-
-  const handleQuickCollect = (customerId: string) => {
-    setRcptCustomerId(customerId);
-    const cust = customers.find(c => c.id === customerId);
-    if (cust) {
-      setRcptAmount(Math.max(0, cust.balance).toString());
-    }
-    setActiveSubTab('customer_receipt');
-  };
-
-  const handleQuickPay = (supplierId: string) => {
-    setPaySupplierId(supplierId);
-    const supp = suppliers.find(s => s.id === supplierId);
-    if (supp) {
-      setPayAmount(Math.max(0, supp.balance).toString());
-    }
-    setActiveSubTab('supplier_payment');
   };
 
   return (
-    <div className="space-y-6 text-right" dir="rtl" id="purchases-module">
-      {/* Header Panel */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm" id="purchases-header">
-        <div>
-          <h2 className="text-xl sm:text-2xl font-black text-slate-800 flex items-center gap-2">
-            <span className="p-2 bg-slate-900 text-white rounded-xl">
-              <Receipt className="w-6 h-6" />
-            </span>
-            دورة المشتريات وإدارة الحسابات الجارية
-          </h2>
-          <p className="text-slate-500 text-xs mt-1.5 sm:text-sm">
-            شراء الأصناف المباشرة، سداد الموردين، تحصيل مديونيات العملاء الآجلة، وتأثيراتها اللحظية على الخزينة ودفاتر الحسابات.
-          </p>
-        </div>
-
-        <div className="flex gap-2.5">
-          <button 
+    <div className="space-y-6">
+      {/* PURCHASING LIFECYCLE STEPPER HEADER */}
+      <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white rounded-2xl p-5 shadow-lg space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-black flex items-center gap-2">
+              <Truck className="w-5 h-5 text-emerald-400" />
+              <span>دورة المشتريات وإدارة الموردين الشاملة</span>
+            </h2>
+            <p className="text-xs text-slate-300 mt-1">
+              ربط متكامل من أمر الشراء ← الاستلام المخزني ← فاتورة المورد ← القيد المحاسبي المزدوج ← السداد
+            </p>
+          </div>
+          <button
             onClick={() => setShowSupplierModal(true)}
-            className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition shadow-sm"
+            className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black px-4 py-2 rounded-xl text-xs transition flex items-center justify-center gap-2 shadow-sm"
           >
             <Plus className="w-4 h-4" />
-            مورد جديد
+            <span>مورد جديد</span>
           </button>
-          <button 
-            onClick={fetchSuppliers}
-            className="p-2.5 bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 rounded-xl transition"
-          >
-            <RefreshCw className="w-4 h-4" />
-          </button>
+        </div>
+
+        {/* Workflow Visual Pipeline */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 pt-2 border-t border-slate-700/60 text-[11px] font-bold">
+          <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700 text-center space-y-0.5">
+            <span className="text-slate-400 text-[10px] block">1. المورد</span>
+            <span className="text-emerald-400">Supplier</span>
+          </div>
+          <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700 text-center space-y-0.5">
+            <span className="text-slate-400 text-[10px] block">2. أمر الشراء</span>
+            <span className="text-amber-400">Purchase Order</span>
+          </div>
+          <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700 text-center space-y-0.5">
+            <span className="text-slate-400 text-[10px] block">3. الاستلام</span>
+            <span className="text-blue-400">Receiving</span>
+          </div>
+          <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700 text-center space-y-0.5">
+            <span className="text-slate-400 text-[10px] block">4. المخزون</span>
+            <span className="text-indigo-400">Inventory Update</span>
+          </div>
+          <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700 text-center space-y-0.5">
+            <span className="text-slate-400 text-[10px] block">5. فاتورة المورد</span>
+            <span className="text-purple-400">Supplier Invoice</span>
+          </div>
+          <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700 text-center space-y-0.5">
+            <span className="text-slate-400 text-[10px] block">6. القيد المحاسبي</span>
+            <span className="text-teal-400">Accounting Entry</span>
+          </div>
+          <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700 text-center space-y-0.5">
+            <span className="text-slate-400 text-[10px] block">7. السداد</span>
+            <span className="text-emerald-300">Payment</span>
+          </div>
         </div>
       </div>
 
-      {/* Message Alert */}
+      {/* Main Sub Tabs */}
+      <div className="flex border-b border-slate-200 gap-2 sm:gap-6 overflow-x-auto pb-1 text-xs sm:text-sm scrollbar-none">
+        <button
+          onClick={() => setActiveSubTab('orders')}
+          className={`pb-3 font-extrabold transition whitespace-nowrap relative flex items-center gap-1.5 ${
+            activeSubTab === 'orders' ? 'text-emerald-600' : 'text-slate-400 hover:text-slate-600'
+          }`}
+        >
+          <ClipboardList className="w-4 h-4" />
+          <span>أوامر وطلبات الشراء ({purchasesList.length})</span>
+          {activeSubTab === 'orders' && <div className="absolute bottom-0 right-0 left-0 h-0.5 bg-emerald-500 rounded-full"></div>}
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('purchase_invoice')}
+          className={`pb-3 font-extrabold transition whitespace-nowrap relative flex items-center gap-1.5 ${
+            activeSubTab === 'purchase_invoice' ? 'text-emerald-600' : 'text-slate-400 hover:text-slate-600'
+          }`}
+        >
+          <PlusCircle className="w-4 h-4" />
+          <span>إصدار أمر / فاتورة شراء</span>
+          {activeSubTab === 'purchase_invoice' && <div className="absolute bottom-0 right-0 left-0 h-0.5 bg-emerald-500 rounded-full"></div>}
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('supplier_payment')}
+          className={`pb-3 font-extrabold transition whitespace-nowrap relative flex items-center gap-1.5 ${
+            activeSubTab === 'supplier_payment' ? 'text-emerald-600' : 'text-slate-400 hover:text-slate-600'
+          }`}
+        >
+          <ArrowUpRight className="w-4 h-4" />
+          <span>سندات الصرف للموردين</span>
+          {activeSubTab === 'supplier_payment' && <div className="absolute bottom-0 right-0 left-0 h-0.5 bg-emerald-500 rounded-full"></div>}
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('ledger')}
+          className={`pb-3 font-extrabold transition whitespace-nowrap relative flex items-center gap-1.5 ${
+            activeSubTab === 'ledger' ? 'text-emerald-600' : 'text-slate-400 hover:text-slate-600'
+          }`}
+        >
+          <FileText className="w-4 h-4" />
+          <span>كشف حساب المورد</span>
+          {activeSubTab === 'ledger' && <div className="absolute bottom-0 right-0 left-0 h-0.5 bg-emerald-500 rounded-full"></div>}
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('directory')}
+          className={`pb-3 font-extrabold transition whitespace-nowrap relative flex items-center gap-1.5 ${
+            activeSubTab === 'directory' ? 'text-emerald-600' : 'text-slate-400 hover:text-slate-600'
+          }`}
+        >
+          <Users className="w-4 h-4" />
+          <span>دليل الموردين والعملاء</span>
+          {activeSubTab === 'directory' && <div className="absolute bottom-0 right-0 left-0 h-0.5 bg-emerald-500 rounded-full"></div>}
+        </button>
+      </div>
+
       {message && (
-        <div className={`p-4 rounded-xl flex items-center gap-3 border ${
-          message.type === 'success' 
-            ? 'bg-emerald-50 border-emerald-100 text-emerald-800' 
-            : 'bg-rose-50 border-rose-100 text-rose-800'
+        <div className={`p-4 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 ${
+          message.type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'
         }`}>
-          {message.type === 'success' ? <CheckCircle className="w-5 h-5 flex-shrink-0" /> : <AlertTriangle className="w-5 h-5 flex-shrink-0" />}
-          <span className="text-xs sm:text-sm font-bold">{message.text}</span>
+          {message.type === 'success' ? <CheckCircle2 className="w-5 h-5 text-emerald-600" /> : <AlertTriangle className="w-5 h-5 text-rose-600" />}
+          <span>{message.text}</span>
         </div>
       )}
 
-      {/* Sub Tabs */}
-      <div className="flex border-b border-slate-200 overflow-x-auto gap-2.5" id="purchases-tabs">
-        <button
-          onClick={() => { setActiveSubTab('purchase_invoice'); setMessage(null); }}
-          className={`pb-3 text-xs sm:text-sm font-extrabold transition whitespace-nowrap px-2.5 ${
-            activeSubTab === 'purchase_invoice' ? 'border-b-2 border-slate-900 text-slate-900' : 'text-slate-400 hover:text-slate-700'
-          }`}
-        >
-          <div className="flex items-center gap-1.5">
-            <PlusCircle className="w-4 h-4" />
-            <span>فاتورة مشتريات جديدة</span>
-          </div>
-        </button>
-
-        <button
-          onClick={() => { setActiveSubTab('customer_receipt'); setMessage(null); }}
-          className={`pb-3 text-xs sm:text-sm font-extrabold transition whitespace-nowrap px-2.5 ${
-            activeSubTab === 'customer_receipt' ? 'border-b-2 border-slate-900 text-slate-900' : 'text-slate-400 hover:text-slate-700'
-          }`}
-        >
-          <div className="flex items-center gap-1.5">
-            <ArrowUpRight className="w-4 h-4" />
-            <span>سند قبض عميل (تحصيل)</span>
-          </div>
-        </button>
-
-        <button
-          onClick={() => { setActiveSubTab('supplier_payment'); setMessage(null); }}
-          className={`pb-3 text-xs sm:text-sm font-extrabold transition whitespace-nowrap px-2.5 ${
-            activeSubTab === 'supplier_payment' ? 'border-b-2 border-slate-900 text-slate-900' : 'text-slate-400 hover:text-slate-700'
-          }`}
-        >
-          <div className="flex items-center gap-1.5">
-            <ArrowDownLeft className="w-4 h-4" />
-            <span>سند صرف مورد (سداد)</span>
-          </div>
-        </button>
-
-        <button
-          onClick={() => { setActiveSubTab('directory'); setMessage(null); }}
-          className={`pb-3 text-xs sm:text-sm font-extrabold transition whitespace-nowrap px-2.5 ${
-            activeSubTab === 'directory' ? 'border-b-2 border-slate-900 text-slate-900' : 'text-slate-400 hover:text-slate-700'
-          }`}
-        >
-          <div className="flex items-center gap-1.5">
-            <Users className="w-4 h-4" />
-            <span>الحسابات الجارية للشركاء</span>
-          </div>
-        </button>
-      </div>
-
-      {/* Render sub-tabs */}
-
-      {/* 1. PURCHASE INVOICE */}
-      {activeSubTab === 'purchase_invoice' && (
-        <form onSubmit={handlePurchaseSubmit} className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            {/* Supplier select */}
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-bold text-slate-500">المورد</label>
-              <select
-                value={purSupplierId}
-                onChange={(e) => setPurSupplierId(e.target.value)}
-                className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-slate-900 outline-none"
-              >
-                <option value="">-- عميل/شراء نقدي عام --</option>
-                {suppliers.map(s => (
-                  <option key={s.id} value={s.id}>{s.name} (المستحق: {Number(s.balance || 0).toLocaleString()} {settings.currency})</option>
-                ))}
-              </select>
+      {/* SUB TAB 1: PURCHASE ORDERS WORKFLOW LIST */}
+      {activeSubTab === 'orders' && (
+        <div className="space-y-6">
+          <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4">
+            <div>
+              <h3 className="font-extrabold text-slate-800 text-base">سجل دورة المشتريات ومتابعة الأوامر</h3>
+              <p className="text-xs text-slate-400">تتبع استلام الشحنات وتطبيق فواتير المورد والقيد المحاسبي المزدوج</p>
             </div>
-
-            {/* Payment Method */}
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-bold text-slate-500">طريقة الدفع</label>
-              <select
-                value={purPaymentMethod}
-                onChange={(e) => setPurPaymentMethod(e.target.value as 'cash' | 'card' | 'credit')}
-                className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-slate-900 outline-none"
-              >
-                <option value="cash">نقداً (كاش الصندوق)</option>
-                <option value="card">بنكي (الشبكة / الحساب البنكي)</option>
-                <option value="credit">على الحساب (آجل للمورد)</option>
-              </select>
-            </div>
-
-            {/* Reference Invoice Number */}
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-bold text-slate-500">رقم الفاتورة (المرجع)</label>
-              <input
-                type="text"
-                value={purInvoiceNumber}
-                onChange={(e) => setPurInvoiceNumber(e.target.value)}
-                required
-                className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono text-xs sm:text-sm focus:ring-2 focus:ring-slate-900 outline-none"
-              />
-            </div>
-
-            {/* Date */}
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-bold text-slate-500">تاريخ القيد</label>
-              <input
-                type="date"
-                value={purDate}
-                onChange={(e) => setPurDate(e.target.value)}
-                required
-                className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-slate-900 outline-none"
-              />
-            </div>
-          </div>
-
-          <div className="border-t border-slate-100 my-4"></div>
-
-          {/* Items Lines */}
-          <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">الأصناف المشتراة وتعديل كميات المخزن</h4>
-              <button
-                type="button"
-                onClick={addPurItemLine}
-                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition"
-              >
-                + إضافة صنف
-              </button>
-            </div>
-
-            {purItems.map((item, index) => (
-              <div key={index} className="grid grid-cols-1 md:grid-cols-12 gap-3 bg-slate-50 p-4 rounded-xl relative border border-slate-100 items-end">
-                {/* Select Product */}
-                <div className="md:col-span-5 flex flex-col gap-1">
-                  <label className="text-[10px] font-bold text-slate-400">الصنف</label>
-                  <select
-                    value={item.productId}
-                    onChange={(e) => updatePurItem(index, 'productId', e.target.value)}
-                    required
-                    className="p-2 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:ring-1 focus:ring-slate-800"
-                  >
-                    <option value="">-- اختر الصنف --</option>
-                    {products.map(p => (
-                      <option key={p.id} value={p.id}>{p.name} (الحالي: {p.stock})</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Purchase Price */}
-                <div className="md:col-span-3 flex flex-col gap-1">
-                  <label className="text-[10px] font-bold text-slate-400">سعر تكلفة الشراء ({settings.currency})</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    placeholder="0.00"
-                    value={item.purchasePrice || ''}
-                    onChange={(e) => updatePurItem(index, 'purchasePrice', e.target.value)}
-                    required
-                    className="p-2 bg-white border border-slate-200 rounded-lg text-xs font-mono outline-none focus:ring-1 focus:ring-slate-800 text-left"
-                  />
-                </div>
-
-                {/* Quantity */}
-                <div className="md:col-span-3 flex flex-col gap-1">
-                  <label className="text-[10px] font-bold text-slate-400">الكمية المضافة</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={item.quantity || ''}
-                    onChange={(e) => updatePurItem(index, 'quantity', e.target.value)}
-                    required
-                    className="p-2 bg-white border border-slate-200 rounded-lg text-xs font-mono outline-none focus:ring-1 focus:ring-slate-800 text-left"
-                  />
-                </div>
-
-                {/* Delete Button */}
-                <div className="md:col-span-1 flex justify-center pb-0.5">
-                  <button
-                    type="button"
-                    onClick={() => removePurItemLine(index)}
-                    disabled={purItems.length === 1}
-                    className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition disabled:opacity-30"
-                  >
-                    <Trash2Icon className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="border-t border-slate-100 my-4"></div>
-
-          {/* Subtotals & Calculations */}
-          {(() => {
-            let subtotal = 0;
-            purItems.forEach(i => {
-              subtotal += (i.purchasePrice || 0) * (i.quantity || 0);
-            });
-            const tax = subtotal * ((settings.taxRate || 15) / 100);
-            const total = subtotal + tax;
-
-            return (
-              <div className="flex flex-col items-end gap-2 text-slate-700">
-                <div className="flex justify-between w-full max-w-xs text-xs font-semibold">
-                  <span>إجمالي المشتريات (غير خاضع للضريبة):</span>
-                  <span className="font-mono font-bold">{subtotal.toLocaleString('en-US', { minimumFractionDigits: 2 })} {settings.currency}</span>
-                </div>
-                <div className="flex justify-between w-full max-w-xs text-xs text-slate-500">
-                  <span>ضريبة القيمة المضافة المدخلة ({settings.taxRate || 15}%):</span>
-                  <span className="font-mono">{tax.toLocaleString('en-US', { minimumFractionDigits: 2 })} {settings.currency}</span>
-                </div>
-                <div className="flex justify-between w-full max-w-xs text-sm font-black text-slate-900 border-t border-slate-100 pt-2 bg-slate-50 p-2 rounded-lg">
-                  <span>صافي الفاتورة الكلي:</span>
-                  <span className="font-mono">{total.toLocaleString('en-US', { minimumFractionDigits: 2 })} {settings.currency}</span>
-                </div>
-              </div>
-            );
-          })()}
-
-          {/* Submit Action */}
-          <div className="flex justify-end pt-3">
             <button
-              type="submit"
-              disabled={submitting}
-              className="px-6 py-3 bg-slate-950 hover:bg-slate-800 text-white font-extrabold text-xs sm:text-sm rounded-xl transition flex items-center gap-2 shadow"
+              onClick={() => setActiveSubTab('purchase_invoice')}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2 rounded-xl text-xs sm:text-sm transition flex items-center justify-center gap-1.5 shadow-sm"
             >
-              <CheckCircle className="w-4 h-4" />
-              {submitting ? 'جاري الحفظ والترحيل...' : 'اعتماد وترحيل فاتورة المشتريات آلياً'}
+              <Plus className="w-4 h-4" />
+              <span>إنشاء أمر شراء جديد</span>
             </button>
-          </div>
-        </form>
-      )}
-
-      {/* 2. CUSTOMER RECEIPT ( قبض ) */}
-      {activeSubTab === 'customer_receipt' && (
-        <form onSubmit={handleCustomerReceiptSubmit} className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6 max-w-2xl mx-auto">
-          <div className="border-b border-slate-100 pb-3 flex items-center gap-2">
-            <Coins className="w-5 h-5 text-emerald-600" />
-            <h3 className="font-black text-slate-800 text-sm">سند قبض نقدي/بنكي من عميل (تحصيل ديون مبيعات آجل)</h3>
-          </div>
-
-          <div className="space-y-4">
-            {/* Customer */}
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-bold text-slate-500">العميل المدين</label>
-              <select
-                value={rcptCustomerId}
-                onChange={(e) => {
-                  setRcptCustomerId(e.target.value);
-                  const cust = customers.find(c => c.id === e.target.value);
-                  if (cust) {
-                    setRcptAmount(Math.max(0, cust.balance).toString());
-                  }
-                }}
-                required
-                className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-slate-900 outline-none"
-              >
-                <option value="">-- اختر العميل --</option>
-                {customers.map(c => (
-                  <option key={c.id} value={c.id}>{c.name} (الرصيد المستحق عليه: {Number(c.balance || 0).toLocaleString()} {settings.currency})</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Receipt Amount */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-slate-500">مبلغ سند القبض ({settings.currency})</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  required
-                  placeholder="0.00"
-                  value={rcptAmount}
-                  onChange={(e) => setRcptAmount(e.target.value)}
-                  className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono text-xs sm:text-sm text-left focus:ring-2 focus:ring-slate-900 outline-none"
-                />
-              </div>
-
-              {/* Payment Method */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-slate-500">حساب الإيداع المستلم</label>
-                <select
-                  value={rcptPaymentMethod}
-                  onChange={(e) => setRcptPaymentMethod(e.target.value as 'cash' | 'card')}
-                  className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-slate-900 outline-none"
-                >
-                  <option value="cash">نقداً (الصندوق الرئيسي)</option>
-                  <option value="card">بنك (الحساب الجاري للشركة)</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Receipt Number */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-slate-500">رقم السند</label>
-                <input
-                  type="text"
-                  value={rcptNumber}
-                  onChange={(e) => setRcptNumber(e.target.value)}
-                  required
-                  className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono text-xs sm:text-sm focus:ring-2 focus:ring-slate-900 outline-none"
-                />
-              </div>
-
-              {/* Date */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-slate-500">تاريخ القيد</label>
-                <input
-                  type="date"
-                  value={rcptDate}
-                  onChange={(e) => setRcptDate(e.target.value)}
-                  required
-                  className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-slate-900 outline-none"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="border-t border-slate-100 my-4"></div>
-
-          {/* Submit receipt */}
-          <div className="flex justify-end pt-2">
-            <button
-              type="submit"
-              disabled={submitting}
-              className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm rounded-xl transition flex items-center gap-2 shadow-md shadow-emerald-100"
-            >
-              <Coins className="w-4 h-4" />
-              {submitting ? 'جاري ترحيل السند...' : 'حفظ وترحيل سند القبض تلقائياً'}
-            </button>
-          </div>
-        </form>
-      )}
-
-      {/* 3. SUPPLIER PAYMENT ( صرف ) */}
-      {activeSubTab === 'supplier_payment' && (
-        <form onSubmit={handleSupplierPaymentSubmit} className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6 max-w-2xl mx-auto">
-          <div className="border-b border-slate-100 pb-3 flex items-center gap-2">
-            <Wallet className="w-5 h-5 text-rose-600" />
-            <h3 className="font-black text-slate-800 text-sm">سند صرف نقدي/بنكي لمورد (سداد فواتير مشتريات آجل)</h3>
-          </div>
-
-          <div className="space-y-4">
-            {/* Supplier */}
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-bold text-slate-500">المورد المستلم</label>
-              <select
-                value={paySupplierId}
-                onChange={(e) => {
-                  setPaySupplierId(e.target.value);
-                  const supp = suppliers.find(s => s.id === e.target.value);
-                  if (supp) {
-                    setPayAmount(Math.max(0, supp.balance).toString());
-                  }
-                }}
-                required
-                className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-slate-900 outline-none"
-              >
-                <option value="">-- اختر المورد --</option>
-                {suppliers.map(s => (
-                  <option key={s.id} value={s.id}>{s.name} (الرصيد الذي نطالب به: {Number(s.balance || 0).toLocaleString()} {settings.currency})</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Payment Amount */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-slate-500">مبلغ سند الصرف ({settings.currency})</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  required
-                  placeholder="0.00"
-                  value={payAmount}
-                  onChange={(e) => setPayAmount(e.target.value)}
-                  className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono text-xs sm:text-sm text-left focus:ring-2 focus:ring-slate-900 outline-none"
-                />
-              </div>
-
-              {/* Payment Method */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-slate-500">مصدر السيولة المدفوعة</label>
-                <select
-                  value={payPaymentMethod}
-                  onChange={(e) => setPayPaymentMethod(e.target.value as 'cash' | 'card')}
-                  className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-slate-900 outline-none"
-                >
-                  <option value="cash">نقداً (كاش الصندوق الرئيسي)</option>
-                  <option value="card">بنك (الحساب الجاري للشركة)</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Payment Number */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-slate-500">رقم سند الصرف</label>
-                <input
-                  type="text"
-                  value={payNumber}
-                  onChange={(e) => setPayNumber(e.target.value)}
-                  required
-                  className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono text-xs sm:text-sm focus:ring-2 focus:ring-slate-900 outline-none"
-                />
-              </div>
-
-              {/* Date */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-slate-500">تاريخ القيد</label>
-                <input
-                  type="date"
-                  value={payDate}
-                  onChange={(e) => setPayDate(e.target.value)}
-                  required
-                  className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-slate-900 outline-none"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="border-t border-slate-100 my-4"></div>
-
-          {/* Submit payment */}
-          <div className="flex justify-end pt-2">
-            <button
-              type="submit"
-              disabled={submitting}
-              className="px-6 py-3 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs sm:text-sm rounded-xl transition flex items-center gap-2 shadow-md shadow-rose-100"
-            >
-              <Wallet className="w-4 h-4" />
-              {submitting ? 'جاري ترحيل السند...' : 'حفظ وترحيل سند الصرف تلقائياً'}
-            </button>
-          </div>
-        </form>
-      )}
-
-      {/* 4. DIRECTORY & BALANCES */}
-      {activeSubTab === 'directory' && (
-        <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 bg-white p-4 border border-slate-200 rounded-xl shadow-sm">
-            {/* Search */}
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute right-3 top-3 w-4 h-4 text-slate-400" />
-              <input
-                type="text"
-                placeholder="ابحث عن العميل أو المورد أو رقم الهاتف..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pr-9 pl-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-slate-900"
-              />
-            </div>
-
-            {/* Filter partner type */}
-            <div className="flex gap-1 bg-slate-100 p-1 rounded-xl text-xs">
-              <button
-                onClick={() => setPartnerType('all')}
-                className={`px-3.5 py-1.5 rounded-lg font-bold transition ${partnerType === 'all' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-              >
-                الكل
-              </button>
-              <button
-                onClick={() => setPartnerType('customers')}
-                className={`px-3.5 py-1.5 rounded-lg font-bold transition ${partnerType === 'customers' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-              >
-                العملاء
-              </button>
-              <button
-                onClick={() => setPartnerType('suppliers')}
-                className={`px-3.5 py-1.5 rounded-lg font-bold transition ${partnerType === 'suppliers' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-              >
-                الموردين
-              </button>
-            </div>
           </div>
 
           <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
             <div className="overflow-x-auto">
-              <table className="w-full text-right border-collapse text-xs sm:text-sm">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-100 font-bold text-slate-500">
-                    <th className="p-4">اسم العميل / المورد</th>
-                    <th className="p-4">النوع</th>
-                    <th className="p-4">الهاتف</th>
-                    <th className="p-4 text-left">الرصيد الجاري الحالي</th>
-                    <th className="p-4 text-center">إجراءات مالية سريعة</th>
+              <table className="w-full text-right text-xs sm:text-sm">
+                <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold">
+                  <tr>
+                    <th className="p-3.5">رقم الأمر / الفاتورة</th>
+                    <th className="p-3.5">التاريخ</th>
+                    <th className="p-3.5">المورد</th>
+                    <th className="p-3.5">المبلغ الإجمالي</th>
+                    <th className="p-3.5">طريقة الدفع</th>
+                    <th className="p-3.5">حالة الدورة المخزنية والمحاسبية</th>
+                    <th className="p-3.5 text-center">إجراءات الدورة</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 text-slate-700">
-                  {getFilteredPartners().length === 0 ? (
+                <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                  {purchasesList.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="p-10 text-center text-slate-400 font-medium">
-                        لا يوجد جهات اتصال متطابقة مع شروط البحث الحالي.
+                      <td colSpan={7} className="p-8 text-center text-slate-400">
+                        لا توجد أوامر مشتريات مسجلة بالنظام بعد.
                       </td>
                     </tr>
                   ) : (
-                    getFilteredPartners().map(p => (
-                      <tr key={`${p.type}-${p.id}`} className="hover:bg-slate-50/50 transition">
-                        <td className="p-4 font-bold text-slate-800">
-                          {p.name}
-                        </td>
-                        <td className="p-4">
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-black ${
-                            p.type === 'customer' ? 'bg-blue-50 text-blue-600' : 'bg-orange-50 text-orange-600'
-                          }`}>
-                            {p.type === 'customer' ? 'عميل مدين' : 'مورد دائن'}
-                          </span>
-                        </td>
-                        <td className="p-4 font-mono font-bold text-slate-500">
-                          {p.phone || '-'}
-                        </td>
-                        <td className={`p-4 font-mono font-black text-left ${
-                          p.balance > 0 
-                            ? p.type === 'customer' ? 'text-blue-600' : 'text-orange-600'
-                            : 'text-slate-400'
-                        }`}>
-                          {parseFloat(p.balance.toString() || '0').toLocaleString('en-US', { minimumFractionDigits: 2 })} {settings.currency}
-                          {p.balance > 0 && (
-                            <span className="text-[10px] font-bold block mt-0.5 opacity-80">
-                              {p.type === 'customer' ? '(نطالبه بالدفع)' : '(يطلب منا سداد)'}
-                            </span>
+                    purchasesList.map((pur) => (
+                      <tr key={pur.id} className="hover:bg-slate-50/80 transition">
+                        <td className="p-3.5">
+                          <div className="font-extrabold text-slate-900 font-mono dir-ltr inline-block">{pur.purchaseNumber}</div>
+                          {pur.supplierInvoiceNumber && pur.supplierInvoiceNumber !== pur.purchaseNumber && (
+                            <div className="text-[11px] text-slate-400">فاتورة مورد: {pur.supplierInvoiceNumber}</div>
                           )}
                         </td>
-                        <td className="p-4 text-center">
-                          <div className="flex justify-center gap-2">
-                            {p.type === 'customer' ? (
+                        <td className="p-3.5 font-mono text-slate-500">{pur.date}</td>
+                        <td className="p-3.5 font-bold text-slate-800">{pur.supplierName || 'غير محدد'}</td>
+                        <td className="p-3.5 font-black text-emerald-600 font-mono">
+                          {pur.grandTotal} {settings.currency}
+                        </td>
+                        <td className="p-3.5">
+                          <span className="bg-slate-100 text-slate-700 text-xs px-2.5 py-1 rounded-lg font-bold">
+                            {pur.paymentMethod === 'credit' ? 'آجل (على الحساب)' : pur.paymentMethod === 'cash' ? 'نقداً' : 'بطاقة شبكة'}
+                          </span>
+                        </td>
+                        <td className="p-3.5">
+                          {renderStatusBadge(pur.status)}
+                        </td>
+                        <td className="p-3.5 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            {pur.status === 'ordered' && (
                               <button
-                                onClick={() => handleQuickCollect(p.id)}
-                                disabled={p.balance <= 0}
-                                className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-40 disabled:hover:bg-emerald-50 text-emerald-700 font-extrabold text-[11px] rounded-lg transition"
+                                onClick={() => {
+                                  setSelectedOrderForReceive(pur);
+                                  setShowReceiveModal(true);
+                                }}
+                                className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition flex items-center gap-1 shadow-sm"
                               >
-                                تحصيل دفعة
+                                <PackageCheck className="w-3.5 h-3.5" />
+                                <span>استلام بالمخزن</span>
                               </button>
-                            ) : (
+                            )}
+
+                            {(pur.status === 'ordered' || pur.status === 'received') && (
                               <button
-                                onClick={() => handleQuickPay(p.id)}
-                                disabled={p.balance <= 0}
-                                className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 disabled:opacity-40 disabled:hover:bg-rose-50 text-rose-700 font-extrabold text-[11px] rounded-lg transition"
+                                onClick={() => {
+                                  setSelectedOrderForInvoice(pur);
+                                  setSupplierInvoiceNo(pur.supplierInvoiceNumber || pur.purchaseNumber);
+                                  setInvoicePayMethod(pur.paymentMethod);
+                                  setShowInvoiceModal(true);
+                                }}
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition flex items-center gap-1 shadow-sm"
                               >
-                                سداد دفعة للمورد
+                                <FileText className="w-3.5 h-3.5" />
+                                <span>فاتورة المورد وقيد المشتريات</span>
                               </button>
+                            )}
+
+                            {pur.status === 'completed' && (
+                              <span className="text-xs text-slate-400 font-bold flex items-center gap-1">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                                <span>مكتمل بالكامل</span>
+                              </span>
                             )}
                           </div>
                         </td>
@@ -899,74 +630,613 @@ export default function Purchases({ products, customers, settings, onRefreshData
         </div>
       )}
 
-      {/* Inline Add Supplier Modal */}
+      {/* SUB TAB 2: CREATE PURCHASE ORDER OR DIRECT INVOICE */}
+      {activeSubTab === 'purchase_invoice' && (
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6">
+          <div className="flex justify-between items-center border-b border-slate-100 pb-4">
+            <div>
+              <h3 className="font-extrabold text-slate-800 text-base">إنشاء أمر شراء أو فاتورة مشتريات مباشرة</h3>
+              <p className="text-xs text-slate-400">حدد المورد والمنتجات لتوجيهها إما كأمر شراء لمتابعة الاستلام أو فاتورة فورية</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-bold text-slate-500">نوع المستند:</label>
+              <select
+                value={purStatus}
+                onChange={(e) => setPurStatus(e.target.value as any)}
+                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-800"
+              >
+                <option value="ordered">📋 أمر شراء معتمد (Purchase Order)</option>
+                <option value="completed">⚡ فاتورة مشتريات مباشرة (استلام وقيد فوري)</option>
+              </select>
+            </div>
+          </div>
+
+          <form onSubmit={handlePurchaseSubmit} className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">المورد</label>
+                <select
+                  value={purSupplierId}
+                  onChange={(e) => setPurSupplierId(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-700 focus:outline-none"
+                >
+                  <option value="">-- نقدي / بدون مورد محدد --</option>
+                  {suppliers.map(s => (
+                    <option key={s.id} value={s.id}>{s.name} (الرصيد: {s.balance} {settings.currency})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">طريقة الشراء والدفع</label>
+                <select
+                  value={purPaymentMethod}
+                  onChange={(e) => setPurPaymentMethod(e.target.value as any)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-700 focus:outline-none"
+                >
+                  <option value="credit">آجل (على حساب المورد)</option>
+                  <option value="cash">نقداً (خزينة)</option>
+                  <option value="card">بطاقة / بنك</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">رقم أمر الشراء</label>
+                <input
+                  type="text"
+                  value={purInvoiceNumber}
+                  onChange={(e) => setPurInvoiceNumber(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm font-mono text-slate-700 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">التاريخ</label>
+                <input
+                  type="date"
+                  value={purDate}
+                  onChange={(e) => setPurDate(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm font-mono text-slate-700 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            {/* Item Rows */}
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <h4 className="font-bold text-slate-700 text-xs">أصناف الشراء</h4>
+                <button
+                  type="button"
+                  onClick={() => setPurItems([...purItems, { productId: '', purchasePrice: 0, quantity: 1 }])}
+                  className="text-emerald-600 hover:text-emerald-700 text-xs font-bold flex items-center gap-1"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>إضافة صنف</span>
+                </button>
+              </div>
+
+              {purItems.map((item, idx) => (
+                <div key={idx} className="grid grid-cols-12 gap-2 items-center bg-slate-50 p-3 rounded-xl border border-slate-100 text-xs">
+                  <div className="col-span-5">
+                    <label className="block text-[10px] font-bold text-slate-400 mb-0.5">المنتج</label>
+                    <select
+                      value={item.productId}
+                      onChange={(e) => {
+                        const next = [...purItems];
+                        const prod = products.find(p => p.id === e.target.value);
+                        next[idx].productId = e.target.value;
+                        if (prod) next[idx].purchasePrice = prod.purchasePrice || 0;
+                        setPurItems(next);
+                      }}
+                      required
+                      className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg bg-white text-slate-700 focus:outline-none"
+                    >
+                      <option value="">-- اختر صنف الشراء --</option>
+                      {products.map(p => (
+                        <option key={p.id} value={p.id}>{p.name} (التكلفة الحالية: {p.purchasePrice} {settings.currency})</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="col-span-3">
+                    <label className="block text-[10px] font-bold text-slate-400 mb-0.5">سعر تكلفة الوحدة</label>
+                    <input
+                      type="number"
+                      step="any"
+                      min="0"
+                      value={item.purchasePrice}
+                      onChange={(e) => {
+                        const next = [...purItems];
+                        next[idx].purchasePrice = parseFloat(e.target.value) || 0;
+                        setPurItems(next);
+                      }}
+                      required
+                      className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg bg-white font-mono text-slate-700 focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="col-span-2">
+                    <label className="block text-[10px] font-bold text-slate-400 mb-0.5">الكمية</label>
+                    <input
+                      type="number"
+                      step="any"
+                      min="1"
+                      value={item.quantity}
+                      onChange={(e) => {
+                        const next = [...purItems];
+                        next[idx].quantity = parseFloat(e.target.value) || 1;
+                        setPurItems(next);
+                      }}
+                      required
+                      className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg bg-white font-mono text-slate-700 focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="col-span-2 flex items-center justify-between pt-4">
+                    <span className="font-bold font-mono text-slate-800">
+                      {(item.purchasePrice * item.quantity).toFixed(2)}
+                    </span>
+                    {purItems.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setPurItems(purItems.filter((_, i) => i !== idx))}
+                        className="text-rose-500 hover:text-rose-700 p-1"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Totals Summary */}
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-4 text-xs font-bold text-slate-700">
+              <div className="flex gap-6">
+                <div>
+                  <span className="text-slate-400 block text-[10px]">المجموع قبل الضريبة</span>
+                  <span className="font-mono text-base">{purSubtotal.toFixed(2)} {settings.currency}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px]">ضريبة القيمة المضافة ({settings.taxRate || 15}%)</span>
+                  <span className="font-mono text-base text-amber-600">{purTax.toFixed(2)} {settings.currency}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px]">الإجمالي الشامل</span>
+                  <span className="font-mono text-lg text-emerald-600">{purGrandTotal.toFixed(2)} {settings.currency}</span>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={submitting}
+                className="w-full sm:w-auto px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs sm:text-sm transition flex items-center justify-center gap-2 shadow-sm"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>{submitting ? 'جاري الحفظ...' : purStatus === 'ordered' ? 'تأكيد وإصدار أمر الشراء' : 'اعتماد وترحيل فاتورة المشتريات'}</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* SUB TAB 3: SUPPLIER PAYMENT VOUCHERS */}
+      {activeSubTab === 'supplier_payment' && (
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm max-w-2xl mx-auto space-y-6">
+          <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
+            <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center">
+              <ArrowUpRight className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-extrabold text-slate-800 text-base">سند صرف وسداد مستحقات مورد (Payment Voucher)</h3>
+              <p className="text-xs text-slate-400">خصم من رصيد المورد القائم وإنشاء قيد محاسبي تلقائي (مدينة للمورد / دائنة الخزينة أو البنك)</p>
+            </div>
+          </div>
+
+          <form onSubmit={handleSupplierPaymentSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-500 mb-1">اختر المورد المراد سداده</label>
+              <select
+                value={paySupplierId}
+                onChange={(e) => setPaySupplierId(e.target.value)}
+                required
+                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-700 focus:outline-none"
+              >
+                <option value="">-- اختر المورد --</option>
+                {suppliers.map(s => (
+                  <option key={s.id} value={s.id}>{s.name} (الرصيد المستحق الحالي: {s.balance} {settings.currency})</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">طريقة السداد</label>
+                <select
+                  value={payPaymentMethod}
+                  onChange={(e) => setPayPaymentMethod(e.target.value as any)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-700 focus:outline-none"
+                >
+                  <option value="cash">نقداً (من الصندوق / الخزينة)</option>
+                  <option value="card">تحويل بنكي / بطاقة شبكة</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">مبلغ السداد</label>
+                <input
+                  type="number"
+                  step="any"
+                  min="0.01"
+                  placeholder="0.00"
+                  value={payAmount}
+                  onChange={(e) => setPayAmount(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm font-mono font-bold text-slate-700 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">رقم سند الصرف</label>
+                <input
+                  type="text"
+                  value={payNumber}
+                  onChange={(e) => setPayNumber(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm font-mono text-slate-700 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">التاريخ</label>
+                <input
+                  type="date"
+                  value={payDate}
+                  onChange={(e) => setPayDate(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm font-mono text-slate-700 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs sm:text-sm transition flex items-center justify-center gap-2 shadow-sm"
+            >
+              <ArrowUpRight className="w-4 h-4" />
+              <span>{submitting ? 'جاري حفظ السند...' : 'اعتماد وتسجيل سند الصرف'}</span>
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* SUB TAB 4: SUPPLIER LEDGER STATEMENT */}
+      {activeSubTab === 'ledger' && (
+        <div className="space-y-6">
+          <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <h3 className="font-extrabold text-slate-800 text-base">كشف حساب المورد (Supplier Statement of Account)</h3>
+              <p className="text-xs text-slate-400">تتبع التسلسل الزمني لجميع فواتير المشتريات الآجلة وسندات الصرف ورصيد المستحقات</p>
+            </div>
+
+            <div className="w-full sm:w-72">
+              <select
+                value={selectedLedgerSupplierId}
+                onChange={(e) => setSelectedLedgerSupplierId(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 focus:outline-none"
+              >
+                {suppliers.map(s => (
+                  <option key={s.id} value={s.id}>
+                    👤 {s.name} (الرصيد: {s.balance} {settings.currency})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {ledgerLoading ? (
+            <div className="bg-white p-12 rounded-2xl border border-slate-200 text-center text-slate-400 text-sm">
+              جاري تحميل كشف حساب المورد...
+            </div>
+          ) : supplierLedgerData ? (
+            <div className="space-y-4">
+              <div className="bg-slate-900 text-white rounded-2xl p-5 shadow flex flex-wrap justify-between items-center gap-4">
+                <div>
+                  <h4 className="font-extrabold text-lg text-emerald-400">{supplierLedgerData.supplier.name}</h4>
+                  <p className="text-xs text-slate-400">هاتف: {supplierLedgerData.supplier.phone || 'غير مسجل'} | إيميل: {supplierLedgerData.supplier.email || 'غير مسجل'}</p>
+                </div>
+                <div className="text-left bg-slate-800/80 px-4 py-2 rounded-xl border border-slate-700">
+                  <span className="block text-slate-400 text-[10px] font-bold">إجمالي رصيد المستحقات المتبقية</span>
+                  <span className="font-black text-xl text-emerald-300 font-mono">
+                    {supplierLedgerData.currentBalance.toFixed(2)} {settings.currency}
+                  </span>
+                </div>
+              </div>
+
+              <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-right text-xs">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold">
+                      <tr>
+                        <th className="p-3">التاريخ</th>
+                        <th className="p-3">نوع الحركة</th>
+                        <th className="p-3">المرجع</th>
+                        <th className="p-3">رقم فاتورة المورد</th>
+                        <th className="p-3 text-emerald-600">مدين (سداد -)</th>
+                        <th className="p-3 text-rose-600">دائن (مشتريات +)</th>
+                        <th className="p-3 font-black text-slate-800">الرصيد التراكمي</th>
+                        <th className="p-3">ملاحظات</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                      {supplierLedgerData.ledgerLines.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} className="p-8 text-center text-slate-400">
+                            لا توجد حركات مسجلة في كشف حساب هذا المورد.
+                          </td>
+                        </tr>
+                      ) : (
+                        supplierLedgerData.ledgerLines.map((line: any) => (
+                          <tr key={line.id} className="hover:bg-slate-50/80 transition">
+                            <td className="p-3 font-mono text-slate-500">{line.date}</td>
+                            <td className="p-3">
+                              <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${
+                                line.type === 'purchase_invoice' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'
+                              }`}>
+                                {line.typeLabel}
+                              </span>
+                            </td>
+                            <td className="p-3 font-mono text-slate-600">{line.reference}</td>
+                            <td className="p-3 font-mono text-slate-600">{line.invoiceNumber}</td>
+                            <td className="p-3 font-mono font-bold text-emerald-600">
+                              {line.debit > 0 ? line.debit.toFixed(2) : '-'}
+                            </td>
+                            <td className="p-3 font-mono font-bold text-rose-600">
+                              {line.credit > 0 ? line.credit.toFixed(2) : '-'}
+                            </td>
+                            <td className="p-3 font-mono font-black text-slate-900 bg-slate-50">
+                              {line.runningBalance.toFixed(2)}
+                            </td>
+                            <td className="p-3 text-slate-400">{line.notes}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )}
+
+      {/* SUB TAB 5: SUPPLIERS DIRECTORY */}
+      {activeSubTab === 'directory' && (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm">
+            <div className="flex items-center gap-2 flex-1 max-w-md bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+              <Search className="w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="ابحث باسم المورد أو رقم الهاتف..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="bg-transparent border-none text-xs sm:text-sm text-slate-700 focus:outline-none w-full"
+              />
+            </div>
+
+            <button
+              onClick={() => setShowSupplierModal(true)}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2 rounded-xl text-xs sm:text-sm transition flex items-center justify-center gap-1.5 shadow-sm"
+            >
+              <Plus className="w-4 h-4" />
+              <span>إضافة مورد جديد</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {suppliers
+              .filter(s => !searchQuery || s.name.toLowerCase().includes(searchQuery.toLowerCase()) || (s.phone && s.phone.includes(searchQuery)))
+              .map(s => (
+                <div key={s.id} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-3 relative hover:border-emerald-500/50 transition">
+                  <div className="flex justify-between items-start">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center font-bold">
+                        <Building className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="font-extrabold text-slate-800 text-base">{s.name}</h4>
+                        <span className="text-xs text-slate-400 dir-ltr inline-block">{s.phone || 'لا يوجد هاتف'}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 flex justify-between items-center text-xs">
+                    <span className="text-slate-400 font-bold">رصيد المستحقات القائم:</span>
+                    <span className="font-mono font-black text-emerald-600 text-sm">
+                      {s.balance} {settings.currency}
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setSelectedLedgerSupplierId(s.id);
+                      setActiveSubTab('ledger');
+                    }}
+                    className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1"
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>عرض كشف الحساب والعمليات</span>
+                  </button>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
+
+      {/* RECEIVING GOODS MODAL */}
+      {showReceiveModal && selectedOrderForReceive && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h3 className="font-extrabold text-slate-800 text-sm flex items-center gap-2">
+                <PackageCheck className="w-5 h-5 text-blue-600" />
+                <span>إذن استلام مخزني لأمر الشراء {selectedOrderForReceive.purchaseNumber}</span>
+              </h3>
+              <button onClick={() => setShowReceiveModal(false)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+            </div>
+
+            <form onSubmit={handleReceiveGoods} className="space-y-4">
+              <p className="text-xs text-slate-500">
+                سيؤدي الاستلام لتسجيل كميات البضائع بالمستودع المحدد وتحديث متوسط تكلفة الشراء المرجح للأصناف آلياً.
+              </p>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">المستودع المستلم</label>
+                <select
+                  value={receiveWarehouseId}
+                  onChange={(e) => setReceiveWarehouseId(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-700"
+                >
+                  <option value="wh_main">المستودع الرئيسي (Main Warehouse)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">ملاحظات الاستلام</label>
+                <input
+                  type="text"
+                  placeholder="مثال: تم الاستلام والتفتيش بسلامة"
+                  value={receiveNotes}
+                  onChange={(e) => setReceiveNotes(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-700"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={receivingLoading}
+                className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition"
+              >
+                {receivingLoading ? 'جاري تحديث المخزون...' : 'تأكيد وإتمام الاستلام المخزني'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* SUPPLIER INVOICE POSTING MODAL */}
+      {showInvoiceModal && selectedOrderForInvoice && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h3 className="font-extrabold text-slate-800 text-sm flex items-center gap-2">
+                <FileText className="w-5 h-5 text-emerald-600" />
+                <span>إصدار فاتورة المورد والتسجيل المحاسبي</span>
+              </h3>
+              <button onClick={() => setShowInvoiceModal(false)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+            </div>
+
+            <form onSubmit={handleIssueSupplierInvoice} className="space-y-4">
+              <p className="text-xs text-slate-500">
+                سيتم إصدار الفاتورة وتوليد القيد المحاسبي المزدوج الآلي لربط حساب المخزون وضريبة القيمة المضافة بمستحقات المورد.
+              </p>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">رقم فاتورة المورد</label>
+                <input
+                  type="text"
+                  value={supplierInvoiceNo}
+                  onChange={(e) => setSupplierInvoiceNo(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-mono text-slate-700"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">طريقة الشراء / الدفع</label>
+                <select
+                  value={invoicePayMethod}
+                  onChange={(e) => setInvoicePayMethod(e.target.value as any)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-700"
+                >
+                  <option value="credit">آجل (على حساب المورد +)</option>
+                  <option value="cash">نقداً (من الخزينة)</option>
+                  <option value="card">بنك / بطاقة شبكة</option>
+                </select>
+              </div>
+
+              <button
+                type="submit"
+                disabled={invoicePostingLoading}
+                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition"
+              >
+                {invoicePostingLoading ? 'جاري الرحيل المحاسبي...' : 'اعتماد وترحيل القيد المحاسبي'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* CREATE SUPPLIER MODAL */}
       {showSupplierModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-md shadow-2xl p-6 relative">
-            <h3 className="font-black text-slate-800 text-base mb-4 flex items-center gap-1.5">
-              <Building className="w-5 h-5 text-slate-600" />
-              إضافة مورد جديد للشركة
-            </h3>
-            
-            <form onSubmit={handleAddSupplier} className="space-y-4 text-xs sm:text-sm">
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-slate-500">اسم المورد أو الشركة المستوردة *</label>
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h3 className="font-extrabold text-slate-800 text-sm">إضافة مورد جديد</h3>
+              <button onClick={() => setShowSupplierModal(false)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+            </div>
+
+            <form onSubmit={handleAddSupplier} className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">اسم الشركة / المورد</label>
                 <input
                   type="text"
                   required
-                  placeholder="مثال: مصنع الرياض للمشروبات"
+                  placeholder="شركة التوريدات العامة"
                   value={newSuppName}
                   onChange={(e) => setNewSuppName(e.target.value)}
-                  className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-slate-900"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-700"
                 />
               </div>
 
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-slate-500">رقم الهاتف</label>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">رقم الهاتف</label>
                 <input
                   type="text"
-                  placeholder="مثال: 0501234567"
+                  placeholder="0500000000"
                   value={newSuppPhone}
                   onChange={(e) => setNewSuppPhone(e.target.value)}
-                  className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-slate-900"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-700"
                 />
               </div>
 
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-slate-500">البريد الإلكتروني</label>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">البريد الإلكتروني</label>
                 <input
                   type="email"
                   placeholder="supplier@example.com"
                   value={newSuppEmail}
                   onChange={(e) => setNewSuppEmail(e.target.value)}
-                  className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-slate-900 font-mono text-left"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-700"
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowSupplierModal(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs"
-                >
-                  إلغاء
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs"
-                >
-                  حفظ المورد
-                </button>
-              </div>
+              <button
+                type="submit"
+                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition"
+              >
+                حفظ بيانات المورد
+              </button>
             </form>
           </div>
         </div>
       )}
     </div>
   );
-}
-
-// Sub components with exact names to satisfy strict eslint rule
-function Trash2Icon(props: React.SVGProps<SVGSVGElement>) {
-  return <Trash2 className={props.className} />;
 }

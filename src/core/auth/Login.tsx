@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { StoreSettings } from '../../types';
-import { Lock, UserCheck, ShieldAlert, KeyRound, ArrowRightLeft, RefreshCw } from 'lucide-react';
+import { Lock, ShieldAlert, KeyRound, ArrowRightLeft, RefreshCw, ShieldCheck } from 'lucide-react';
 import { UserService } from '../../services/api';
+import { authenticateWithFirebase } from './firebase';
+import { PermissionService } from '../permissions/PermissionService';
 
 interface LoginProps {
-  onLoginSuccess: (user: { name: string; role: string; code: string; roleId?: string }) => void;
+  onLoginSuccess: (user: { name: string; role: string; code: string; roleId?: string; token?: string }) => void;
   settings: StoreSettings;
 }
 
@@ -14,6 +16,7 @@ export default function Login({ onLoginSuccess, settings }: LoginProps) {
   const [selectedUser, setSelectedUser] = useState<any | null>(null);
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
+  const [authInProgress, setAuthInProgress] = useState(false);
 
   useEffect(() => {
     UserService.getUsers()
@@ -58,7 +61,8 @@ export default function Login({ onLoginSuccess, settings }: LoginProps) {
     setError('');
   };
 
-  const handleNumberClick = (num: string) => {
+  const handleNumberClick = async (num: string) => {
+    if (authInProgress) return;
     setError('');
     if (pin.length < 4) {
       const nextPin = pin + num;
@@ -67,12 +71,32 @@ export default function Login({ onLoginSuccess, settings }: LoginProps) {
       // Auto-validate once PIN reaches 4 digits
       if (nextPin.length === 4) {
         if (selectedUser && nextPin === selectedUser.pin) {
-          onLoginSuccess({
-            name: selectedUser.name,
-            role: selectedUser.role,
-            code: selectedUser.code,
-            roleId: selectedUser.roleId
-          });
+          setAuthInProgress(true);
+          try {
+            // Trigger Firebase Auth session creation
+            const fbUser = await authenticateWithFirebase();
+            const token = fbUser ? await fbUser.getIdToken() : selectedUser.code;
+
+            const sessionUser = {
+              id: selectedUser.id || selectedUser.code,
+              name: selectedUser.name,
+              role: selectedUser.role,
+              code: selectedUser.code,
+              roleId: selectedUser.roleId,
+              email: selectedUser.email,
+              token
+            };
+
+            PermissionService.setCurrentUser(sessionUser);
+
+            onLoginSuccess(sessionUser);
+          } catch (e: any) {
+            console.error('Auth completion error:', e);
+            setError('حدث خطأ أثناء إجراء المصادقة الآمنة.');
+            setPin('');
+          } finally {
+            setAuthInProgress(false);
+          }
         } else {
           setError('رمز PIN الذي أدخلته غير صحيح. يرجى المحاولة مرة أخرى.');
           setPin('');
@@ -92,8 +116,12 @@ export default function Login({ onLoginSuccess, settings }: LoginProps) {
         
         {/* Branding & Logo */}
         <div className="text-center space-y-2">
-          <div className="w-16 h-16 bg-slate-900 rounded-2xl flex items-center justify-center text-3xl mx-auto shadow-lg shadow-slate-100">
-            {settings.logo || '⚖️'}
+          <div className="w-16 h-16 bg-slate-900 rounded-2xl flex items-center justify-center text-3xl mx-auto shadow-lg shadow-slate-100 overflow-hidden">
+            {settings.logo && (settings.logo.startsWith('http') || settings.logo.startsWith('/') || settings.logo.startsWith('data:image')) ? (
+              <img src={settings.logo} alt="Logo" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+            ) : (
+              settings.logo || '⚖️'
+            )}
           </div>
           <h1 className="text-lg sm:text-xl font-black text-slate-800 tracking-tight">{settings.name}</h1>
           <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">نظام تخطيط موارد المؤسسات المتكامل</p>

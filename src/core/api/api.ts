@@ -1,302 +1,226 @@
 import { Product, Category, Customer, Unit, StoreSettings, Invoice } from '../../types';
-
-// Helper to get authorization headers
-const getHeaders = (headers: Record<string, string> = {}) => {
-  const activeUser = localStorage.getItem('erp_active_user');
-  const result: Record<string, string> = { 
-    'Content-Type': 'application/json',
-    ...headers 
-  };
-  if (activeUser) {
-    try {
-      const u = JSON.parse(activeUser);
-      if (u && u.code) {
-        result['Authorization'] = `Bearer ${u.code}`;
-      }
-    } catch (e) {
-      console.error('Error parsing user for auth header:', e);
-    }
-  }
-  return result;
-};
-
-const handleResponse = async (res: Response) => {
-  if (!res.ok) {
-    const errData = await res.json().catch(() => ({}));
-    throw new Error(errData.error || 'حدث خطأ في الاتصال بالخادم');
-  }
-  const json = await res.json();
-  // Standardize unpacking
-  if (json && typeof json === 'object' && 'success' in json && 'data' in json) {
-    return json.data;
-  }
-  return json;
-};
+import { apiClient } from './client';
 
 export const ProductService = {
-  getProducts: (params?: { page?: number; limit?: number; category?: string; search?: string }): Promise<Product[]> => {
-    let url = '/api/products';
-    if (params) {
-      const q = new URLSearchParams();
-      if (params.page) q.append('page', params.page.toString());
-      if (params.limit) q.append('limit', params.limit.toString());
-      if (params.category) q.append('category', params.category);
-      if (params.search) q.append('search', params.search);
-      url += `?${q.toString()}`;
-    }
-    return fetch(url, { headers: getHeaders() }).then(handleResponse);
-  },
+  getProducts: (params?: { page?: number; limit?: number; category?: string; search?: string }): Promise<Product[]> => 
+    apiClient.get<Product[]>('/api/products', params),
   
   createProduct: (p: Product): Promise<Product> => 
-    fetch('/api/products', {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify(p),
-    }).then(handleResponse),
+    apiClient.post<Product>('/api/products', p),
   
   deleteProduct: (id: string): Promise<void> => 
-    fetch(`/api/products/${id}`, { method: 'DELETE', headers: getHeaders() }).then(handleResponse),
+    apiClient.delete<void>(`/api/products/${id}`),
 };
 
 export const CustomerService = {
-  getCustomers: (params?: { page?: number; limit?: number; search?: string }): Promise<Customer[]> => {
-    let url = '/api/customers';
-    if (params) {
-      const q = new URLSearchParams();
-      if (params.page) q.append('page', params.page.toString());
-      if (params.limit) q.append('limit', params.limit.toString());
-      if (params.search) q.append('search', params.search);
-      url += `?${q.toString()}`;
-    }
-    return fetch(url, { headers: getHeaders() }).then(handleResponse);
-  },
+  getCustomers: (params?: { page?: number; limit?: number; search?: string }): Promise<Customer[]> => 
+    apiClient.get<Customer[]>('/api/customers', params),
   
   createCustomer: (c: Customer): Promise<Customer> => 
-    fetch('/api/customers', {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify(c),
-    }).then(handleResponse),
+    apiClient.post<Customer>('/api/customers', c),
   
   deleteCustomer: (id: string): Promise<void> => 
-    fetch(`/api/customers/${id}`, { method: 'DELETE', headers: getHeaders() }).then(handleResponse),
+    apiClient.delete<void>(`/api/customers/${id}`),
 };
 
 export const SupplierService = {
   getSuppliers: (): Promise<any[]> => 
-    fetch('/api/suppliers', { headers: getHeaders() }).then(handleResponse),
+    apiClient.get<any[]>('/api/suppliers'),
   
   createSupplier: (s: any): Promise<any> => 
-    fetch('/api/suppliers', {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify(s),
-    }).then(handleResponse),
+    apiClient.post<any>('/api/suppliers', s),
 
   deleteSupplier: (id: string): Promise<void> => 
-    fetch(`/api/suppliers/${id}`, { method: 'DELETE', headers: getHeaders() }).then(handleResponse),
+    apiClient.delete<void>(`/api/suppliers/${id}`),
+
+  getSupplierLedger: (id: string): Promise<any> =>
+    apiClient.get<any>(`/api/suppliers/${id}/ledger`),
 };
 
 export const InvoiceService = {
-  getInvoices: (params?: { page?: number; limit?: number; customerId?: string; status?: string; date?: string }): Promise<Invoice[]> => {
-    let url = '/api/invoices';
-    if (params) {
-      const q = new URLSearchParams();
-      if (params.page) q.append('page', params.page.toString());
-      if (params.limit) q.append('limit', params.limit.toString());
-      if (params.customerId) q.append('customerId', params.customerId);
-      if (params.status) q.append('status', params.status);
-      if (params.date) q.append('date', params.date);
-      url += `?${q.toString()}`;
-    }
-    return fetch(url, { headers: getHeaders() }).then(handleResponse);
-  },
+  getInvoices: (params?: { page?: number; limit?: number; customerId?: string; status?: string; date?: string }): Promise<Invoice[]> => 
+    apiClient.get<Invoice[]>('/api/invoices', params),
   
   createInvoice: (invoiceData: any): Promise<Invoice> => 
-    fetch('/api/invoices', {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify(invoiceData),
-    }).then(handleResponse),
+    apiClient.post<Invoice>('/api/invoices', invoiceData),
+
+  returnInvoice: (id: string): Promise<any> =>
+    apiClient.post<any>(`/api/invoices/${id}/return`, {}),
 };
 
 export const SettingsService = {
   getSettings: (): Promise<StoreSettings> => 
-    fetch('/api/settings', { headers: getHeaders() }).then(handleResponse),
+    apiClient.get<StoreSettings>('/api/settings'),
   
   updateSettings: (s: StoreSettings): Promise<StoreSettings> => 
-    fetch('/api/settings', {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify(s),
-    }).then(handleResponse),
+    apiClient.post<StoreSettings>('/api/settings', s),
 };
 
 export const CategoryService = {
   getCategories: (): Promise<Category[]> => 
-    fetch('/api/categories', { headers: getHeaders() }).then(handleResponse),
+    apiClient.get<Category[]>('/api/categories'),
   
   createCategory: (c: Category): Promise<Category> => 
-    fetch('/api/categories', {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify(c),
-    }).then(handleResponse),
+    apiClient.post<Category>('/api/categories', c),
   
   deleteCategory: (id: string): Promise<void> => 
-    fetch(`/api/categories/${id}`, { method: 'DELETE', headers: getHeaders() }).then(handleResponse),
+    apiClient.delete<void>(`/api/categories/${id}`),
 };
 
 export const UnitService = {
   getUnits: (): Promise<Unit[]> => 
-    fetch('/api/units', { headers: getHeaders() }).then(handleResponse),
+    apiClient.get<Unit[]>('/api/units'),
   
   createUnit: (u: Unit): Promise<Unit> => 
-    fetch('/api/units', {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify(u),
-    }).then(handleResponse),
+    apiClient.post<Unit>('/api/units', u),
   
   deleteUnit: (id: string): Promise<void> => 
-    fetch(`/api/units/${id}`, { method: 'DELETE', headers: getHeaders() }).then(handleResponse),
+    apiClient.delete<void>(`/api/units/${id}`),
 };
 
 export const PurchaseService = {
+  getPurchases: (): Promise<any[]> =>
+    apiClient.get<any[]>('/api/purchases'),
+
   createPurchase: (purchaseData: any): Promise<any> => 
-    fetch('/api/purchases', {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify(purchaseData)
-    }).then(handleResponse)
+    apiClient.post<any>('/api/purchases', purchaseData),
+
+  receiveGoods: (id: string, data: any): Promise<any> =>
+    apiClient.post<any>(`/api/purchases/${id}/receive`, data),
+
+  issueSupplierInvoice: (id: string, data: any): Promise<any> =>
+    apiClient.post<any>(`/api/purchases/${id}/invoice`, data)
 };
 
 export const PaymentService = {
   payCustomer: (data: any): Promise<any> => 
-    fetch('/api/payments/customer', {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify(data)
-    }).then(handleResponse),
+    apiClient.post<any>('/api/payments/customer', data),
 
   paySupplier: (data: any): Promise<any> => 
-    fetch('/api/payments/supplier', {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify(data)
-    }).then(handleResponse)
+    apiClient.post<any>('/api/payments/supplier', data)
 };
 
 export const AccountingService = {
   getAccounts: (): Promise<any[]> => 
-    fetch('/api/accounting/accounts', { headers: getHeaders() }).then(handleResponse),
+    apiClient.get<any[]>('/api/accounting/accounts'),
 
   createAccount: (accountData: any): Promise<any> => 
-    fetch('/api/accounting/accounts', {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify(accountData),
-    }).then(handleResponse),
+    apiClient.post<any>('/api/accounting/accounts', accountData),
 
   deleteAccount: (id: string): Promise<void> => 
-    fetch(`/api/accounting/accounts/${id}`, { method: 'DELETE', headers: getHeaders() }).then(handleResponse),
+    apiClient.delete<void>(`/api/accounting/accounts/${id}`),
 
   getLedger: (accountId: string): Promise<any> => 
-    fetch(`/api/accounting/ledger?accountId=${accountId}`, { headers: getHeaders() }).then(handleResponse),
+    apiClient.get<any>(`/api/accounting/ledger`, { accountId }),
 
-  getJournalEntries: (params?: { page?: number; limit?: number; search?: string; date?: string }): Promise<any[]> => {
-    let url = '/api/accounting/journal-entries';
-    if (params) {
-      const q = new URLSearchParams();
-      if (params.page) q.append('page', params.page.toString());
-      if (params.limit) q.append('limit', params.limit.toString());
-      if (params.search) q.append('search', params.search);
-      if (params.date) q.append('date', params.date);
-      url += `?${q.toString()}`;
-    }
-    return fetch(url, { headers: getHeaders() }).then(handleResponse);
-  },
+  getJournalEntries: (params?: { page?: number; limit?: number; search?: string; date?: string }): Promise<any[]> => 
+    apiClient.get<any[]>('/api/accounting/journal-entries', params),
 
   createJournalEntry: (entryData: any): Promise<any> => 
-    fetch('/api/accounting/journal-entries', {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify(entryData),
-    }).then(handleResponse),
+    apiClient.post<any>('/api/accounting/journal-entries', entryData),
+
+  getTrialBalance: (): Promise<any> =>
+    apiClient.get<any>('/api/accounting/trial-balance'),
 
   getPostingRules: (): Promise<any[]> =>
-    fetch('/api/accounting/posting-rules', { headers: getHeaders() }).then(handleResponse),
+    apiClient.get<any[]>('/api/accounting/posting-rules'),
 
   updatePostingRule: (ruleCode: string, accountId: string): Promise<any> =>
-    fetch('/api/accounting/posting-rules', {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify({ ruleCode, accountId }),
-    }).then(handleResponse),
+    apiClient.post<any>('/api/accounting/posting-rules', { ruleCode, accountId }),
 };
 
 export const UserService = {
-  getUsers: (params?: { page?: number; limit?: number; role?: string }): Promise<any[]> => {
-    let url = '/api/users';
-    if (params) {
-      const q = new URLSearchParams();
-      if (params.page) q.append('page', params.page.toString());
-      if (params.limit) q.append('limit', params.limit.toString());
-      if (params.role) q.append('role', params.role);
-      url += `?${q.toString()}`;
-    }
-    return fetch(url, { headers: getHeaders() }).then(handleResponse);
-  },
+  getUsers: (params?: { page?: number; limit?: number; role?: string }): Promise<any[]> => 
+    apiClient.get<any[]>('/api/users', params),
 
   createUser: (userData: any): Promise<any> => 
-    fetch('/api/users', {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify(userData)
-    }).then(handleResponse),
+    apiClient.post<any>('/api/users', userData),
 
   deleteUser: (id: string): Promise<void> => 
-    fetch(`/api/users/${id}`, { method: 'DELETE', headers: getHeaders() }).then(handleResponse),
+    apiClient.delete<void>(`/api/users/${id}`),
 
   getRoles: (): Promise<any[]> => 
-    fetch('/api/roles', { headers: getHeaders() }).then(handleResponse),
+    apiClient.get<any[]>('/api/roles'),
 
   createRole: (roleData: any): Promise<any> => 
-    fetch('/api/roles', {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify(roleData)
-    }).then(handleResponse),
+    apiClient.post<any>('/api/roles', roleData),
 
   deleteRole: (id: string): Promise<void> => 
-    fetch(`/api/roles/${id}`, { method: 'DELETE', headers: getHeaders() }).then(handleResponse),
+    apiClient.delete<void>(`/api/roles/${id}`),
 
   getPermissions: (): Promise<any[]> => 
-    fetch('/api/permissions', { headers: getHeaders() }).then(handleResponse)
+    apiClient.get<any[]>('/api/permissions')
 };
 
 export const CashboxService = {
   getCashboxes: (): Promise<any[]> => 
-    fetch('/api/cashboxes', { headers: getHeaders() }).then(handleResponse),
+    apiClient.get<any[]>('/api/cashboxes'),
 
   createCashbox: (boxData: any): Promise<any> => 
-    fetch('/api/cashboxes', {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify(boxData)
-    }).then(handleResponse),
+    apiClient.post<any>('/api/cashboxes', boxData),
 
   openCashbox: (id: string, startBalance: number): Promise<any> => 
-    fetch('/api/cashboxes/open', {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify({ id, startBalance })
-    }).then(handleResponse),
+    apiClient.post<any>('/api/cashboxes/open', { id, startBalance }),
 
   closeCashbox: (id: string, endBalance: number): Promise<any> => 
-    fetch('/api/cashboxes/close', {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify({ id, endBalance })
-    }).then(handleResponse)
+    apiClient.post<any>('/api/cashboxes/close', { id, endBalance })
+};
+
+export const WarehouseService = {
+  getWarehouses: (): Promise<any[]> => 
+    apiClient.get<any[]>('/api/warehouses'),
+
+  createWarehouse: (data: any): Promise<any> => 
+    apiClient.post<any>('/api/warehouses', data),
+
+  deleteWarehouse: (id: string): Promise<void> => 
+    apiClient.delete<void>(`/api/warehouses/${id}`),
+
+  getStockMoves: (params?: { productId?: string; warehouseId?: string; type?: string }): Promise<any[]> =>
+    apiClient.get<any[]>('/api/stock-moves', params),
+
+  transferStock: (data: { productId: string; fromWarehouseId: string; toWarehouseId: string; quantity: number; notes?: string }): Promise<any> =>
+    apiClient.post<any>('/api/stock-moves/transfer', data),
+
+  adjustPhysicalStock: (data: { productId: string; warehouseId: string; actualQuantity: number; notes?: string }): Promise<any> =>
+    apiClient.post<any>('/api/stock-moves/adjustment', data),
+
+  getProductStockLedger: (productId: string): Promise<any> =>
+    apiClient.get<any>(`/api/inventory/ledger/${productId}`),
+
+  getInventoryValuation: (): Promise<any> =>
+    apiClient.get<any>('/api/inventory/valuation'),
+};
+
+export const CurrencyService = {
+  getCurrencies: (): Promise<any[]> => 
+    apiClient.get<any[]>('/api/currencies'),
+
+  createCurrency: (data: any): Promise<any> => 
+    apiClient.post<any>('/api/currencies', data),
+
+  deleteCurrency: (id: string): Promise<void> => 
+    apiClient.delete<void>(`/api/currencies/${id}`),
+};
+
+export const TaxService = {
+  getTaxes: (): Promise<any[]> => 
+    apiClient.get<any[]>('/api/taxes'),
+
+  createTax: (data: any): Promise<any> => 
+    apiClient.post<any>('/api/taxes', data),
+
+  deleteTax: (id: string): Promise<void> => 
+    apiClient.delete<void>(`/api/taxes/${id}`),
+};
+
+export const PaymentMethodService = {
+  getPaymentMethods: (): Promise<any[]> => 
+    apiClient.get<any[]>('/api/payment-methods'),
+
+  createPaymentMethod: (data: any): Promise<any> => 
+    apiClient.post<any>('/api/payment-methods', data),
+
+  deletePaymentMethod: (id: string): Promise<void> => 
+    apiClient.delete<void>(`/api/payment-methods/${id}`),
 };

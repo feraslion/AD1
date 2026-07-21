@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { StoreSettings, Unit, Category } from '../../types';
 import { Save, RefreshCw, Database, ShieldCheck, Check } from 'lucide-react';
+import { ValidationLayer } from '../utils/validation';
+import { ErrorHandler } from '../utils/errorHandler';
+import { logger } from '../utils/logger';
 
 interface SettingsProps {
   settings: StoreSettings;
@@ -41,9 +44,18 @@ export default function Settings({
   // Active Role simulator
   const [activeRole, setActiveRole] = useState<'owner' | 'manager' | 'cashier'>('owner');
 
+  // Architecture feedback states
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+
   const handleSaveSettings = (e: React.FormEvent) => {
     e.preventDefault();
-    onUpdateSettings({
+    setSuccessMsg(null);
+    setErrorMsg(null);
+    setFormErrors({});
+
+    const newSettings: StoreSettings = {
       name: storeName,
       logo: storeLogo,
       address: storeAddress,
@@ -52,8 +64,25 @@ export default function Settings({
       taxRate: parseFloat(storeTaxRate) || 15,
       currency: storeCurrency,
       thermalPrinterWidth: printerWidth
-    });
-    alert('تم حفظ كود إعدادات المتجر وبيانات الضرائب والطباعة الحرارية بنجاح.');
+    };
+
+    const validation = ValidationLayer.validateSettings(newSettings);
+    if (!validation.isValid) {
+      setFormErrors(validation.errors);
+      setErrorMsg(validation.message || 'بيانات الإعدادات غير مكتملة أو تحتوي على أخطاء.');
+      logger.warn('Settings', 'Settings validation failed', validation.errors);
+      return;
+    }
+
+    try {
+      onUpdateSettings(newSettings);
+      setSuccessMsg('تم حفظ إعدادات المتجر وبيانات الضرائب والطباعة الحرارية بنجاح! 🎉');
+      logger.info('Settings', 'Settings updated successfully', newSettings);
+      setTimeout(() => setSuccessMsg(null), 5000);
+    } catch (err: any) {
+      const displayErr = ErrorHandler.handle(err, 'SettingsUpdate');
+      setErrorMsg(displayErr);
+    }
   };
 
   const handleAddUnitSubmit = (e: React.FormEvent) => {
@@ -104,6 +133,17 @@ export default function Settings({
         </div>
 
         <form onSubmit={handleSaveSettings} className="space-y-4">
+          {successMsg && (
+            <div className="p-3 text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl">
+              {successMsg}
+            </div>
+          )}
+          {errorMsg && (
+            <div className="p-3 text-xs font-bold text-rose-800 bg-rose-50 border border-rose-200 rounded-xl">
+              {errorMsg}
+            </div>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="text-xs font-bold text-slate-500">اسم المتجر / الشركة:</label>
@@ -112,17 +152,21 @@ export default function Settings({
                 required
                 value={storeName}
                 onChange={(e) => setStoreName(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 font-bold text-slate-800"
+                className={`w-full bg-slate-50 border rounded-xl py-2.5 px-3 text-xs focus:outline-none focus:ring-1 font-bold text-slate-800 ${
+                  formErrors.name ? 'border-rose-400 focus:ring-rose-400' : 'border-slate-200 focus:ring-emerald-500'
+                }`}
               />
+              {formErrors.name && <p className="text-[10px] text-rose-500 font-bold">{formErrors.name}</p>}
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-500">رمز الشعار (Emoji أو نص):</label>
+              <label className="text-xs font-bold text-slate-500">رمز الشعار أو رابط الصورة (Emoji / Image URL):</label>
               <input
                 type="text"
                 value={storeLogo}
                 onChange={(e) => setStoreLogo(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-xs focus:outline-none text-slate-800"
+                placeholder="أدخل رمز تعبيري أو رابط صورة شعار المتجر"
               />
             </div>
           </div>
@@ -135,8 +179,11 @@ export default function Settings({
                 required
                 value={storePhone}
                 onChange={(e) => setStorePhone(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-xs focus:outline-none font-mono text-left"
+                className={`w-full bg-slate-50 border rounded-xl py-2.5 px-3 text-xs focus:outline-none font-mono text-left ${
+                  formErrors.phone ? 'border-rose-400 focus:ring-rose-400' : 'border-slate-200 focus:ring-emerald-500'
+                }`}
               />
+              {formErrors.phone && <p className="text-[10px] text-rose-500 font-bold">{formErrors.phone}</p>}
             </div>
 
             <div className="space-y-1">
@@ -147,8 +194,11 @@ export default function Settings({
                 value={storeTaxNumber}
                 onChange={(e) => setStoreTaxNumber(e.target.value)}
                 placeholder="3000XXXXXXXXXX3"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-xs focus:outline-none font-mono text-left"
+                className={`w-full bg-slate-50 border rounded-xl py-2.5 px-3 text-xs focus:outline-none font-mono text-left ${
+                  formErrors.taxNumber ? 'border-rose-400 focus:ring-rose-400' : 'border-slate-200 focus:ring-emerald-500'
+                }`}
               />
+              {formErrors.taxNumber && <p className="text-[10px] text-rose-500 font-bold">{formErrors.taxNumber}</p>}
             </div>
           </div>
 

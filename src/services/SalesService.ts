@@ -5,6 +5,7 @@ export const SalesService = {
   // Underlying API services proxy
   getInvoices: InvoiceService.getInvoices,
   createInvoice: InvoiceService.createInvoice,
+  returnInvoice: InvoiceService.returnInvoice,
 
   // Calculation business logic
   calculateSubtotal: (cart: CartItem[]): number => {

@@ -8,7 +8,11 @@ export {
   UnitService,
   PaymentService,
   UserService,
-  CashboxService
+  CashboxService,
+  WarehouseService,
+  CurrencyService,
+  TaxService,
+  PaymentMethodService
 } from '../core/api/api';
 
 export { SalesService } from './SalesService';

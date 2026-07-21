@@ -60,6 +60,7 @@ export default function Accounting({ settings }: AccountingProps) {
   const [accName, setAccName] = useState('');
   const [accType, setAccType] = useState('asset');
   const [accBalance, setAccBalance] = useState(0);
+  const [accParentId, setAccParentId] = useState('');
   const [accountError, setAccountError] = useState('');
 
   // For General Ledger tab
@@ -134,7 +135,8 @@ export default function Accounting({ settings }: AccountingProps) {
         code: accCode,
         name: accName,
         type: accType,
-        balance: accBalance
+        balance: accBalance,
+        parentId: accParentId || null
       });
       setShowAccountModal(false);
       setEditingAccount(null);
@@ -142,6 +144,7 @@ export default function Accounting({ settings }: AccountingProps) {
       setAccName('');
       setAccType('asset');
       setAccBalance(0);
+      setAccParentId('');
       fetchAccountingData();
     } catch (e: any) {
       setAccountError(e.message || 'خطأ في الاتصال بالخادم.');
@@ -472,6 +475,7 @@ export default function Accounting({ settings }: AccountingProps) {
                                 setAccName(acc.name);
                                 setAccType(acc.type);
                                 setAccBalance(acc.balance);
+                                setAccParentId(acc.parentId || '');
                                 setShowAccountModal(true);
                               }}
                               className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs font-bold"
@@ -1119,6 +1123,24 @@ export default function Accounting({ settings }: AccountingProps) {
                   <option value="equity">حقوق ملكية (Equity)</option>
                   <option value="revenue">إيرادات (Revenue)</option>
                   <option value="expense">مصاريف (Expense)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">الحساب الأب / الحساب الرئيسي (اختياري)</label>
+                <select
+                  value={accParentId}
+                  onChange={(e) => setAccParentId(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs sm:text-sm text-right focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
+                >
+                  <option value="">-- بدون حساب أب (حساب فرعي/رئيسي مستقل) --</option>
+                  {accounts
+                    .filter(a => a.id !== editingAccount?.id)
+                    .map(a => (
+                      <option key={a.id} value={a.id}>
+                        {a.code} - {a.name}
+                      </option>
+                    ))}
                 </select>
               </div>
 

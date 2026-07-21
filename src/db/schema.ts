@@ -334,8 +334,12 @@ export const purchases = pgTable('purchases', {
   subtotal: numeric('subtotal').default('0'),
   taxAmount: numeric('tax_amount').default('0'),
   grandTotal: numeric('grand_total').default('0'),
-  status: text('status').default('completed'), // draft, ordered, completed
+  status: text('status').default('ordered'), // draft, ordered, received, completed, cancelled
+  paymentMethod: text('payment_method').default('cash'), // cash, card, credit
+  supplierInvoiceNumber: text('supplier_invoice_number'),
+  warehouseId: text('warehouse_id').references(() => warehouses.id, { onDelete: 'set null' }),
   supplierId: text('supplier_id').references(() => suppliers.id, { onDelete: 'set null' }),
+  notes: text('notes'),
   createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
@@ -343,7 +347,7 @@ export const purchases = pgTable('purchases', {
   return {
     purchasesCompanyIdx: index('purchases_company_idx').on(table.companyId),
     purchasesSupplierIdx: index('purchases_supplier_idx').on(table.supplierId),
-    purchasesStatusCheck: check('purchases_status_check', sql`${table.status} in ('draft', 'ordered', 'completed')`),
+    purchasesStatusCheck: check('purchases_status_check', sql`${table.status} in ('draft', 'ordered', 'received', 'completed', 'cancelled')`),
   };
 });
 
@@ -513,6 +517,57 @@ export const postingRules = pgTable('posting_rules', {
   ruleCode: text('rule_code').notNull().unique(), // e.g., 'sales_cash_debit', 'sales_bank_debit', etc.
   accountId: text('account_id').notNull().references(() => accounts.id, { onDelete: 'restrict' }),
   description: text('description').notNull(),
+});
+
+// 29. Currencies Table
+export const currencies = pgTable('currencies', {
+  id: text('id').primaryKey(),
+  code: text('code').notNull().unique(), // e.g. 'SAR', 'USD'
+  name: text('name').notNull(), // e.g. 'ريال سعودي'
+  symbol: text('symbol').notNull(), // e.g. 'ر.س'
+  exchangeRate: numeric('exchange_rate').default('1.0'),
+  isDefault: text('is_default').default('false'),
+  companyId: text('company_id').references(() => companies.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => {
+  return {
+    currenciesCodeIdx: index('currencies_code_idx').on(table.code),
+    currenciesCompanyIdx: index('currencies_company_idx').on(table.companyId),
+  };
+});
+
+// 30. Taxes Table
+export const taxes = pgTable('taxes', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(), // e.g. 'ضريبة القيمة المضافة 15%'
+  code: text('code').notNull().unique(), // e.g. 'VAT_15'
+  rate: numeric('rate').notNull().default('15'),
+  isInclusive: text('is_inclusive').default('false'),
+  companyId: text('company_id').references(() => companies.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => {
+  return {
+    taxesCodeIdx: index('taxes_code_idx').on(table.code),
+    taxesCompanyIdx: index('taxes_company_idx').on(table.companyId),
+  };
+});
+
+// 31. Payment Methods Table
+export const paymentMethods = pgTable('payment_methods', {
+  id: text('id').primaryKey(),
+  code: text('code').notNull().unique(), // e.g. 'cash', 'card', 'bank_transfer'
+  name: text('name').notNull(), // e.g. 'نقداً', 'بطاقة ائتمان'
+  accountId: text('account_id').references(() => accounts.id, { onDelete: 'set null' }),
+  companyId: text('company_id').references(() => companies.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => {
+  return {
+    paymentMethodsCodeIdx: index('payment_methods_code_idx').on(table.code),
+    paymentMethodsCompanyIdx: index('payment_methods_company_idx').on(table.companyId),
+  };
 });
 
 
@@ -830,5 +885,30 @@ export const invoiceItemsRelations = relations(invoiceItems, ({ one }) => ({
   invoice: one(invoices, {
     fields: [invoiceItems.invoiceId],
     references: [invoices.id],
+  }),
+}));
+
+export const currenciesRelations = relations(currencies, ({ one }) => ({
+  company: one(companies, {
+    fields: [currencies.companyId],
+    references: [companies.id],
+  }),
+}));
+
+export const taxesRelations = relations(taxes, ({ one }) => ({
+  company: one(companies, {
+    fields: [taxes.companyId],
+    references: [companies.id],
+  }),
+}));
+
+export const paymentMethodsRelations = relations(paymentMethods, ({ one }) => ({
+  company: one(companies, {
+    fields: [paymentMethods.companyId],
+    references: [companies.id],
+  }),
+  account: one(accounts, {
+    fields: [paymentMethods.accountId],
+    references: [accounts.id],
   }),
 }));
