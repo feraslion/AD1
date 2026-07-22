@@ -348,4 +348,36 @@ export class InventoryRepository {
       totalItemsCount: valuationItems.length
     };
   }
+
+  // 8. LOW STOCK ALERTS
+  static async getLowStockAlerts() {
+    const allProducts = await db.select().from(products);
+    
+    const alertItems = allProducts.map(p => {
+      const stock = parseFloat(p.stock || '0');
+      const minStock = parseFloat(p.minStock || '5');
+      const isOut = stock <= 0;
+      const isLow = stock <= minStock;
+
+      if (!isLow && !isOut) return null;
+
+      const suggestedReorder = Math.max(1, (minStock * 2) - stock);
+
+      return {
+        id: p.id,
+        name: p.name,
+        barcode: p.barcode,
+        category: p.category,
+        unit: p.unit,
+        stock,
+        minStock,
+        status: isOut ? 'out_of_stock' : 'low_stock',
+        statusLabel: isOut ? 'نفذت الكمية' : 'مخزون حرج',
+        suggestedReorder,
+        purchasePrice: parseFloat(p.purchasePrice || '0')
+      };
+    }).filter(Boolean);
+
+    return alertItems;
+  }
 }

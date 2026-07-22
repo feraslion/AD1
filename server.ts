@@ -25,12 +25,24 @@ import {
   postingRules,
   warehouses,
   currencies,
+  exchangeRatesHistory,
   taxes,
   paymentMethods
 } from './src/core/database/schema.ts';
-import { AccountingRepository } from './src/core/repositories/AccountingRepository.ts';
-import { InventoryRepository } from './src/core/repositories/InventoryRepository.ts';
-import { PurchaseRepository } from './src/core/repositories/PurchaseRepository.ts';
+import { DEFAULT_CURRENCIES, CurrencyService } from './src/services/CurrencyService.ts';
+import { 
+  UserRepository,
+  CustomerRepository,
+  SupplierRepository,
+  ProductRepository,
+  InventoryRepository,
+  SalesRepository,
+  PurchaseRepository,
+  AccountingRepository,
+  AccountRepository,
+  CurrencyRepository,
+  InvoiceRepository
+} from './src/core/repositories/index.ts';
 import { eq, desc, and, or, like, sql, inArray } from 'drizzle-orm';
 
 const app = express();
@@ -534,13 +546,45 @@ app.get('/api/inventory/valuation', authorize(['manager', 'inventory', 'accounta
   }
 });
 
+// Low Stock Alerts API
+app.get('/api/inventory/low-stock', authorize(['manager', 'inventory', 'accountant']), async (req, res) => {
+  try {
+    const alerts = await InventoryRepository.getLowStockAlerts();
+    sendResponse(res, alerts);
+  } catch (error) {
+    sendError(res, 'فشل جلب تنبيهات المخزون الحرج', error);
+  }
+});
+
 // 3.6 Currencies API
 app.get('/api/currencies', async (req, res) => {
   try {
-    const list = await db.select().from(currencies);
+    let list = await CurrencyRepository.getCurrencies();
+    // If list is empty, seed defaults
+    if (list.length === 0) {
+      for (const curr of DEFAULT_CURRENCIES) {
+        await CurrencyRepository.upsertCurrency(curr);
+      }
+      list = await CurrencyRepository.getCurrencies();
+    }
     sendResponse(res, list);
   } catch (error) {
     sendError(res, 'فشل جلب العملات', error);
+  }
+});
+
+app.post('/api/currencies/seed', authorize(['manager', 'accountant']), async (req, res) => {
+  try {
+    for (const curr of DEFAULT_CURRENCIES) {
+      const existing = await CurrencyRepository.findCurrencyByCode(curr.code);
+      if (!existing) {
+        await CurrencyRepository.upsertCurrency(curr);
+      }
+    }
+    const updatedList = await CurrencyRepository.getCurrencies();
+    sendResponse(res, updatedList);
+  } catch (error) {
+    sendError(res, 'فشل بذر بيانات العملات', error);
   }
 });
 
@@ -550,32 +594,72 @@ app.post('/api/currencies', authorize(['manager', 'accountant']), async (req, re
     if (!data.code || !data.name || !data.symbol) {
       return sendError(res, 'كود واسم ورمز العملة مطلوبة', null, 400);
     }
-    const id = data.id || 'curr_' + Math.random().toString(36).substr(2, 9);
-    const dbValue = {
-      id,
-      code: data.code,
-      name: data.name,
-      symbol: data.symbol,
-      exchangeRate: (data.exchangeRate || 1.0).toString(),
-      isDefault: data.isDefault ? 'true' : 'false',
-      companyId: data.companyId || null
-    };
-    const existing = await db.select().from(currencies).where(eq(currencies.id, id));
-    if (existing.length > 0) {
-      await db.update(currencies).set(dbValue).where(eq(currencies.id, id));
-    } else {
-      await db.insert(currencies).values(dbValue);
-    }
-    sendResponse(res, dbValue);
+
+    const saved = await CurrencyRepository.upsertCurrency(data);
+    sendResponse(res, saved);
   } catch (error) {
     sendError(res, 'فشل حفظ العملة', error);
   }
 });
 
+app.post('/api/currencies/:id/rate', authorize(['manager', 'accountant']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { exchangeRate } = req.body;
+
+    if (!exchangeRate || isNaN(Number(exchangeRate))) {
+      return sendError(res, 'سعر الصرف الجديد مطلوب برقم صحيح', null, 400);
+    }
+
+    const userName = (req as any).user?.name || 'مدير النظام';
+    const updated = await CurrencyRepository.updateRate(id, Number(exchangeRate), userName);
+
+    sendResponse(res, updated);
+  } catch (error) {
+    sendError(res, 'فشل تحديث سعر الصرف', error);
+  }
+});
+
+app.get('/api/currencies/history', async (req, res) => {
+  try {
+    const { currencyId } = req.query;
+    const history = await CurrencyRepository.getExchangeRateHistory(currencyId as string);
+    sendResponse(res, history);
+  } catch (error) {
+    sendError(res, 'فشل جلب سجل تغيير أسعار الصرف', error);
+  }
+});
+
+app.post('/api/currencies/convert', async (req, res) => {
+  try {
+    const { amount, from, to } = req.body;
+    if (amount === undefined || !from || !to) {
+      return sendError(res, 'المبلغ وعملة المصدر وعملة الهدف مطلوبة', null, 400);
+    }
+
+    const allCurrencies = await CurrencyRepository.getCurrencies();
+    const mappedList = allCurrencies.map(c => ({
+      ...c,
+      exchangeRate: parseFloat(c.exchangeRate || '1')
+    }));
+
+    const result = CurrencyService.convertAmount(
+      Number(amount),
+      from,
+      to,
+      mappedList as any
+    );
+
+    sendResponse(res, result);
+  } catch (error) {
+    sendError(res, 'فشل حساب تحويل العملة', error);
+  }
+});
+
 app.delete('/api/currencies/:id', authorize(['manager', 'accountant']), async (req, res) => {
   try {
-    await db.delete(currencies).where(eq(currencies.id, req.params.id));
-    sendResponse(res, { success: true });
+    const result = await CurrencyRepository.deleteCurrency(req.params.id);
+    sendResponse(res, result);
   } catch (error) {
     sendError(res, 'فشل حذف العملة', error);
   }
@@ -745,13 +829,8 @@ app.post('/api/customers', authorize(['manager', 'cashier', 'accountant']), asyn
       creditLimit: (c.creditLimit || 5000).toString()
     };
 
-    const existing = await db.select().from(customers).where(eq(customers.id, id));
-    if (existing.length > 0) {
-      await db.update(customers).set(dbValue).where(eq(customers.id, id));
-    } else {
-      await db.insert(customers).values(dbValue);
-    }
-    sendResponse(res, dbValue);
+    const saved = await CustomerRepository.upsert(dbValue);
+    sendResponse(res, saved);
   } catch (error) {
     sendError(res, 'فشل حفظ العميل', error);
   }
@@ -759,8 +838,8 @@ app.post('/api/customers', authorize(['manager', 'cashier', 'accountant']), asyn
 
 app.delete('/api/customers/:id', authorize(['manager']), async (req, res) => {
   try {
-    await db.delete(customers).where(eq(customers.id, req.params.id));
-    sendResponse(res, { success: true });
+    const result = await CustomerRepository.delete(req.params.id);
+    sendResponse(res, result);
   } catch (error) {
     sendError(res, 'فشل حذف العميل', error);
   }
@@ -769,7 +848,7 @@ app.delete('/api/customers/:id', authorize(['manager']), async (req, res) => {
 // 5. Suppliers API
 app.get('/api/suppliers', async (req, res) => {
   try {
-    const allSuppliers = await db.select().from(suppliers);
+    const allSuppliers = await SupplierRepository.findAll(req.query.search as string);
     const mapped = allSuppliers.map(s => ({
       ...s,
       balance: parseFloat(s.balance || '0')
@@ -797,13 +876,8 @@ app.post('/api/suppliers', authorize(['manager', 'inventory', 'accountant']), as
       balance: (s.balance || 0).toString()
     };
 
-    const existing = await db.select().from(suppliers).where(eq(suppliers.id, id));
-    if (existing.length > 0) {
-      await db.update(suppliers).set(dbValue).where(eq(suppliers.id, id));
-    } else {
-      await db.insert(suppliers).values(dbValue);
-    }
-    sendResponse(res, dbValue);
+    const saved = await SupplierRepository.upsert(dbValue);
+    sendResponse(res, saved);
   } catch (error) {
     sendError(res, 'فشل حفظ المورد', error);
   }
@@ -811,8 +885,8 @@ app.post('/api/suppliers', authorize(['manager', 'inventory', 'accountant']), as
 
 app.delete('/api/suppliers/:id', authorize(['manager']), async (req, res) => {
   try {
-    await db.delete(suppliers).where(eq(suppliers.id, req.params.id));
-    sendResponse(res, { success: true });
+    const result = await SupplierRepository.delete(req.params.id);
+    sendResponse(res, result);
   } catch (error) {
     sendError(res, 'فشل حذف المورد', error);
   }
@@ -821,13 +895,13 @@ app.delete('/api/suppliers/:id', authorize(['manager']), async (req, res) => {
 app.get('/api/suppliers/:id/ledger', async (req, res) => {
   try {
     const { id } = req.params;
-    const [supplier] = await db.select().from(suppliers).where(eq(suppliers.id, id));
+    const supplier = await SupplierRepository.findById(id);
     if (!supplier) {
       return sendError(res, 'المورد غير موجود', null, 404);
     }
 
     // Get all purchases for this supplier
-    const supplierPurchases = await db.select().from(purchases).where(eq(purchases.supplierId, id)).orderBy(desc(purchases.createdAt));
+    const supplierPurchases = await SupplierRepository.getSupplierPurchases(id);
 
     // Get all journal entries related to this supplier (JE-PUR and JE-PAY)
     const allEntries = await AccountingRepository.getJournalEntries();
@@ -852,7 +926,7 @@ app.get('/api/suppliers/:id/ledger', async (req, res) => {
           reference: pur.purchaseNumber,
           invoiceNumber: pur.supplierInvoiceNumber || pur.purchaseNumber,
           debit: 0,
-          credit: gTotal, // Supplier balance increases (liability)
+          credit: gTotal,
           runningBalance,
           notes: pur.notes || `فاتورة مشتريات رقم ${pur.purchaseNumber}`
         });
@@ -862,7 +936,6 @@ app.get('/api/suppliers/:id/ledger', async (req, res) => {
     // Process payments
     for (const entry of supplierEntries) {
       if (entry.entryNumber.startsWith('JE-PAY-') && entry.description.includes(supplier.name)) {
-        // Debit detail to payable account is payment amount
         const debitDetail = entry.details.find((d: any) => Number(d.debit || 0) > 0);
         const amount = debitDetail ? Number(debitDetail.debit || 0) : 0;
         if (amount > 0) {
@@ -874,7 +947,7 @@ app.get('/api/suppliers/:id/ledger', async (req, res) => {
             typeLabel: 'سند صرف مورد',
             reference: entry.entryNumber.replace('JE-', ''),
             invoiceNumber: '-',
-            debit: amount, // Reduces supplier balance
+            debit: amount,
             credit: 0,
             runningBalance,
             notes: entry.description
@@ -902,85 +975,21 @@ app.get('/api/suppliers/:id/ledger', async (req, res) => {
 app.get('/api/invoices', async (req, res) => {
   try {
     const { page, limit, customerId, status, date } = req.query;
-    
-    const conditions = [];
-    if (customerId) {
-      conditions.push(eq(invoices.customerId, customerId as string));
-    }
-    if (status) {
-      conditions.push(eq(invoices.status, status as string));
-    }
-    if (date) {
-      conditions.push(eq(invoices.date, date as string));
-    }
-    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+    const p = page ? parseInt(page as string) : undefined;
+    const l = limit ? parseInt(limit as string) : undefined;
 
-    let total = 0;
-    if (page || limit) {
-      const countResult = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(invoices)
-        .where(whereClause);
-      total = Number(countResult[0]?.count || 0);
-    }
-
-    let query = db.select().from(invoices).orderBy(desc(invoices.createdAt));
-    if (whereClause) {
-      query = query.where(whereClause) as any;
-    }
-
-    if (page && limit) {
-      const p = parseInt(page as string) || 1;
-      const l = parseInt(limit as string) || 10;
-      query = query.limit(l).offset((p - 1) * l) as any;
-    }
-
-    const allInvoices = await query;
-    const invoiceIds = allInvoices.map(inv => inv.id);
-    const allItems = invoiceIds.length > 0
-      ? await db.select().from(invoiceItems).where(inArray(invoiceItems.invoiceId, invoiceIds))
-      : [];
-
-    const mapped = allInvoices.map(inv => {
-      const items = allItems.filter(item => item.invoiceId === inv.id).map(item => ({
-        productId: item.productId,
-        productName: item.productName,
-        price: parseFloat(item.price || '0'),
-        quantity: parseFloat(item.quantity || '0'),
-        discount: parseFloat(item.discount || '0'),
-        discountType: item.discountType as 'fixed' | 'percentage',
-        total: parseFloat(item.total || '0'),
-        taxAmount: parseFloat(item.taxAmount || '0')
-      }));
-
-      return {
-        id: inv.id,
-        invoiceNumber: inv.invoiceNumber,
-        date: inv.date,
-        items,
-        totalWithoutTax: parseFloat(inv.totalWithoutTax || '0'),
-        taxAmount: parseFloat(inv.taxAmount || '0'),
-        discountAmount: parseFloat(inv.discountAmount || '0'),
-        grandTotal: parseFloat(inv.grandTotal || '0'),
-        paymentMethod: inv.paymentMethod as 'cash' | 'card' | 'credit' | 'split',
-        paymentDetails: {
-          cashAmount: parseFloat(inv.cashAmount || '0'),
-          cardAmount: parseFloat(inv.cardAmount || '0')
-        },
-        status: inv.status as 'paid' | 'unpaid' | 'partially_paid',
-        customerId: inv.customerId || undefined,
-        customerName: inv.customerName || undefined,
-        taxNumber: inv.taxNumber || undefined,
-        cashierName: inv.cashierName
-      };
+    const result = await SalesRepository.findAllInvoices({
+      page: p,
+      limit: l,
+      customerId: customerId as string,
+      status: status as string,
+      date: date as string
     });
 
-    if (page || limit) {
-      const p = parseInt(page as string) || 1;
-      const l = parseInt(limit as string) || 10;
-      sendResponse(res, mapped, 200, { page: p, limit: l, total });
+    if (p || l) {
+      sendResponse(res, result.items, 200, { page: p || 1, limit: l || 10, total: result.total });
     } else {
-      sendResponse(res, mapped);
+      sendResponse(res, result.items);
     }
   } catch (error) {
     sendError(res, 'فشل جلب الفواتير', error);
@@ -995,139 +1004,8 @@ app.post('/api/invoices', authorize(['manager', 'cashier']), async (req, res) =>
       return sendError(res, 'خطأ في التحقق من البيانات', errors, 400);
     }
 
-    const invId = inv.id || 'inv_' + Math.random().toString(36).substr(2, 9);
-    
-    await db.insert(invoices).values({
-      id: invId,
-      invoiceNumber: inv.invoiceNumber,
-      date: inv.date,
-      totalWithoutTax: inv.totalWithoutTax.toString(),
-      taxAmount: inv.taxAmount.toString(),
-      discountAmount: inv.discountAmount.toString(),
-      grandTotal: inv.grandTotal.toString(),
-      paymentMethod: inv.paymentMethod,
-      cashAmount: (inv.paymentDetails?.cashAmount || 0).toString(),
-      cardAmount: (inv.paymentDetails?.cardAmount || 0).toString(),
-      status: inv.status,
-      customerId: inv.customerId || null,
-      customerName: inv.customerName || null,
-      taxNumber: inv.taxNumber || null,
-      cashierName: inv.cashierName || 'أحمد الكاشير'
-    });
-
-    let totalCogs = 0;
-    const itemIds = Array.from(new Set(inv.items.map((item: any) => item.productId))) as string[];
-
-    // Bulk fetch all relevant products at once!
-    const productsList = itemIds.length > 0
-      ? await db.select().from(products).where(inArray(products.id, itemIds))
-      : [];
-    const productsMap = new Map(productsList.map(p => [p.id, p]));
-
-    const invoiceItemValues = [];
-
-    for (const item of inv.items) {
-      const itemId = 'item_' + Math.random().toString(36).substr(2, 9);
-      invoiceItemValues.push({
-        id: itemId,
-        invoiceId: invId,
-        productId: item.productId,
-        productName: item.productName,
-        price: item.price.toString(),
-        quantity: item.quantity.toString(),
-        discount: item.discount.toString(),
-        discountType: item.discountType,
-        total: item.total.toString(),
-        taxAmount: item.taxAmount.toString()
-      });
-
-      const product = productsMap.get(item.productId);
-      if (product) {
-        const purchasePrice = parseFloat(product.purchasePrice || '0');
-        totalCogs += purchasePrice * item.quantity;
-      }
-    }
-
-    // Bulk insert all invoice items at once!
-    if (invoiceItemValues.length > 0) {
-      await db.insert(invoiceItems).values(invoiceItemValues);
-    }
-
-    // Parallelize inventory stock updates!
-    const stockUpdatePromises = inv.items.map(async (item: any) => {
-      const product = productsMap.get(item.productId);
-      if (product) {
-        const currentStock = parseFloat(product.stock || '0');
-        if (currentStock !== 999) {
-          const nextStock = Math.max(0, currentStock - item.quantity);
-          await db.update(products).set({
-            stock: nextStock.toString()
-          }).where(eq(products.id, item.productId));
-
-          await InventoryRepository.recordStockMove({
-            productId: item.productId,
-            fromWarehouseId: 'wh_main',
-            quantity: item.quantity,
-            type: 'sale',
-            referenceId: inv.id,
-            notes: `فاتورة مبيعات رقم ${inv.invoiceNumber}`
-          });
-        }
-      }
-    });
-
-    await Promise.all(stockUpdatePromises);
-
-    // Double-entry ledger integration
-    const accountingLines = [];
-
-    const cashAcc = await getAccountByRule('sales_cash_debit', 'acc_cash');
-    const bankAcc = await getAccountByRule('sales_bank_debit', 'acc_bank');
-    const recAcc = await getAccountByRule('sales_credit_debit', 'acc_receivable');
-    const salesAcc = await getAccountByRule('sales_revenue_credit', 'acc_sales');
-    const taxAcc = await getAccountByRule('sales_tax_credit', 'acc_tax');
-    const cogsAcc = await getAccountByRule('sales_cogs_debit', 'acc_cogs');
-    const invAcc = await getAccountByRule('sales_inventory_credit', 'acc_inventory');
-
-    if (inv.paymentMethod === 'cash') {
-      accountingLines.push({ accountId: cashAcc, debit: inv.grandTotal, credit: 0 });
-    } else if (inv.paymentMethod === 'card') {
-      accountingLines.push({ accountId: bankAcc, debit: inv.grandTotal, credit: 0 });
-    } else if (inv.paymentMethod === 'credit') {
-      accountingLines.push({ accountId: recAcc, debit: inv.grandTotal, credit: 0 });
-      if (inv.customerId) {
-        const [customer] = await db.select().from(customers).where(eq(customers.id, inv.customerId));
-        if (customer) {
-          const newBal = parseFloat(customer.balance || '0') + inv.grandTotal;
-          await db.update(customers).set({ balance: newBal.toString() }).where(eq(customers.id, inv.customerId));
-        }
-      }
-    } else if (inv.paymentMethod === 'split') {
-      const cashAmt = inv.paymentDetails?.cashAmount || 0;
-      const cardAmt = inv.paymentDetails?.cardAmount || 0;
-      if (cashAmt > 0) accountingLines.push({ accountId: cashAcc, debit: cashAmt, credit: 0 });
-      if (cardAmt > 0) accountingLines.push({ accountId: bankAcc, debit: cardAmt, credit: 0 });
-    }
-
-    accountingLines.push({ accountId: salesAcc, debit: 0, credit: inv.totalWithoutTax });
-
-    if (inv.taxAmount > 0) {
-      accountingLines.push({ accountId: taxAcc, debit: 0, credit: inv.taxAmount });
-    }
-
-    if (totalCogs > 0) {
-      accountingLines.push({ accountId: cogsAcc, debit: totalCogs, credit: 0 });
-      accountingLines.push({ accountId: invAcc, debit: 0, credit: totalCogs });
-    }
-
-    await postJournalEntry(
-      `JE-INV-${inv.invoiceNumber}`,
-      `فاتورة مبيعات رقم ${inv.invoiceNumber}`,
-      inv.date,
-      accountingLines
-    );
-
-    sendResponse(res, { success: true, invoiceId: invId });
+    const result = await SalesRepository.createSaleInvoice(inv);
+    sendResponse(res, result);
   } catch (error) {
     sendError(res, 'فشل إنشاء الفاتورة', error);
   }
@@ -1136,111 +1014,8 @@ app.post('/api/invoices', authorize(['manager', 'cashier']), async (req, res) =>
 app.post('/api/invoices/:id/return', authorize(['manager', 'cashier', 'accountant']), async (req, res) => {
   try {
     const { id } = req.params;
-    const [inv] = await db.select().from(invoices).where(eq(invoices.id, id));
-    if (!inv) {
-      return sendError(res, 'الفاتورة غير موجودة', null, 404);
-    }
-    if (inv.status === 'returned') {
-      return sendError(res, 'تم إرجاع هذه الفاتورة مسبقاً', null, 400);
-    }
-
-    // 1. Mark invoice as returned
-    await db.update(invoices).set({ status: 'returned' }).where(eq(invoices.id, id));
-
-    // 2. Fetch items and restore Inventory stock
-    const items = await db.select().from(invoiceItems).where(eq(invoiceItems.invoiceId, id));
-    let totalCogs = 0;
-
-    const itemIds = Array.from(new Set(items.map((item) => item.productId))) as string[];
-    const productsList = itemIds.length > 0 
-      ? await db.select().from(products).where(inArray(products.id, itemIds)) 
-      : [];
-    const productsMap = new Map(productsList.map(p => [p.id, p]));
-
-    for (const item of items) {
-      const product = productsMap.get(item.productId);
-      if (product) {
-        const currentStock = parseFloat(product.stock || '0');
-        const qty = parseFloat(item.quantity || '0');
-        const purchasePrice = parseFloat(product.purchasePrice || '0');
-        totalCogs += purchasePrice * qty;
-
-        if (currentStock !== 999) {
-          await db.update(products).set({
-            stock: (currentStock + qty).toString()
-          }).where(eq(products.id, item.productId));
-
-          await InventoryRepository.recordStockMove({
-            productId: item.productId,
-            toWarehouseId: 'wh_main',
-            quantity: qty,
-            type: 'sale',
-            referenceId: id,
-            notes: `مرتجع مبيعات للفاتورة رقم ${inv.invoiceNumber}`
-          });
-        }
-      }
-    }
-
-    // 3. Customer balance update if credit sale
-    const grandTotal = parseFloat(inv.grandTotal || '0');
-    const totalWithoutTax = parseFloat(inv.totalWithoutTax || '0');
-    const taxAmount = parseFloat(inv.taxAmount || '0');
-
-    if (inv.paymentMethod === 'credit' && inv.customerId) {
-      const [customer] = await db.select().from(customers).where(eq(customers.id, inv.customerId));
-      if (customer) {
-        const currentBal = parseFloat(customer.balance || '0');
-        const newBal = Math.max(0, currentBal - grandTotal);
-        await db.update(customers).set({ balance: newBal.toString() }).where(eq(customers.id, inv.customerId));
-      }
-    }
-
-    // 4. Create reverse accounting journal entries
-    const cashAcc = await getAccountByRule('sales_cash_debit', 'acc_cash');
-    const bankAcc = await getAccountByRule('sales_bank_debit', 'acc_bank');
-    const recAcc = await getAccountByRule('sales_credit_debit', 'acc_receivable');
-    const salesAcc = await getAccountByRule('sales_revenue_credit', 'acc_sales');
-    const taxAcc = await getAccountByRule('sales_tax_credit', 'acc_tax');
-    const cogsAcc = await getAccountByRule('sales_cogs_debit', 'acc_cogs');
-    const invAcc = await getAccountByRule('sales_inventory_credit', 'acc_inventory');
-
-    const accountingLines = [];
-
-    // Reverse revenue & tax (Debit Revenue, Debit Tax)
-    accountingLines.push({ accountId: salesAcc, debit: totalWithoutTax, credit: 0 });
-    if (taxAmount > 0) {
-      accountingLines.push({ accountId: taxAcc, debit: taxAmount, credit: 0 });
-    }
-
-    // Credit Cash / Bank / Customer
-    if (inv.paymentMethod === 'cash') {
-      accountingLines.push({ accountId: cashAcc, debit: 0, credit: grandTotal });
-    } else if (inv.paymentMethod === 'card') {
-      accountingLines.push({ accountId: bankAcc, debit: 0, credit: grandTotal });
-    } else if (inv.paymentMethod === 'credit') {
-      accountingLines.push({ accountId: recAcc, debit: 0, credit: grandTotal });
-    } else if (inv.paymentMethod === 'split') {
-      const cashAmt = parseFloat(inv.cashAmount || '0');
-      const cardAmt = parseFloat(inv.cardAmount || '0');
-      if (cashAmt > 0) accountingLines.push({ accountId: cashAcc, debit: 0, credit: cashAmt });
-      if (cardAmt > 0) accountingLines.push({ accountId: bankAcc, debit: 0, credit: cardAmt });
-    }
-
-    // Reverse Inventory & COGS (Debit Inventory, Credit COGS)
-    if (totalCogs > 0) {
-      accountingLines.push({ accountId: invAcc, debit: totalCogs, credit: 0 });
-      accountingLines.push({ accountId: cogsAcc, debit: 0, credit: totalCogs });
-    }
-
-    const journalResult = await AccountingRepository.postJournalEntry(
-      `JE-RET-${inv.invoiceNumber}`,
-      `مرتجع مبيعات للفاتورة رقم ${inv.invoiceNumber}`,
-      new Date().toISOString().split('T')[0],
-      accountingLines
-    );
-
-    sendResponse(res, { success: true, journalEntry: journalResult });
+    const result = await SalesRepository.returnSaleInvoice(id);
+    sendResponse(res, result);
   } catch (error: any) {
     sendError(res, error.message || 'فشل معالجة مرتجع الفاتورة', error);
   }
@@ -1378,7 +1153,7 @@ app.delete('/api/accounting/accounts/:id', authorize(['manager', 'accountant']),
 
 app.get('/api/accounting/ledger', authorize(['manager', 'accountant']), async (req, res) => {
   try {
-    const { accountId, startDate, endDate } = req.query;
+    const { accountId, startDate, endDate, currency } = req.query;
     if (!accountId) {
       return sendError(res, 'يجب تحديد معرف الحساب accountId', null, 400);
     }
@@ -1386,7 +1161,8 @@ app.get('/api/accounting/ledger', authorize(['manager', 'accountant']), async (r
     const result = await AccountingRepository.getGeneralLedger(
       accountId as string, 
       startDate as string, 
-      endDate as string
+      endDate as string,
+      currency as string
     );
     sendResponse(res, result);
   } catch (error: any) {
@@ -1396,7 +1172,8 @@ app.get('/api/accounting/ledger', authorize(['manager', 'accountant']), async (r
 
 app.get('/api/accounting/trial-balance', authorize(['manager', 'accountant']), async (req, res) => {
   try {
-    const trialBalanceData = await AccountingRepository.getTrialBalance();
+    const { currency } = req.query;
+    const trialBalanceData = await AccountingRepository.getTrialBalance(currency as string);
     sendResponse(res, trialBalanceData);
   } catch (error) {
     sendError(res, 'فشل جلب ميزان المراجعة', error);
@@ -1405,8 +1182,8 @@ app.get('/api/accounting/trial-balance', authorize(['manager', 'accountant']), a
 
 app.get('/api/accounting/journal-entries', authorize(['manager', 'accountant']), async (req, res) => {
   try {
-    const { search, date } = req.query;
-    const entries = await AccountingRepository.getJournalEntries(search as string, date as string);
+    const { search, date, currency } = req.query;
+    const entries = await AccountingRepository.getJournalEntries(search as string, date as string, currency as string);
     sendResponse(res, entries);
   } catch (error) {
     sendError(res, 'فشل جلب قيود اليومية', error);
@@ -1415,15 +1192,38 @@ app.get('/api/accounting/journal-entries', authorize(['manager', 'accountant']),
 
 app.post('/api/accounting/journal-entries', authorize(['manager', 'accountant']), async (req, res) => {
   try {
-    const { description, date, lines } = req.body;
+    const { description, date, lines, currency, baseCurrency, exchangeRate, foreignAmount } = req.body;
     if (!description || !date || !lines || !Array.isArray(lines) || lines.length === 0) {
       return sendError(res, 'بيانات قيد اليومية غير مكتملة', null, 400);
     }
     const entryNum = 'JE-MAN-' + Math.floor(1000 + Math.random() * 9000);
-    const result = await AccountingRepository.postJournalEntry(entryNum, description, date, lines);
+    const result = await AccountingRepository.postJournalEntry(entryNum, description, date, lines, {
+      currency,
+      baseCurrency,
+      exchangeRate: exchangeRate ? parseFloat(exchangeRate) : undefined,
+      foreignAmount: foreignAmount ? parseFloat(foreignAmount) : undefined
+    });
     sendResponse(res, { success: true, ...result });
   } catch (error: any) {
     sendError(res, error.message || 'فشل حفظ القيد المحاسبي اليدوي', error, 400);
+  }
+});
+
+app.post('/api/currencies/revaluate', authorize(['manager', 'accountant']), async (req, res) => {
+  try {
+    const { currencyCode, newExchangeRate, revaluationDate } = req.body;
+    if (!currencyCode || !newExchangeRate) {
+      return sendError(res, 'رمز العملة وسعر الصرف الجديد مطلوبان', null, 400);
+    }
+    const dateToUse = revaluationDate || new Date().toISOString().split('T')[0];
+    const result = await AccountingRepository.revaluateForeignAccounts(
+      currencyCode,
+      parseFloat(newExchangeRate),
+      dateToUse
+    );
+    sendResponse(res, result);
+  } catch (error: any) {
+    sendError(res, error.message || 'فشل تنفيذ عملية إعادة تقييم العملة', error, 400);
   }
 });
 
@@ -1825,102 +1625,13 @@ app.get('/api/purchases', async (req, res) => {
 
 app.post('/api/purchases', authorize(['manager', 'inventory', 'accountant']), async (req, res) => {
   try {
-    const { supplierId, date, items, paymentMethod = 'cash', invoiceNumber, taxAmount = 0, totalWithoutTax = 0, grandTotal = 0, status = 'completed', warehouseId = 'wh_main', notes = '' } = req.body;
-    if (!invoiceNumber || !items || items.length === 0) {
+    const { items, invoiceNumber, purchaseNumber } = req.body;
+    if ((!invoiceNumber && !purchaseNumber) || !items || items.length === 0) {
       return sendError(res, 'بيانات المشتريات غير مكتملة', null, 400);
     }
     
-    const purId = `pur_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-    const compId = 'comp_default';
-
-    // 1. Create Purchase record in database
-    const purchaseVal = {
-      id: purId,
-      companyId: compId,
-      purchaseNumber: invoiceNumber,
-      supplierInvoiceNumber: req.body.supplierInvoiceNumber || invoiceNumber,
-      date: date || new Date().toISOString().split('T')[0],
-      subtotal: totalWithoutTax.toString(),
-      taxAmount: taxAmount.toString(),
-      grandTotal: grandTotal.toString(),
-      status: status, // 'draft' | 'ordered' | 'received' | 'completed'
-      paymentMethod: paymentMethod,
-      warehouseId: warehouseId,
-      supplierId: supplierId || null,
-      notes: notes
-    };
-
-    const pItemsVal = items.map((item: any) => ({
-      id: `pi_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-      purchaseId: purId,
-      productId: item.productId,
-      purchasePrice: (item.purchasePrice || 0).toString(),
-      quantity: (item.quantity || 0).toString(),
-      total: ((item.quantity || 0) * (item.purchasePrice || 0)).toString(),
-      taxAmount: ((item.taxAmount || 0)).toString()
-    }));
-
-    await PurchaseRepository.createPurchaseOrder(purchaseVal, pItemsVal);
-
-    // 2. If status is 'completed' or 'received', perform receiving & inventory update immediately
-    if (status === 'completed' || status === 'received') {
-      const updatePromises = items.map(async (item: any) => {
-        await InventoryRepository.updateWeightedAverageCostOnPurchase(
-          item.productId,
-          parseFloat(item.quantity || '0'),
-          parseFloat(item.purchasePrice || '0')
-        );
-        await InventoryRepository.recordStockMove({
-          productId: item.productId,
-          toWarehouseId: warehouseId,
-          quantity: parseFloat(item.quantity || '0'),
-          type: 'purchase',
-          referenceId: invoiceNumber,
-          notes: `استلام مشتريات رقم ${invoiceNumber}`
-        });
-      });
-      await Promise.all(updatePromises);
-    }
-
-    // 3. If status is 'completed', post accounting journal entry and update supplier balance if credit
-    if (status === 'completed') {
-      if (paymentMethod === 'credit' && supplierId) {
-        const [supplier] = await db.select().from(suppliers).where(eq(suppliers.id, supplierId));
-        if (supplier) {
-          const nextBalance = parseFloat(supplier.balance || '0') + grandTotal;
-          await db.update(suppliers).set({ balance: nextBalance.toString() }).where(eq(suppliers.id, supplierId));
-        }
-      }
-
-      const cashAcc = await getAccountByRule('purchase_cash_credit', 'acc_cash');
-      const bankAcc = await getAccountByRule('purchase_bank_credit', 'acc_bank');
-      const payAcc = await getAccountByRule('purchase_credit_credit', 'acc_payable');
-      const invAcc = await getAccountByRule('purchase_inventory_debit', 'acc_inventory');
-      const taxAcc = await getAccountByRule('purchase_tax_debit', 'acc_tax');
-
-      const accountingLines = [];
-      accountingLines.push({ accountId: invAcc, debit: totalWithoutTax, credit: 0 });
-      if (taxAmount > 0) {
-        accountingLines.push({ accountId: taxAcc, debit: taxAmount, credit: 0 });
-      }
-
-      if (paymentMethod === 'cash') {
-        accountingLines.push({ accountId: cashAcc, debit: 0, credit: grandTotal });
-      } else if (paymentMethod === 'card') {
-        accountingLines.push({ accountId: bankAcc, debit: 0, credit: grandTotal });
-      } else if (paymentMethod === 'credit') {
-        accountingLines.push({ accountId: payAcc, debit: 0, credit: grandTotal });
-      }
-
-      await postJournalEntry(
-        `JE-PUR-${invoiceNumber}`,
-        `فاتورة مشتريات رقم ${invoiceNumber}`,
-        date,
-        accountingLines
-      );
-    }
-
-    sendResponse(res, { success: true, purchaseId: purId });
+    const result = await PurchaseRepository.createPurchaseOrder(req.body);
+    sendResponse(res, result);
   } catch (error) {
     sendError(res, 'فشل تسجيل فاتورة أو أمر المشتريات', error);
   }
@@ -1930,32 +1641,10 @@ app.post('/api/purchases', authorize(['manager', 'inventory', 'accountant']), as
 app.post('/api/purchases/:id/receive', authorize(['manager', 'inventory']), async (req, res) => {
   try {
     const { id } = req.params;
-    const { warehouseId = 'wh_main', notes = '' } = req.body;
-    const pur = await PurchaseRepository.findById(id);
-    if (!pur) return sendError(res, 'أمر الشراء غير موجود', null, 404);
-
-    const updatePromises = pur.items.map(async (item: any) => {
-      await InventoryRepository.updateWeightedAverageCostOnPurchase(
-        item.productId,
-        parseFloat(item.quantity || '0'),
-        parseFloat(item.purchasePrice || '0')
-      );
-      await InventoryRepository.recordStockMove({
-        productId: item.productId,
-        toWarehouseId: warehouseId,
-        quantity: parseFloat(item.quantity || '0'),
-        type: 'purchase',
-        referenceId: pur.purchaseNumber,
-        notes: `إذن استلام مخزني لأمر الشراء ${pur.purchaseNumber} ${notes}`
-      });
-    });
-
-    await Promise.all(updatePromises);
-    await PurchaseRepository.updatePurchaseStatus(id, 'received', { warehouseId, notes });
-
-    sendResponse(res, { success: true, message: 'تم استلام وتحديث المخزون بنجاح' });
-  } catch (error) {
-    sendError(res, 'فشل استلام البضائع', error);
+    const result = await PurchaseRepository.receiveGoods(id, req.body || {});
+    sendResponse(res, result);
+  } catch (error: any) {
+    sendError(res, error.message || 'فشل استلام البضائع', error);
   }
 });
 
@@ -1963,57 +1652,10 @@ app.post('/api/purchases/:id/receive', authorize(['manager', 'inventory']), asyn
 app.post('/api/purchases/:id/invoice', authorize(['manager', 'accountant']), async (req, res) => {
   try {
     const { id } = req.params;
-    const { supplierInvoiceNumber, paymentMethod = 'credit', date = new Date().toISOString().split('T')[0] } = req.body;
-    const pur = await PurchaseRepository.findById(id);
-    if (!pur) return sendError(res, 'أمر الشراء غير موجود', null, 404);
-
-    const subtotal = parseFloat(pur.subtotal || '0');
-    const taxAmount = parseFloat(pur.taxAmount || '0');
-    const grandTotal = parseFloat(pur.grandTotal || '0');
-
-    if (paymentMethod === 'credit' && pur.supplierId) {
-      const [supplier] = await db.select().from(suppliers).where(eq(suppliers.id, pur.supplierId));
-      if (supplier) {
-        const nextBalance = parseFloat(supplier.balance || '0') + grandTotal;
-        await db.update(suppliers).set({ balance: nextBalance.toString() }).where(eq(suppliers.id, pur.supplierId));
-      }
-    }
-
-    const cashAcc = await getAccountByRule('purchase_cash_credit', 'acc_cash');
-    const bankAcc = await getAccountByRule('purchase_bank_credit', 'acc_bank');
-    const payAcc = await getAccountByRule('purchase_credit_credit', 'acc_payable');
-    const invAcc = await getAccountByRule('purchase_inventory_debit', 'acc_inventory');
-    const taxAcc = await getAccountByRule('purchase_tax_debit', 'acc_tax');
-
-    const accountingLines = [];
-    accountingLines.push({ accountId: invAcc, debit: subtotal, credit: 0 });
-    if (taxAmount > 0) {
-      accountingLines.push({ accountId: taxAcc, debit: taxAmount, credit: 0 });
-    }
-
-    if (paymentMethod === 'cash') {
-      accountingLines.push({ accountId: cashAcc, debit: 0, credit: grandTotal });
-    } else if (paymentMethod === 'card') {
-      accountingLines.push({ accountId: bankAcc, debit: 0, credit: grandTotal });
-    } else if (paymentMethod === 'credit') {
-      accountingLines.push({ accountId: payAcc, debit: 0, credit: grandTotal });
-    }
-
-    await postJournalEntry(
-      `JE-PUR-${supplierInvoiceNumber || pur.purchaseNumber}`,
-      `فاتورة مورد رقم ${supplierInvoiceNumber || pur.purchaseNumber}`,
-      date,
-      accountingLines
-    );
-
-    await PurchaseRepository.updatePurchaseStatus(id, 'completed', {
-      supplierInvoiceNumber: supplierInvoiceNumber || pur.purchaseNumber,
-      paymentMethod
-    });
-
-    sendResponse(res, { success: true, message: 'تم إصدار فاتورة المورد وتطبيق القيد المحاسبي المزدوج بنجاح' });
-  } catch (error) {
-    sendError(res, 'فشل اعتماد فاتورة المورد', error);
+    const result = await PurchaseRepository.issueSupplierInvoice(id, req.body || {});
+    sendResponse(res, result);
+  } catch (error: any) {
+    sendError(res, error.message || 'فشل إصدار فاتورة المورد', error);
   }
 });
 
@@ -2025,11 +1667,10 @@ app.post('/api/payments/customer', authorize(['manager', 'cashier', 'accountant'
       return sendError(res, 'بيانات سند القبض غير كاملة أو غير صالحة', null, 400);
     }
     
-    const [customer] = await db.select().from(customers).where(eq(customers.id, customerId));
+    const customer = await CustomerRepository.findById(customerId);
     if (!customer) throw new Error('العميل غير موجود');
     
-    const nextBalance = parseFloat(customer.balance || '0') - amount;
-    await db.update(customers).set({ balance: nextBalance.toString() }).where(eq(customers.id, customerId));
+    await CustomerRepository.adjustBalance(customerId, -amount);
 
     const cashAcc = await getAccountByRule('payment_customer_debit_cash', 'acc_cash');
     const bankAcc = await getAccountByRule('payment_customer_debit_bank', 'acc_bank');
@@ -2064,11 +1705,10 @@ app.post('/api/payments/supplier', authorize(['manager', 'inventory', 'accountan
       return sendError(res, 'بيانات سند الصرف غير كاملة أو غير صالحة', null, 400);
     }
     
-    const [supplier] = await db.select().from(suppliers).where(eq(suppliers.id, supplierId));
+    const supplier = await SupplierRepository.findById(supplierId);
     if (!supplier) throw new Error('المورد غير موجود');
     
-    const nextBalance = parseFloat(supplier.balance || '0') - amount;
-    await db.update(suppliers).set({ balance: nextBalance.toString() }).where(eq(suppliers.id, supplierId));
+    await SupplierRepository.adjustBalance(supplierId, -amount);
 
     const payDebAcc = await getAccountByRule('payment_supplier_debit', 'acc_payable');
     const cashAcc = await getAccountByRule('payment_supplier_credit_cash', 'acc_cash');
@@ -2111,8 +1751,10 @@ async function seedDefaultData() {
         { id: 'acc_tax', code: '2201', name: 'ضريبة القيمة المضافة المستحقة (VAT)', type: 'liability', balance: '0' },
         { id: 'acc_equity', code: '3101', name: 'رأس المال (Capital)', type: 'equity', balance: '0' },
         { id: 'acc_sales', code: '4101', name: 'إيراد المبيعات (Sales Revenue)', type: 'revenue', balance: '0' },
+        { id: 'acc_forex_gain', code: '4201', name: 'أرباح فروق العملة (Gain on FX)', type: 'revenue', balance: '0' },
         { id: 'acc_cogs', code: '5101', name: 'تكلفة البضاعة المباعة (COGS)', type: 'expense', balance: '0' },
         { id: 'acc_expense', code: '5201', name: 'المصاريف العمومية والتشغيلية (Expenses)', type: 'expense', balance: '0' },
+        { id: 'acc_forex_loss', code: '5202', name: 'خسائر فروق العملة (Loss on FX)', type: 'expense', balance: '0' },
       ];
       await db.insert(accounts).values(defaultAccounts);
       console.log('Chart of Accounts seeded successfully.');
@@ -2279,9 +1921,27 @@ async function seedDefaultData() {
         { id: 'pr_pm_s_deb', ruleCode: 'payment_supplier_debit', accountId: 'acc_payable', description: 'حساب مدين تسوية مورد (سند صرف)' },
         { id: 'pr_pm_s_cred_cash', ruleCode: 'payment_supplier_credit_cash', accountId: 'acc_cash', description: 'حساب دائن سندات الصرف نقدًا (الصندوق)' },
         { id: 'pr_pm_s_cred_bank', ruleCode: 'payment_supplier_credit_bank', accountId: 'acc_bank', description: 'حساب دائن سندات الصرف بنكًا (الشبكة)' },
+        { id: 'pr_forex_gain', ruleCode: 'forex_gain_credit', accountId: 'acc_forex_gain', description: 'حساب أرباح فروق تسعير العملات' },
+        { id: 'pr_forex_loss', ruleCode: 'forex_loss_debit', accountId: 'acc_forex_loss', description: 'حساب خسائر فروق تسعير العملات' },
       ];
       await db.insert(postingRules).values(defaultRules);
       console.log('Posting Rules seeded successfully.');
+    }
+
+    const existingCurrencies = await db.select().from(currencies);
+    if (existingCurrencies.length === 0) {
+      console.log('Seeding default Currencies (SAR, USD, SYP, TRY)...');
+      for (const curr of DEFAULT_CURRENCIES) {
+        await db.insert(currencies).values({
+          id: curr.id,
+          code: curr.code,
+          name: curr.name,
+          symbol: curr.symbol,
+          exchangeRate: curr.exchangeRate.toString(),
+          isDefault: curr.isDefault ? 'true' : 'false',
+        });
+      }
+      console.log('Default Currencies seeded successfully.');
     }
   } catch (error) {
     console.error('Error seeding database default data:', error);

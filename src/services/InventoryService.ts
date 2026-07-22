@@ -24,6 +24,7 @@ export const InventoryService = {
   adjustPhysicalStock: WarehouseService.adjustPhysicalStock,
   getProductStockLedger: WarehouseService.getProductStockLedger,
   getInventoryValuation: WarehouseService.getInventoryValuation,
+  getLowStockAlerts: WarehouseService.getLowStockAlerts,
 
   // Calculation and filtering business logic
   totalStockItems: (products: Product[]): number => {

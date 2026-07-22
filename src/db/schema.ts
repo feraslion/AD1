@@ -374,6 +374,8 @@ export const accounts = pgTable('accounts', {
   name: text('name').notNull(),
   type: text('type').notNull(), // asset, liability, equity, revenue, expense
   balance: numeric('balance').default('0'),
+  currency: text('currency').default('SAR'), // account default currency
+  foreignBalance: numeric('foreign_balance').default('0'),
   companyId: text('company_id').references(() => companies.id, { onDelete: 'cascade' }),
   branchId: text('branch_id').references(() => branches.id, { onDelete: 'cascade' }),
   parentId: text('parent_id'), // hierarchical structure
@@ -393,6 +395,11 @@ export const journalEntries = pgTable('journal_entries', {
   description: text('description'),
   date: text('date').notNull(),
   status: text('status').default('posted'), // draft, posted
+  currency: text('currency').default('SAR'), // Transaction currency (USD, SYP, TRY, SAR)
+  baseCurrency: text('base_currency').default('SAR'), // System base currency (SAR)
+  exchangeRate: numeric('exchange_rate').default('1.0'), // Rate to convert to base currency
+  foreignAmount: numeric('foreign_amount').default('0'), // Total amount in transaction currency
+  baseAmount: numeric('base_amount').default('0'), // Total amount in base currency
   companyId: text('company_id').references(() => companies.id, { onDelete: 'cascade' }),
   branchId: text('branch_id').references(() => branches.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at').defaultNow(),
@@ -409,8 +416,12 @@ export const journalDetails = pgTable('journal_details', {
   id: text('id').primaryKey(),
   journalEntryId: text('journal_entry_id').notNull().references(() => journalEntries.id, { onDelete: 'cascade' }),
   accountId: text('account_id').notNull().references(() => accounts.id, { onDelete: 'restrict' }),
-  debit: numeric('debit').default('0'),
-  credit: numeric('credit').default('0'),
+  currency: text('currency').default('SAR'),
+  exchangeRate: numeric('exchange_rate').default('1.0'),
+  foreignDebit: numeric('foreign_debit').default('0'),
+  foreignCredit: numeric('foreign_credit').default('0'),
+  debit: numeric('debit').default('0'), // Base currency debit
+  credit: numeric('credit').default('0'), // Base currency credit
   createdAt: timestamp('created_at').defaultNow(),
 }, (table) => {
   return {
@@ -426,8 +437,12 @@ export const journalLines = pgTable('journal_lines', {
   id: text('id').primaryKey(),
   journalEntryId: text('journal_entry_id').notNull().references(() => journalEntries.id, { onDelete: 'cascade' }),
   accountId: text('account_id').notNull().references(() => accounts.id, { onDelete: 'restrict' }),
-  debit: numeric('debit').default('0'),
-  credit: numeric('credit').default('0'),
+  currency: text('currency').default('SAR'),
+  exchangeRate: numeric('exchange_rate').default('1.0'),
+  foreignDebit: numeric('foreign_debit').default('0'),
+  foreignCredit: numeric('foreign_credit').default('0'),
+  debit: numeric('debit').default('0'), // Base currency debit
+  credit: numeric('credit').default('0'), // Base currency credit
   description: text('description'),
   createdAt: timestamp('created_at').defaultNow(),
 }, (table) => {
@@ -522,9 +537,9 @@ export const postingRules = pgTable('posting_rules', {
 // 29. Currencies Table
 export const currencies = pgTable('currencies', {
   id: text('id').primaryKey(),
-  code: text('code').notNull().unique(), // e.g. 'SAR', 'USD'
-  name: text('name').notNull(), // e.g. 'ريال سعودي'
-  symbol: text('symbol').notNull(), // e.g. 'ر.س'
+  code: text('code').notNull().unique(), // e.g. 'SAR', 'USD', 'SYP', 'TRY'
+  name: text('name').notNull(), // e.g. 'ريال سعودي', 'دولار أمريكي', 'ليرة سورية', 'ليرة تركية'
+  symbol: text('symbol').notNull(), // e.g. 'ر.س', '$', 'ل.س', '₺'
   exchangeRate: numeric('exchange_rate').default('1.0'),
   isDefault: text('is_default').default('false'),
   companyId: text('company_id').references(() => companies.id, { onDelete: 'cascade' }),
@@ -534,6 +549,23 @@ export const currencies = pgTable('currencies', {
   return {
     currenciesCodeIdx: index('currencies_code_idx').on(table.code),
     currenciesCompanyIdx: index('currencies_company_idx').on(table.companyId),
+  };
+});
+
+// 29b. Exchange Rates History Table
+export const exchangeRatesHistory = pgTable('exchange_rates_history', {
+  id: text('id').primaryKey(),
+  currencyId: text('currency_id').notNull().references(() => currencies.id, { onDelete: 'cascade' }),
+  currencyCode: text('currency_code').notNull(),
+  rate: numeric('rate').notNull(),
+  effectiveDate: text('effective_date').notNull(),
+  notes: text('notes'),
+  createdBy: text('created_by'),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => {
+  return {
+    historyCurrencyIdx: index('exchange_rates_history_curr_idx').on(table.currencyId),
+    historyDateIdx: index('exchange_rates_history_date_idx').on(table.effectiveDate),
   };
 });
 
@@ -888,10 +920,18 @@ export const invoiceItemsRelations = relations(invoiceItems, ({ one }) => ({
   }),
 }));
 
-export const currenciesRelations = relations(currencies, ({ one }) => ({
+export const currenciesRelations = relations(currencies, ({ one, many }) => ({
   company: one(companies, {
     fields: [currencies.companyId],
     references: [companies.id],
+  }),
+  rateHistory: many(exchangeRatesHistory),
+}));
+
+export const exchangeRatesHistoryRelations = relations(exchangeRatesHistory, ({ one }) => ({
+  currency: one(currencies, {
+    fields: [exchangeRatesHistory.currencyId],
+    references: [currencies.id],
   }),
 }));
 

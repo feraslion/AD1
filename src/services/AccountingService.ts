@@ -13,6 +13,11 @@ export interface JournalLine {
   accountId: string;
   debit: number;
   credit: number;
+  currency?: string;
+  exchangeRate?: number;
+  foreignDebit?: number;
+  foreignCredit?: number;
+  description?: string;
 }
 
 export const AccountingService = {
@@ -64,7 +69,7 @@ export const AccountingService = {
   validateJournalEntry: (
     entryLines: JournalLine[],
     entryDesc: string,
-    currency: string
+    currency: string = 'SAR'
   ): string | null => {
     const totalDebit = entryLines.reduce((sum, l) => sum + (Number(l.debit) || 0), 0);
     const totalCredit = entryLines.reduce((sum, l) => sum + (Number(l.credit) || 0), 0);
@@ -73,8 +78,8 @@ export const AccountingService = {
       return 'يجب إدخال قيم دائنة ومدينة أكبر من الصفر.';
     }
 
-    if (totalDebit !== totalCredit) {
-      return `القيد غير متزن! إجمالي المدين (${totalDebit} ${currency}) لا يساوي إجمالي الدائن (${totalCredit} ${currency}).`;
+    if (Math.abs(totalDebit - totalCredit) > 0.01) {
+      return `القيد غير متزن! إجمالي المدين (${totalDebit.toFixed(2)} ${currency}) لا يساوي إجمالي الدائن (${totalCredit.toFixed(2)} ${currency}).`;
     }
 
     if (!entryDesc.trim()) {

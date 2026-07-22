@@ -40,10 +40,14 @@ export default function Inventory({
   onDeleteCategory,
   onRefresh 
 }: InventoryProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'products' | 'warehouses' | 'transfers' | 'adjustments' | 'ledger' | 'valuation' | 'categories'>('products');
+  const [activeSubTab, setActiveSubTab] = useState<'products' | 'warehouses' | 'transfers' | 'adjustments' | 'ledger' | 'valuation' | 'lowstock' | 'categories'>('products');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [stockFilter, setStockFilter] = useState<'all' | 'low' | 'out'>('all');
+
+  // Low Stock Alerts State
+  const [lowStockAlerts, setLowStockAlerts] = useState<any[]>([]);
+  const [lowStockLoading, setLowStockLoading] = useState<boolean>(false);
 
   // Warehouses state
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
@@ -104,6 +108,9 @@ export default function Inventory({
     if (activeSubTab === 'valuation') {
       fetchValuation();
     }
+    if (activeSubTab === 'lowstock') {
+      fetchLowStockAlerts();
+    }
   }, [activeSubTab, products]);
 
   useEffect(() => {
@@ -111,6 +118,18 @@ export default function Inventory({
       fetchLedger(ledgerProdId);
     }
   }, [ledgerProdId]);
+
+  const fetchLowStockAlerts = async () => {
+    setLowStockLoading(true);
+    try {
+      const data = await InventoryService.getLowStockAlerts();
+      setLowStockAlerts(data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLowStockLoading(false);
+    }
+  };
 
   const fetchWarehouses = async () => {
     try {
@@ -387,6 +406,17 @@ export default function Inventory({
           <TrendingUp className="w-4 h-4" />
           <span>تقييم المخزون المالي</span>
           {activeSubTab === 'valuation' && <div className="absolute bottom-0 right-0 left-0 h-0.5 bg-emerald-500 rounded-full"></div>}
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('lowstock')}
+          className={`pb-3 font-bold transition whitespace-nowrap relative flex items-center gap-1 ${
+            activeSubTab === 'lowstock' ? 'text-rose-600 font-extrabold' : 'text-slate-400 hover:text-slate-600'
+          }`}
+        >
+          <AlertCircle className="w-4 h-4 text-rose-500" />
+          <span>تنبيهات نقص المخزون</span>
+          {activeSubTab === 'lowstock' && <div className="absolute bottom-0 right-0 left-0 h-0.5 bg-rose-500 rounded-full"></div>}
         </button>
 
         <button
@@ -986,7 +1016,96 @@ export default function Inventory({
         </div>
       )}
 
-      {/* SUB TAB 7: CATEGORIES */}
+      {/* SUB TAB 7: LOW STOCK ALERTS */}
+      {activeSubTab === 'lowstock' && (
+        <div className="space-y-6">
+          <div className="bg-rose-50 border border-rose-200 rounded-2xl p-5 flex items-start gap-4">
+            <div className="p-2.5 bg-rose-100 rounded-xl text-rose-700">
+              <AlertCircle className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="font-extrabold text-rose-900 text-sm">نظام مراقبة وتنبيهات المخزون الحرج</h3>
+              <p className="text-xs text-rose-700 mt-1 leading-relaxed">
+                يعرض هذا القسم تلقائياً جميع الأصناف والمنتجات التي انخفض رصيدها عن الحد الأدنى المحدد، أو نفذت كميتها بالكامل لتسهيل إعادة الطلب والشراء.
+              </p>
+            </div>
+          </div>
+
+          {lowStockLoading ? (
+            <div className="bg-white p-12 rounded-2xl border border-slate-200 text-center text-slate-400 text-sm">
+              جاري فحص حالة المخزون وجلب التنبيهات...
+            </div>
+          ) : lowStockAlerts.length === 0 ? (
+            <div className="bg-white p-12 rounded-2xl border border-slate-200 text-center text-slate-500 space-y-2">
+              <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto" />
+              <div className="font-bold text-slate-800">لا توجد تنبيهات! جميع المنتجات بحالة مخزنية ممتازة.</div>
+              <p className="text-xs text-slate-400">جميع الكميات الحالية أعلى من حد الطلب الأدنى.</p>
+            </div>
+          ) : (
+            <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+              <div className="overflow-x-auto">
+                <table className="w-full text-right text-xs sm:text-sm">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold">
+                    <tr>
+                      <th className="p-3.5">اسم المنتج والبارکود</th>
+                      <th className="p-3.5">التصنيف</th>
+                      <th className="p-3.5">المخزون الحالي</th>
+                      <th className="p-3.5">الحد الأدنى المطلوب</th>
+                      <th className="p-3.5">حالة النقص</th>
+                      <th className="p-3.5">الكمية المقترحة للطلب</th>
+                      <th className="p-3.5 text-center">الإجراء الموصى به</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                    {lowStockAlerts.map((item: any) => (
+                      <tr key={item.id} className="hover:bg-slate-50/80 transition">
+                        <td className="p-3.5">
+                          <div className="font-bold text-slate-900">{item.name}</div>
+                          <div className="text-[11px] text-slate-400 font-mono dir-ltr inline-block">{item.barcode}</div>
+                        </td>
+                        <td className="p-3.5 font-bold text-slate-600">
+                          {categories.find(c => c.id === item.category)?.name || item.category || 'عام'}
+                        </td>
+                        <td className="p-3.5 font-bold font-mono text-rose-600">
+                          {item.stock} {item.unit}
+                        </td>
+                        <td className="p-3.5 font-bold font-mono text-slate-500">
+                          {item.minStock} {item.unit}
+                        </td>
+                        <td className="p-3.5">
+                          <span className={`px-2.5 py-1 rounded-lg font-bold text-xs inline-flex items-center gap-1 ${
+                            item.status === 'out_of_stock' 
+                              ? 'bg-rose-100 text-rose-800' 
+                              : 'bg-amber-100 text-amber-900'
+                          }`}>
+                            {item.statusLabel}
+                          </span>
+                        </td>
+                        <td className="p-3.5 font-extrabold font-mono text-blue-600">
+                          +{item.suggestedReorder} {item.unit}
+                        </td>
+                        <td className="p-3.5 text-center">
+                          <button
+                            onClick={() => {
+                              setAdjProdId(item.id);
+                              setActiveSubTab('adjustments');
+                            }}
+                            className="bg-slate-900 hover:bg-slate-800 text-white font-bold px-3 py-1.5 rounded-xl text-xs transition"
+                          >
+                            تعديل/جرد سريع
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* SUB TAB 8: CATEGORIES */}
       {activeSubTab === 'categories' && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">

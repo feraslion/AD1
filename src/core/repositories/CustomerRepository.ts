@@ -1,6 +1,6 @@
 import { db } from '../database/index.ts';
 import { customers } from '../database/schema.ts';
-import { eq, like, or, sql, desc } from 'drizzle-orm';
+import { eq, like, or } from 'drizzle-orm';
 
 export class CustomerRepository {
   static async findAll(params?: { search?: string; page?: number; limit?: number }) {
@@ -41,6 +41,16 @@ export class CustomerRepository {
 
   static async updateBalance(id: string, newBalance: number) {
     await db.update(customers).set({ balance: newBalance.toString() }).where(eq(customers.id, id));
+    return await this.findById(id);
+  }
+
+  static async adjustBalance(id: string, deltaAmount: number) {
+    const customer = await this.findById(id);
+    if (!customer) throw new Error('العميل غير موجود');
+    const current = parseFloat(customer.balance || '0');
+    const updated = current + deltaAmount;
+    await this.updateBalance(id, updated);
+    return updated;
   }
 
   static async delete(id: string) {

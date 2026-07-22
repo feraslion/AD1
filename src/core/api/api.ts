@@ -190,6 +190,9 @@ export const WarehouseService = {
 
   getInventoryValuation: (): Promise<any> =>
     apiClient.get<any>('/api/inventory/valuation'),
+
+  getLowStockAlerts: (): Promise<any[]> =>
+    apiClient.get<any[]>('/api/inventory/low-stock'),
 };
 
 export const CurrencyService = {

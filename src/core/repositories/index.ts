@@ -6,3 +6,6 @@ export { InventoryRepository } from './InventoryRepository';
 export { SalesRepository } from './SalesRepository';
 export { PurchaseRepository } from './PurchaseRepository';
 export { AccountingRepository } from './AccountingRepository';
+export { AccountRepository } from './AccountRepository';
+export { CurrencyRepository } from './CurrencyRepository';
+export { InvoiceRepository } from './InvoiceRepository';

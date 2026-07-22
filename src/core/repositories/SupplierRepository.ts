@@ -1,6 +1,6 @@
 import { db } from '../database/index.ts';
-import { suppliers } from '../database/schema.ts';
-import { eq, like, or } from 'drizzle-orm';
+import { suppliers, purchases } from '../database/schema.ts';
+import { eq, like, or, desc } from 'drizzle-orm';
 
 export class SupplierRepository {
   static async findAll(search?: string) {
@@ -33,6 +33,20 @@ export class SupplierRepository {
 
   static async updateBalance(id: string, newBalance: number) {
     await db.update(suppliers).set({ balance: newBalance.toString() }).where(eq(suppliers.id, id));
+    return await this.findById(id);
+  }
+
+  static async adjustBalance(id: string, deltaAmount: number) {
+    const supplier = await this.findById(id);
+    if (!supplier) throw new Error('المورد غير موجود');
+    const current = parseFloat(supplier.balance || '0');
+    const updated = current + deltaAmount;
+    await this.updateBalance(id, updated);
+    return updated;
+  }
+
+  static async getSupplierPurchases(supplierId: string) {
+    return await db.select().from(purchases).where(eq(purchases.supplierId, supplierId)).orderBy(desc(purchases.createdAt));
   }
 
   static async delete(id: string) {

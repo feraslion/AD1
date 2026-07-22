@@ -18,6 +18,8 @@ import Badge from '../../shared/components/ui/Badge';
 import Modal from '../../shared/components/ui/Modal';
 import { AccountingService } from '../../services/api';
 
+import CurrencyManagement from './CurrencyManagement';
+
 interface Account {
   id: string;
   code: string;
@@ -46,7 +48,7 @@ interface AccountingProps {
 }
 
 export default function Accounting({ settings }: AccountingProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'chart' | 'entries' | 'ledger' | 'trial' | 'income' | 'balance' | 'cashflow' | 'postingRules'>('chart');
+  const [activeSubTab, setActiveSubTab] = useState<'chart' | 'entries' | 'ledger' | 'trial' | 'income' | 'balance' | 'cashflow' | 'postingRules' | 'currencies'>('chart');
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [postingRulesList, setPostingRulesList] = useState<any[]>([]);
@@ -73,9 +75,11 @@ export default function Accounting({ settings }: AccountingProps) {
   const [showManualModal, setShowManualModal] = useState(false);
   const [entryDesc, setEntryDesc] = useState('');
   const [entryDate, setEntryDate] = useState(new Date().toISOString().split('T')[0]);
-  const [entryLines, setEntryLines] = useState<{ accountId: string; debit: number; credit: number }[]>([
-    { accountId: 'acc_cash', debit: 0, credit: 0 },
-    { accountId: 'acc_expense', debit: 0, credit: 0 }
+  const [entryCurrency, setEntryCurrency] = useState('SAR');
+  const [entryExchangeRate, setEntryExchangeRate] = useState<number>(1.0);
+  const [entryLines, setEntryLines] = useState<{ accountId: string; debit: number; credit: number; foreignDebit?: number; foreignCredit?: number }[]>([
+    { accountId: 'acc_cash', debit: 0, credit: 0, foreignDebit: 0, foreignCredit: 0 },
+    { accountId: 'acc_expense', debit: 0, credit: 0, foreignDebit: 0, foreignCredit: 0 }
   ]);
   const [modalError, setModalError] = useState('');
 
@@ -187,17 +191,24 @@ export default function Accounting({ settings }: AccountingProps) {
       await AccountingService.createJournalEntry({
         description: entryDesc,
         date: entryDate,
+        currency: entryCurrency,
+        baseCurrency: settings.currency || 'SAR',
+        exchangeRate: entryExchangeRate,
         lines: entryLines.map(l => ({
           accountId: l.accountId,
           debit: Number(l.debit),
-          credit: Number(l.credit)
+          credit: Number(l.credit),
+          currency: entryCurrency,
+          exchangeRate: entryExchangeRate,
+          foreignDebit: Number(l.foreignDebit || 0),
+          foreignCredit: Number(l.foreignCredit || 0)
         }))
       });
       setShowManualModal(false);
       setEntryDesc('');
       setEntryLines([
-        { accountId: 'acc_cash', debit: 0, credit: 0 },
-        { accountId: 'acc_expense', debit: 0, credit: 0 }
+        { accountId: 'acc_cash', debit: 0, credit: 0, foreignDebit: 0, foreignCredit: 0 },
+        { accountId: 'acc_expense', debit: 0, credit: 0, foreignDebit: 0, foreignCredit: 0 }
       ]);
       fetchAccountingData();
     } catch (err: any) {
@@ -393,6 +404,20 @@ export default function Accounting({ settings }: AccountingProps) {
           <div className="flex items-center gap-1.5">
             <Scale className="w-4 h-4" />
             <span>قواعد الترحيل التلقائي</span>
+          </div>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('currencies')}
+          className={`pb-3 text-xs sm:text-sm font-extrabold transition whitespace-nowrap px-2.5 ${
+            activeSubTab === 'currencies' 
+              ? 'border-b-2 border-slate-900 text-slate-900' 
+              : 'text-slate-400 hover:text-slate-700'
+          }`}
+        >
+          <div className="flex items-center gap-1.5">
+            <Coins className="w-4 h-4 text-emerald-600" />
+            <span>نظام العملات والصرف</span>
           </div>
         </button>
       </div>
@@ -1061,6 +1086,11 @@ export default function Accounting({ settings }: AccountingProps) {
         </div>
       )}
 
+      {/* 9. CURRENCY & FOREX MANAGEMENT */}
+      {activeSubTab === 'currencies' && (
+        <CurrencyManagement />
+      )}
+
       {/* Account Manager Modal */}
       {showAccountModal && (
         <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center p-4 z-50">
@@ -1224,55 +1254,121 @@ export default function Accounting({ settings }: AccountingProps) {
                 </div>
               </div>
 
+              {/* Currency & Exchange Rate selection */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">عملة المعاملة (Transaction Currency)</label>
+                  <select
+                    value={entryCurrency}
+                    onChange={(e) => {
+                      const curr = e.target.value;
+                      setEntryCurrency(curr);
+                      if (curr === 'SAR') setEntryExchangeRate(1.0);
+                      else if (curr === 'USD') setEntryExchangeRate(3.75);
+                      else if (curr === 'TRY') setEntryExchangeRate(0.11);
+                      else if (curr === 'SYP') setEntryExchangeRate(0.00028);
+                    }}
+                    className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-bold bg-white focus:outline-none"
+                  >
+                    <option value="SAR">الريال السعودي (SAR)</option>
+                    <option value="USD">الدولار الأمريكي (USD)</option>
+                    <option value="TRY">الليرة التركية (TRY)</option>
+                    <option value="SYP">الليرة السورية (SYP)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">سعر الصرف مقابل SAR</label>
+                  <input 
+                    type="number"
+                    step="any"
+                    value={entryExchangeRate}
+                    onChange={(e) => setEntryExchangeRate(parseFloat(e.target.value) || 1.0)}
+                    disabled={entryCurrency === 'SAR'}
+                    className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-mono font-bold bg-white focus:outline-none"
+                  />
+                </div>
+              </div>
+
               {/* Entry Lines */}
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
-                  <span className="text-xs font-black text-slate-700">بنود وتفاصيل القيد المتزن</span>
+                  <span className="text-xs font-black text-slate-700">بنود وتفاصيل القيد المتزن ({entryCurrency})</span>
                   <button 
                     type="button"
-                    onClick={() => setEntryLines(prev => [...prev, { accountId: 'acc_cash', debit: 0, credit: 0 }])}
+                    onClick={() => setEntryLines(prev => [...prev, { accountId: 'acc_cash', debit: 0, credit: 0, foreignDebit: 0, foreignCredit: 0 }])}
                     className="text-xs font-bold text-emerald-600 hover:text-emerald-700"
                   >
                     + إضافة سطر حساب
                   </button>
                 </div>
 
-                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
                   {entryLines.map((line, idx) => (
-                    <div key={idx} className="flex gap-2.5 items-center">
+                    <div key={idx} className="flex flex-wrap sm:flex-nowrap gap-2 items-center bg-slate-50/50 p-2 rounded-xl border border-slate-100">
                       <select
                         value={line.accountId}
                         onChange={(e) => {
                           const val = e.target.value;
                           setEntryLines(prev => prev.map((l, i) => i === idx ? { ...l, accountId: val } : l));
                         }}
-                        className="flex-1 px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg text-right"
+                        className="flex-1 px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg text-right bg-white font-semibold"
                       >
                         {accounts.map(a => (
                           <option key={a.id} value={a.id}>{a.name} ({a.code})</option>
                         ))}
                       </select>
 
-                      <input 
-                        type="number" 
-                        placeholder="مدين"
-                        value={line.debit || ''}
-                        onChange={(e) => {
-                          const val = parseFloat(e.target.value) || 0;
-                          setEntryLines(prev => prev.map((l, i) => i === idx ? { ...l, debit: val, credit: 0 } : l));
-                        }}
-                        className="w-24 px-2 py-1.5 text-xs border border-slate-200 rounded-lg text-center font-mono font-bold"
-                      />
+                      {entryCurrency !== 'SAR' && (
+                        <input 
+                          type="number" 
+                          placeholder={`مدين (${entryCurrency})`}
+                          value={line.foreignDebit || ''}
+                          onChange={(e) => {
+                            const fVal = parseFloat(e.target.value) || 0;
+                            const bVal = fVal * entryExchangeRate;
+                            setEntryLines(prev => prev.map((l, i) => i === idx ? { ...l, foreignDebit: fVal, foreignCredit: 0, debit: bVal, credit: 0 } : l));
+                          }}
+                          className="w-24 px-2 py-1.5 text-xs border border-emerald-200 bg-emerald-50/30 rounded-lg text-center font-mono font-bold text-emerald-800"
+                        />
+                      )}
 
                       <input 
                         type="number" 
-                        placeholder="دائن"
+                        placeholder="مدين (SAR)"
+                        value={line.debit || ''}
+                        onChange={(e) => {
+                          const bVal = parseFloat(e.target.value) || 0;
+                          const fVal = entryExchangeRate > 0 ? bVal / entryExchangeRate : bVal;
+                          setEntryLines(prev => prev.map((l, i) => i === idx ? { ...l, debit: bVal, credit: 0, foreignDebit: fVal, foreignCredit: 0 } : l));
+                        }}
+                        className="w-24 px-2 py-1.5 text-xs border border-slate-200 rounded-lg text-center font-mono font-bold bg-white"
+                      />
+
+                      {entryCurrency !== 'SAR' && (
+                        <input 
+                          type="number" 
+                          placeholder={`دائن (${entryCurrency})`}
+                          value={line.foreignCredit || ''}
+                          onChange={(e) => {
+                            const fVal = parseFloat(e.target.value) || 0;
+                            const bVal = fVal * entryExchangeRate;
+                            setEntryLines(prev => prev.map((l, i) => i === idx ? { ...l, foreignCredit: fVal, foreignDebit: 0, credit: bVal, debit: 0 } : l));
+                          }}
+                          className="w-24 px-2 py-1.5 text-xs border border-rose-200 bg-rose-50/30 rounded-lg text-center font-mono font-bold text-rose-800"
+                        />
+                      )}
+
+                      <input 
+                        type="number" 
+                        placeholder="دائن (SAR)"
                         value={line.credit || ''}
                         onChange={(e) => {
-                          const val = parseFloat(e.target.value) || 0;
-                          setEntryLines(prev => prev.map((l, i) => i === idx ? { ...l, credit: val, debit: 0 } : l));
+                          const bVal = parseFloat(e.target.value) || 0;
+                          const fVal = entryExchangeRate > 0 ? bVal / entryExchangeRate : bVal;
+                          setEntryLines(prev => prev.map((l, i) => i === idx ? { ...l, credit: bVal, debit: 0, foreignCredit: fVal, foreignDebit: 0 } : l));
                         }}
-                        className="w-24 px-2 py-1.5 text-xs border border-slate-200 rounded-lg text-center font-mono font-bold"
+                        className="w-24 px-2 py-1.5 text-xs border border-slate-200 rounded-lg text-center font-mono font-bold bg-white"
                       />
 
                       {entryLines.length > 2 && (
