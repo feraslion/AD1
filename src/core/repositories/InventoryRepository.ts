@@ -8,6 +8,7 @@ export interface StockMoveInput {
   fromWarehouseId?: string | null;
   toWarehouseId?: string | null;
   quantity: number;
+  unitCost?: number;
   type: 'purchase' | 'sale' | 'transfer' | 'adjustment' | 'initial';
   referenceId?: string | null;
   notes?: string | null;
@@ -83,6 +84,7 @@ export class InventoryRepository {
       fromWarehouseId: input.fromWarehouseId || null,
       toWarehouseId: input.toWarehouseId || null,
       quantity: input.quantity.toString(),
+      unitCost: (input.unitCost || 0).toString(),
       type: input.type,
       referenceId: input.referenceId || null,
       notes: input.notes || null
@@ -308,18 +310,62 @@ export class InventoryRepository {
     };
   }
 
-  // 7. INVENTORY VALUATION REPORT
-  static async getInventoryValuation() {
+  private static calculateFifoValuationForProduct(productId: string, stock: number, avgCost: number, productMoves: any[]) {
+    if (stock <= 0) {
+      return { fifoUnitCost: avgCost, fifoTotalValue: 0 };
+    }
+
+    // Inward moves for FIFO are purchase, initial, or positive adjustment
+    const inwardMoves = productMoves.filter(m => 
+      m.productId === productId && (
+        m.type === 'purchase' || 
+        m.type === 'initial' || 
+        (m.type === 'adjustment' && m.toWarehouseId)
+      )
+    ).sort((a, b) => {
+      const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return tB - tA; // Newest first
+    });
+
+    let remainingQty = stock;
+    let fifoTotalValue = 0;
+
+    for (const move of inwardMoves) {
+      if (remainingQty <= 0) break;
+      const qty = parseFloat(move.quantity || '0');
+      const unitCost = parseFloat(move.unitCost || '0') || avgCost;
+      const takeQty = Math.min(remainingQty, qty);
+      fifoTotalValue += takeQty * unitCost;
+      remainingQty -= takeQty;
+    }
+
+    if (remainingQty > 0) {
+      fifoTotalValue += remainingQty * avgCost;
+    }
+
+    fifoTotalValue = Math.round(fifoTotalValue * 100) / 100;
+    const fifoUnitCost = Math.round((fifoTotalValue / stock) * 100) / 100;
+
+    return { fifoUnitCost, fifoTotalValue };
+  }
+
+  // 7. INVENTORY VALUATION REPORT (Average Cost & FIFO)
+  static async getInventoryValuation(method: 'average' | 'fifo' = 'average') {
     const allProducts = await db.select().from(products);
+    const allMoves = await db.select().from(stockMoves);
 
     const valuationItems = allProducts.map(p => {
       const stock = parseFloat(p.stock || '0');
       const avgCost = parseFloat(p.purchasePrice || '0');
       const sellingPrice = parseFloat(p.price || '0');
 
-      const totalCostValue = Math.round((stock * avgCost) * 100) / 100;
+      const { fifoUnitCost, fifoTotalValue } = this.calculateFifoValuationForProduct(p.id, stock, avgCost, allMoves);
+
+      const wacTotalValue = Math.round((stock * avgCost) * 100) / 100;
+      const selectedTotalCostValue = method === 'fifo' ? fifoTotalValue : wacTotalValue;
       const totalSalesValue = Math.round((stock * sellingPrice) * 100) / 100;
-      const potentialProfit = Math.round((totalSalesValue - totalCostValue) * 100) / 100;
+      const potentialProfit = Math.round((totalSalesValue - selectedTotalCostValue) * 100) / 100;
 
       return {
         id: p.id,
@@ -329,20 +375,28 @@ export class InventoryRepository {
         unit: p.unit,
         stock,
         avgCost,
+        fifoCost: fifoUnitCost,
         sellingPrice,
-        totalCostValue,
+        wacCostValue: wacTotalValue,
+        fifoCostValue: fifoTotalValue,
+        totalCostValue: selectedTotalCostValue,
         totalSalesValue,
         potentialProfit
       };
     });
 
     const totalCostSum = valuationItems.reduce((acc, item) => acc + item.totalCostValue, 0);
+    const totalFifoCostSum = valuationItems.reduce((acc, item) => acc + item.fifoCostValue, 0);
+    const totalWacCostSum = valuationItems.reduce((acc, item) => acc + item.wacCostValue, 0);
     const totalSalesSum = valuationItems.reduce((acc, item) => acc + item.totalSalesValue, 0);
     const totalPotentialProfitSum = totalSalesSum - totalCostSum;
 
     return {
+      method,
       items: valuationItems,
       totalCostSum,
+      totalWacCostSum,
+      totalFifoCostSum,
       totalSalesSum,
       totalPotentialProfitSum,
       totalItemsCount: valuationItems.length

@@ -67,6 +67,8 @@ export class PurchaseRepository {
       grandTotal: (data.grandTotal || 0).toString(),
       status: data.status || 'completed', // 'draft' | 'ordered' | 'received' | 'completed'
       paymentMethod: data.paymentMethod || 'cash',
+      currency: data.currency || 'SAR',
+      exchangeRate: (data.exchangeRate || 1.0).toString(),
       warehouseId: data.warehouseId || 'wh_main',
       supplierId: data.supplierId || null,
       notes: data.notes || ''
@@ -118,7 +120,9 @@ export class PurchaseRepository {
         paymentMethod: purchaseVal.paymentMethod,
         subtotal: parseFloat(purchaseVal.subtotal),
         taxAmount: parseFloat(purchaseVal.taxAmount),
-        grandTotal: parseFloat(purchaseVal.grandTotal)
+        grandTotal: parseFloat(purchaseVal.grandTotal),
+        currency: purchaseVal.currency,
+        exchangeRate: parseFloat(purchaseVal.exchangeRate)
       });
     }
 
@@ -179,7 +183,9 @@ export class PurchaseRepository {
       paymentMethod,
       subtotal,
       taxAmount,
-      grandTotal
+      grandTotal,
+      currency: pur.currency || 'SAR',
+      exchangeRate: parseFloat(pur.exchangeRate || '1.0')
     });
 
     await db.update(purchases).set({
@@ -199,6 +205,8 @@ export class PurchaseRepository {
     subtotal: number;
     taxAmount: number;
     grandTotal: number;
+    currency?: string;
+    exchangeRate?: number;
   }) {
     const getAccountByRule = async (ruleId: string, fallbackAccId: string) => {
       const rule = await AccountingRepository.findPostingRuleByCode(ruleId);
@@ -229,7 +237,11 @@ export class PurchaseRepository {
       `JE-PUR-${data.invoiceNumber}`,
       `فاتورة مشتريات رقم ${data.invoiceNumber}`,
       data.date,
-      accountingLines
+      accountingLines,
+      {
+        currency: data.currency,
+        exchangeRate: data.exchangeRate
+      }
     );
   }
 }

@@ -12,6 +12,7 @@ import {
   cashboxes 
 } from '../database/schema.ts';
 import { eq, desc, inArray, and, gte, lte } from 'drizzle-orm';
+import { CurrencyRepository } from './CurrencyRepository.ts';
 
 export interface JournalLineInput {
   accountId: string;
@@ -49,6 +50,7 @@ export class AccountingRepository {
   }
 
   static async upsertAccount(data: any) {
+    const baseCode = await CurrencyRepository.getBaseCurrencyCode();
     const accountId = data.id || 'acc_' + Math.random().toString(36).substr(2, 9);
     const dbValue = {
       id: accountId,
@@ -56,7 +58,7 @@ export class AccountingRepository {
       name: data.name,
       type: data.type,
       balance: (data.balance || 0).toString(),
-      currency: data.currency || 'SAR',
+      currency: data.currency || baseCode,
       foreignBalance: (data.foreignBalance || 0).toString(),
       parentId: data.parentId || null,
       companyId: data.companyId || null,
@@ -94,8 +96,8 @@ export class AccountingRepository {
       throw new Error('يجب أن يحتوي القيد على سطرين محاسبيين على الأقل (مدين ودائن).');
     }
 
-    const transactionCurrency = options?.currency || lines[0].currency || 'SAR';
-    const baseCurrency = options?.baseCurrency || 'SAR';
+    const baseCurrency = options?.baseCurrency || await CurrencyRepository.getBaseCurrencyCode();
+    const transactionCurrency = options?.currency || lines[0].currency || baseCurrency;
     const globalRate = options?.exchangeRate || lines[0].exchangeRate || 1.0;
 
     // Calculate and validate base currency debit/credit totals
@@ -243,8 +245,9 @@ export class AccountingRepository {
 
   // 3. CURRENCY REVALUATION ENGINE (إعادة تقييم العملات وإثبات الأرباح/الخسائر غير المحققة)
   static async revaluateForeignAccounts(currencyCode: string, newExchangeRate: number, revaluationDate: string) {
-    if (!currencyCode || currencyCode === 'SAR') {
-      throw new Error('لا تتطلب العملة الأساسية (SAR) عملية إعادة تقييم.');
+    const baseCurrencyCode = await CurrencyRepository.getBaseCurrencyCode();
+    if (!currencyCode || currencyCode.toUpperCase() === baseCurrencyCode.toUpperCase()) {
+      throw new Error(`لا تتطلب العملة الأساسية (${baseCurrencyCode}) عملية إعادة تقييم.`);
     }
     if (!newExchangeRate || newExchangeRate <= 0) {
       throw new Error('سعر الصرف الجديد يجب أن يكون أكبر من صفر.');
@@ -330,7 +333,7 @@ export class AccountingRepository {
             accountId: accId,
             debit: diff,
             credit: 0,
-            currency: 'SAR',
+            currency: baseCurrencyCode,
             exchangeRate: 1.0,
             description: `إعادة تقييم عملة ${currencyCode} - زيادة قيمة الأصل`
           });
@@ -340,7 +343,7 @@ export class AccountingRepository {
             accountId: accId,
             debit: 0,
             credit: Math.abs(diff),
-            currency: 'SAR',
+            currency: baseCurrencyCode,
             exchangeRate: 1.0,
             description: `إعادة تقييم عملة ${currencyCode} - انخفاض قيمة الأصل`
           });
@@ -353,7 +356,7 @@ export class AccountingRepository {
             accountId: accId,
             debit: 0,
             credit: diff,
-            currency: 'SAR',
+            currency: baseCurrencyCode,
             exchangeRate: 1.0,
             description: `إعادة تقييم عملة ${currencyCode} - زيادة الالتزام`
           });
@@ -363,7 +366,7 @@ export class AccountingRepository {
             accountId: accId,
             debit: Math.abs(diff),
             credit: 0,
-            currency: 'SAR',
+            currency: baseCurrencyCode,
             exchangeRate: 1.0,
             description: `إعادة تقييم عملة ${currencyCode} - انخفاض الالتزام`
           });
@@ -377,7 +380,7 @@ export class AccountingRepository {
         accountId: gainAcc.id,
         debit: 0,
         credit: Number(totalGain.toFixed(2)),
-        currency: 'SAR',
+        currency: baseCurrencyCode,
         exchangeRate: 1.0,
         description: `إجمالي أرباح إعادة تقييم العملة (${currencyCode})`
       });
@@ -388,7 +391,7 @@ export class AccountingRepository {
         accountId: lossAcc.id,
         debit: Number(totalLoss.toFixed(2)),
         credit: 0,
-        currency: 'SAR',
+        currency: baseCurrencyCode,
         exchangeRate: 1.0,
         description: `إجمالي خسائر إعادة تقييم العملة (${currencyCode})`
       });
@@ -447,6 +450,7 @@ export class AccountingRepository {
     }
 
     const entriesMap = new Map(entries.map(e => [e.id, e]));
+    const defaultBaseCode = await CurrencyRepository.getBaseCurrencyCode();
 
     let cumulativeBaseBalance = 0;
     let cumulativeForeignBalance = 0;
@@ -473,7 +477,7 @@ export class AccountingRepository {
           entryNumber: parentEntry.entryNumber,
           description: parentEntry.description,
           date: parentEntry.date,
-          currency: d.currency || parentEntry.currency || 'SAR',
+          currency: d.currency || parentEntry.currency || defaultBaseCode,
           exchangeRate: parseFloat(d.exchangeRate || parentEntry.exchangeRate || '1.0'),
           foreignDebit,
           foreignCredit,
@@ -503,6 +507,7 @@ export class AccountingRepository {
 
   // 5. TRIAL BALANCE REPORT
   static async getTrialBalance(filterCurrency?: string) {
+    const baseCode = await CurrencyRepository.getBaseCurrencyCode();
     const allAccounts = await db.select().from(accounts);
     let allDetails = await db.select().from(journalDetails);
 
@@ -525,7 +530,7 @@ export class AccountingRepository {
         code: acc.code,
         name: acc.name,
         type: acc.type,
-        currency: acc.currency || 'SAR',
+        currency: acc.currency || baseCode,
         parentId: acc.parentId,
         totalDebit,
         totalCredit,
@@ -551,6 +556,7 @@ export class AccountingRepository {
 
   // 6. JOURNAL ENTRIES QUERY
   static async getJournalEntries(search?: string, date?: string, currencyFilter?: string) {
+    const baseCode = await CurrencyRepository.getBaseCurrencyCode();
     let entries = await db.select().from(journalEntries).orderBy(desc(journalEntries.date));
 
     if (search) {
@@ -574,7 +580,7 @@ export class AccountingRepository {
       details: allDetails.filter(d => d.journalEntryId === entry.id).map(d => ({
         id: d.id,
         accountId: d.accountId,
-        currency: d.currency || entry.currency || 'SAR',
+        currency: d.currency || entry.currency || baseCode,
         exchangeRate: parseFloat(d.exchangeRate || entry.exchangeRate || '1.0'),
         foreignDebit: parseFloat(d.foreignDebit || '0'),
         foreignCredit: parseFloat(d.foreignCredit || '0'),

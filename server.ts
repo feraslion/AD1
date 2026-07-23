@@ -172,8 +172,14 @@ app.use('/api', authenticate);
 app.use('/api', requestLogger);
 
 // ─── ACCOUNTING JOURNAL POST ENGINE ───
-async function postJournalEntry(entryNumber: string, description: string, date: string, lines: { accountId: string, debit: number, credit: number }[]) {
-  return await AccountingRepository.postJournalEntry(entryNumber, description, date, lines);
+async function postJournalEntry(
+  entryNumber: string,
+  description: string,
+  date: string,
+  lines: { accountId: string; debit: number; credit: number; currency?: string; exchangeRate?: number; foreignDebit?: number; foreignCredit?: number }[],
+  options?: { currency?: string; exchangeRate?: number; baseCurrency?: string }
+) {
+  return await AccountingRepository.postJournalEntry(entryNumber, description, date, lines, options);
 }
 
 async function getAccountByRule(ruleCode: string, defaultAccountId: string): Promise<string> {
@@ -539,7 +545,8 @@ app.get('/api/inventory/ledger/:productId', authorize(['manager', 'inventory', '
 // Inventory Valuation Report API
 app.get('/api/inventory/valuation', authorize(['manager', 'inventory', 'accountant']), async (req, res) => {
   try {
-    const valuation = await InventoryRepository.getInventoryValuation();
+    const method = (req.query.method === 'fifo' ? 'fifo' : 'average') as 'average' | 'fifo';
+    const valuation = await InventoryRepository.getInventoryValuation(method);
     sendResponse(res, valuation);
   } catch (error) {
     sendError(res, 'فشل حساب تقييم المخزون', error);
@@ -662,6 +669,33 @@ app.delete('/api/currencies/:id', authorize(['manager', 'accountant']), async (r
     sendResponse(res, result);
   } catch (error) {
     sendError(res, 'فشل حذف العملة', error);
+  }
+});
+
+app.post('/api/currencies/set-base', authorize(['manager', 'accountant']), async (req, res) => {
+  try {
+    const { currencyId, currencyCode } = req.body;
+    const target = currencyId || currencyCode;
+    if (!target) {
+      return sendError(res, 'معرف أو كود العملة مطلوب', null, 400);
+    }
+    const userName = (req as any).user?.name || 'مدير النظام';
+    const updatedList = await CurrencyRepository.setBaseCurrency(target, userName);
+    
+    // Also sync default currency in settings if exists
+    try {
+      const baseCode = await CurrencyRepository.getBaseCurrencyCode();
+      const baseObj = await CurrencyRepository.findCurrencyByCode(baseCode);
+      if (baseObj) {
+        await db.update(settings).set({ currency: baseObj.symbol || baseCode }).where(eq(settings.id, 'default_settings'));
+      }
+    } catch (e) {
+      // ignore if settings not initialized
+    }
+
+    sendResponse(res, updatedList);
+  } catch (error: any) {
+    sendError(res, error.message || 'فشل تغيير العملة الأساسية للشركة', error, 400);
   }
 });
 
@@ -1700,7 +1734,7 @@ app.post('/api/payments/customer', authorize(['manager', 'cashier', 'accountant'
 // 14. Supplier Payments API
 app.post('/api/payments/supplier', authorize(['manager', 'inventory', 'accountant']), async (req, res) => {
   try {
-    const { supplierId, amount, paymentMethod, date, paymentNumber } = req.body;
+    const { supplierId, amount, paymentMethod, date, paymentNumber, currency, exchangeRate } = req.body;
     if (!supplierId || !amount || parseFloat(amount) <= 0) {
       return sendError(res, 'بيانات سند الصرف غير كاملة أو غير صالحة', null, 400);
     }
@@ -1726,7 +1760,11 @@ app.post('/api/payments/supplier', authorize(['manager', 'inventory', 'accountan
       `JE-PAY-${paymentNumber}`,
       `سند صرف مورد: ${supplier.name}`,
       date,
-      accountingLines
+      accountingLines,
+      {
+        currency: currency || 'SAR',
+        exchangeRate: exchangeRate ? parseFloat(exchangeRate) : 1.0
+      }
     );
 
     sendResponse(res, { success: true });

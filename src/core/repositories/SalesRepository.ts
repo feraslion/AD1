@@ -198,9 +198,13 @@ export class SalesRepository {
 
     await Promise.all(stockUpdatePromises);
 
-    // 3. Customer Balance update for credit sales
-    if (invData.paymentMethod === 'credit' && invData.customerId) {
-      await CustomerRepository.adjustBalance(invData.customerId, invData.grandTotal);
+    // 3. Customer Balance update for credit sales & split credit
+    const creditAmount = invData.paymentMethod === 'credit'
+      ? invData.grandTotal
+      : (invData.paymentMethod === 'split' ? (invData.paymentDetails?.creditAmount || 0) : 0);
+
+    if (creditAmount > 0 && invData.customerId) {
+      await CustomerRepository.adjustBalance(invData.customerId, creditAmount);
     }
 
     // 4. Double-Entry Accounting Entry
@@ -228,8 +232,10 @@ export class SalesRepository {
     } else if (invData.paymentMethod === 'split') {
       const cashAmt = invData.paymentDetails?.cashAmount || 0;
       const cardAmt = invData.paymentDetails?.cardAmount || 0;
+      const credAmt = invData.paymentDetails?.creditAmount || 0;
       if (cashAmt > 0) accountingLines.push({ accountId: cashAcc, debit: cashAmt, credit: 0 });
       if (cardAmt > 0) accountingLines.push({ accountId: bankAcc, debit: cardAmt, credit: 0 });
+      if (credAmt > 0) accountingLines.push({ accountId: recAcc, debit: credAmt, credit: 0 });
     }
 
     accountingLines.push({ accountId: salesAcc, debit: 0, credit: invData.totalWithoutTax });
@@ -247,7 +253,11 @@ export class SalesRepository {
       `JE-INV-${invData.invoiceNumber}`,
       `فاتورة مبيعات رقم ${invData.invoiceNumber}`,
       invData.date,
-      accountingLines
+      accountingLines,
+      {
+        currency: invData.currency,
+        exchangeRate: invData.exchangeRate
+      }
     );
 
     return { success: true, invoiceId: invId };
@@ -305,8 +315,12 @@ export class SalesRepository {
     const totalWithoutTax = parseFloat(inv.totalWithoutTax || '0');
     const taxAmount = parseFloat(inv.taxAmount || '0');
 
-    if (inv.paymentMethod === 'credit' && inv.customerId) {
-      await CustomerRepository.adjustBalance(inv.customerId, -grandTotal);
+    const returnedCreditAmt = inv.paymentMethod === 'credit'
+      ? grandTotal
+      : (inv.paymentMethod === 'split' ? parseFloat((inv as any).creditAmount || '0') : 0);
+
+    if (returnedCreditAmt > 0 && inv.customerId) {
+      await CustomerRepository.adjustBalance(inv.customerId, -returnedCreditAmt);
     }
 
     // 4. Create reverse accounting journal entries
@@ -339,8 +353,10 @@ export class SalesRepository {
     } else if (inv.paymentMethod === 'split') {
       const cashAmt = parseFloat(inv.cashAmount || '0');
       const cardAmt = parseFloat(inv.cardAmount || '0');
+      const credAmt = parseFloat((inv as any).creditAmount || '0');
       if (cashAmt > 0) accountingLines.push({ accountId: cashAcc, debit: 0, credit: cashAmt });
       if (cardAmt > 0) accountingLines.push({ accountId: bankAcc, debit: 0, credit: cardAmt });
+      if (credAmt > 0) accountingLines.push({ accountId: recAcc, debit: 0, credit: credAmt });
     }
 
     if (totalCogs > 0) {

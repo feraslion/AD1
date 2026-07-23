@@ -180,9 +180,34 @@ export default function CurrencyManagement() {
     }
   };
 
+  const handleSetBaseCurrency = async (id: string, code: string) => {
+    if (!confirm(`هل أنت تأكد من تعيين العملة (${code}) كعملة أساسية جديدة للشركة؟ سيتم إعادة احتساب أسعار باقي العملات تلقائيًا.`)) return;
+
+    setActionSuccess(null);
+    setActionError(null);
+    try {
+      const res = await fetch('/api/currencies/set-base', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currencyId: id, currencyCode: code })
+      });
+      const json = await res.json();
+      if (json.success) {
+        setActionSuccess(`تم تعيين العملة (${code}) كعملة أساسية للشركة بنجاح! 🎉`);
+        fetchCurrencies();
+        fetchHistory();
+      } else {
+        setActionError(json.message || 'فشل تعيين العملة الأساسية');
+      }
+    } catch (err) {
+      setActionError('حدث خطأ أثناء تعيين العملة الأساسية للشركة');
+    }
+  };
+
   const handleDeleteCurrency = async (id: string, code: string) => {
-    if (code === 'SAR') {
-      alert('لا يمكن حذف العملة الأساسية للنظام (SAR)');
+    const baseCurr = currencies.find(c => c.isDefault === 'true' || c.isDefault === true);
+    if (code === baseCurr?.code || id === baseCurr?.id) {
+      alert(`لا يمكن حذف العملة الأساسية للنظام (${code})`);
       return;
     }
     if (!confirm(`هل أنت تأكد من رغبتك في حذف العملة (${code})؟`)) return;
@@ -296,14 +321,16 @@ export default function CurrencyManagement() {
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h3 className="font-extrabold text-slate-800 text-sm flex items-center gap-2">
                 <Landmark className="w-4 h-4 text-emerald-600" />
-                العملات المعرفة في النظام وسعر الصرف مقابل الريال
+                العملات المعرفة في النظام وأسعار الصرف الرسمية
               </h3>
               <span className="text-xs text-slate-500 font-semibold">إجمالي العملات: {currencies.length}</span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {currencies.map(curr => {
-                const isBase = curr.isDefault === 'true' || curr.code === 'SAR';
+                const isBase = curr.isDefault === 'true' || curr.isDefault === true || (curr as any).isDefault === '1';
+                const baseCurr = currencies.find(c => c.isDefault === 'true' || c.isDefault === true || (c as any).isDefault === '1');
+                const baseCode = baseCurr?.code || 'USD';
                 const rateNum = parseFloat(curr.exchangeRate || '1');
 
                 return (
@@ -326,24 +353,31 @@ export default function CurrencyManagement() {
                         <span className="text-xs font-bold text-slate-500">رمز العملة: ({curr.symbol})</span>
                       </div>
                       {isBase ? (
-                        <span className="bg-emerald-600 text-white text-[10px] font-bold px-2 py-1 rounded-md flex items-center gap-1">
+                        <span className="bg-emerald-600 text-white text-[10px] font-bold px-2 py-1 rounded-md flex items-center gap-1 shadow-sm">
                           <Check className="w-3 h-3" />
-                          العملة الأساسية
+                          عملة الشركة الأساسية
                         </span>
                       ) : (
-                        <div className="flex gap-1">
+                        <div className="flex flex-wrap gap-1 justify-end">
+                          <button
+                            onClick={() => handleSetBaseCurrency(curr.id, curr.code)}
+                            title="تعيين كعملة أساسية جديدة للشركة"
+                            className="text-[11px] bg-emerald-100 text-emerald-800 hover:bg-emerald-200 px-2 py-1 rounded-lg font-bold transition-all"
+                          >
+                            عملة أساسية
+                          </button>
                           <button
                             onClick={() => {
                               setEditingCurrency(curr);
                               setNewRateInput(curr.exchangeRate.toString());
                             }}
-                            className="text-xs bg-slate-800 hover:bg-slate-900 text-white px-2.5 py-1 rounded-lg font-bold transition-all"
+                            className="text-[11px] bg-slate-800 hover:bg-slate-900 text-white px-2 py-1 rounded-lg font-bold transition-all"
                           >
-                            تعديل السعر
+                            تعديل
                           </button>
                           <button
                             onClick={() => handleDeleteCurrency(curr.id, curr.code)}
-                            className="text-xs text-rose-600 hover:bg-rose-50 px-2 py-1 rounded-lg font-bold transition-all"
+                            className="text-[11px] text-rose-600 hover:bg-rose-50 px-2 py-1 rounded-lg font-bold transition-all"
                           >
                             حذف
                           </button>
@@ -353,14 +387,16 @@ export default function CurrencyManagement() {
 
                     <div className="mt-3 pt-3 border-t border-slate-200/60 flex justify-between items-end">
                       <div>
-                        <span className="text-[10px] text-slate-400 font-bold block">سعر الصرف الحالي مقابل SAR:</span>
+                        <span className="text-[10px] text-slate-400 font-bold block">
+                          {isBase ? 'العملة الأساسية للنظام:' : `السعر مقابل ${baseCode}:`}
+                        </span>
                         <div className="text-sm font-black text-slate-800 font-mono">
-                          1 {curr.code} = {rateNum} SAR
+                          {isBase ? `1 ${curr.code} = 1.00 ${curr.code}` : `1 ${curr.code} = ${rateNum} ${baseCode}`}
                         </div>
                       </div>
                       {!isBase && (
                         <div className="text-left text-[11px] font-semibold text-slate-500 font-mono">
-                          1 SAR = {(1 / rateNum).toFixed(2)} {curr.code}
+                          1 {baseCode} = {rateNum > 0 ? (1 / rateNum).toFixed(4) : '-'} {curr.code}
                         </div>
                       )}
                     </div>

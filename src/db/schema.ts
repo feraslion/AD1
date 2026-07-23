@@ -221,6 +221,7 @@ export const stockMoves = pgTable('stock_moves', {
   fromWarehouseId: text('from_warehouse_id').references(() => warehouses.id, { onDelete: 'set null' }),
   toWarehouseId: text('to_warehouse_id').references(() => warehouses.id, { onDelete: 'set null' }),
   quantity: numeric('quantity').notNull(),
+  unitCost: numeric('unit_cost').default('0'),
   type: text('type').notNull(), // 'purchase', 'sale', 'transfer', 'adjustment', 'initial'
   referenceId: text('reference_id'),
   notes: text('notes'),
@@ -336,6 +337,8 @@ export const purchases = pgTable('purchases', {
   grandTotal: numeric('grand_total').default('0'),
   status: text('status').default('ordered'), // draft, ordered, received, completed, cancelled
   paymentMethod: text('payment_method').default('cash'), // cash, card, credit
+  currency: text('currency').default('SAR'),
+  exchangeRate: numeric('exchange_rate').default('1.0'),
   supplierInvoiceNumber: text('supplier_invoice_number'),
   warehouseId: text('warehouse_id').references(() => warehouses.id, { onDelete: 'set null' }),
   supplierId: text('supplier_id').references(() => suppliers.id, { onDelete: 'set null' }),
@@ -601,6 +604,124 @@ export const paymentMethods = pgTable('payment_methods', {
     paymentMethodsCompanyIdx: index('payment_methods_company_idx').on(table.companyId),
   };
 });
+
+// 32. Exchange Rates Table
+export const exchangeRates = pgTable('exchange_rates', {
+  id: text('id').primaryKey(),
+  currencyId: text('currency_id').notNull().references(() => currencies.id, { onDelete: 'cascade' }),
+  currencyCode: text('currency_code').notNull(),
+  rate: numeric('rate').notNull(),
+  effectiveDate: text('effective_date').notNull(),
+  notes: text('notes'),
+  companyId: text('company_id').references(() => companies.id, { onDelete: 'cascade' }),
+  createdBy: text('created_by'),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => {
+  return {
+    exchangeRatesCurrencyIdx: index('exchange_rates_currency_idx').on(table.currencyId),
+    exchangeRatesCodeIdx: index('exchange_rates_code_idx').on(table.currencyCode),
+    exchangeRatesDateIdx: index('exchange_rates_date_idx').on(table.effectiveDate),
+    rateCheck: check('exchange_rates_rate_check', sql`${table.rate} > 0`),
+  };
+});
+
+// 33. Sales Invoices Table
+export const salesInvoices = pgTable('sales_invoices', {
+  id: text('id').primaryKey(),
+  companyId: text('company_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
+  branchId: text('branch_id').references(() => branches.id, { onDelete: 'cascade' }),
+  invoiceNumber: text('invoice_number').notNull().unique(),
+  date: text('date').notNull(),
+  dueDate: text('due_date'),
+  subtotal: numeric('subtotal').default('0'),
+  taxAmount: numeric('tax_amount').default('0'),
+  discountAmount: numeric('discount_amount').default('0'),
+  grandTotal: numeric('grand_total').default('0'),
+  paidAmount: numeric('paid_amount').default('0'),
+  remainingAmount: numeric('remaining_amount').default('0'),
+  paymentMethod: text('payment_method').default('cash'),
+  status: text('status').default('paid'), // paid, unpaid, partially_paid, draft, cancelled
+  customerId: text('customer_id').references(() => customers.id, { onDelete: 'set null' }),
+  cashierId: text('cashier_id').references(() => users.id, { onDelete: 'set null' }),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => {
+  return {
+    salesInvoicesCompanyIdx: index('sales_invoices_company_idx').on(table.companyId),
+    salesInvoicesBranchIdx: index('sales_invoices_branch_idx').on(table.branchId),
+    salesInvoicesDateIdx: index('sales_invoices_date_idx').on(table.date),
+    salesInvoicesCustomerIdx: index('sales_invoices_customer_idx').on(table.customerId),
+    salesInvoicesStatusCheck: check('sales_invoices_status_check', sql`${table.status} in ('paid', 'unpaid', 'partially_paid', 'draft', 'cancelled')`),
+    salesInvoicesPaymentMethodCheck: check('sales_invoices_payment_method_check', sql`${table.paymentMethod} in ('cash', 'card', 'credit', 'split')`),
+  };
+});
+
+// 34. Purchase Invoices Table
+export const purchaseInvoices = pgTable('purchase_invoices', {
+  id: text('id').primaryKey(),
+  companyId: text('company_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
+  branchId: text('branch_id').references(() => branches.id, { onDelete: 'cascade' }),
+  invoiceNumber: text('invoice_number').notNull().unique(),
+  supplierInvoiceNumber: text('supplier_invoice_number'),
+  date: text('date').notNull(),
+  dueDate: text('due_date'),
+  subtotal: numeric('subtotal').default('0'),
+  taxAmount: numeric('tax_amount').default('0'),
+  discountAmount: numeric('discount_amount').default('0'),
+  grandTotal: numeric('grand_total').default('0'),
+  paidAmount: numeric('paid_amount').default('0'),
+  remainingAmount: numeric('remaining_amount').default('0'),
+  paymentMethod: text('payment_method').default('cash'),
+  status: text('status').default('ordered'), // draft, ordered, received, completed, cancelled
+  supplierId: text('supplier_id').references(() => suppliers.id, { onDelete: 'set null' }),
+  warehouseId: text('warehouse_id').references(() => warehouses.id, { onDelete: 'set null' }),
+  notes: text('notes'),
+  createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => {
+  return {
+    purchaseInvoicesCompanyIdx: index('purchase_invoices_company_idx').on(table.companyId),
+    purchaseInvoicesBranchIdx: index('purchase_invoices_branch_idx').on(table.branchId),
+    purchaseInvoicesDateIdx: index('purchase_invoices_date_idx').on(table.date),
+    purchaseInvoicesSupplierIdx: index('purchase_invoices_supplier_idx').on(table.supplierId),
+    purchaseInvoicesStatusCheck: check('purchase_invoices_status_check', sql`${table.status} in ('draft', 'ordered', 'received', 'completed', 'cancelled')`),
+  };
+});
+
+// 35. Audit Logs Table
+export const auditLogs = pgTable('audit_logs', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').references(() => users.id, { onDelete: 'set null' }),
+  userName: text('user_name'),
+  userEmail: text('user_email'),
+  action: text('action').notNull(), // CREATE, UPDATE, DELETE, LOGIN, POST, APPROVE, CANCEL
+  module: text('module').notNull(), // sales, purchases, inventory, accounting, users, settings
+  recordId: text('record_id'),
+  details: text('details'),
+  ipAddress: text('ip_address'),
+  companyId: text('company_id').references(() => companies.id, { onDelete: 'cascade' }),
+  branchId: text('branch_id').references(() => branches.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => {
+  return {
+    auditLogsUserIdx: index('audit_logs_user_idx').on(table.userId),
+    auditLogsModuleIdx: index('audit_logs_module_idx').on(table.module),
+    auditLogsCompanyIdx: index('audit_logs_company_idx').on(table.companyId),
+    auditLogsCreatedAtIdx: index('audit_logs_created_at_idx').on(table.createdAt),
+  };
+});
+
+// Alias Exports for direct snake_case references
+export const exchange_rates = exchangeRates;
+export const sales_invoices = salesInvoices;
+export const purchase_invoices = purchaseInvoices;
+export const audit_logs = auditLogs;
+export const journal_entries = journalEntries;
+export const journal_lines = journalLines;
+export const stock_moves = stockMoves;
 
 
 // ==================== Relationships ====================
@@ -950,5 +1071,73 @@ export const paymentMethodsRelations = relations(paymentMethods, ({ one }) => ({
   account: one(accounts, {
     fields: [paymentMethods.accountId],
     references: [accounts.id],
+  }),
+}));
+
+export const exchangeRatesRelations = relations(exchangeRates, ({ one }) => ({
+  currency: one(currencies, {
+    fields: [exchangeRates.currencyId],
+    references: [currencies.id],
+  }),
+  company: one(companies, {
+    fields: [exchangeRates.companyId],
+    references: [companies.id],
+  }),
+}));
+
+export const salesInvoicesRelations = relations(salesInvoices, ({ one }) => ({
+  company: one(companies, {
+    fields: [salesInvoices.companyId],
+    references: [companies.id],
+  }),
+  branch: one(branches, {
+    fields: [salesInvoices.branchId],
+    references: [branches.id],
+  }),
+  customer: one(customers, {
+    fields: [salesInvoices.customerId],
+    references: [customers.id],
+  }),
+  cashier: one(users, {
+    fields: [salesInvoices.cashierId],
+    references: [users.id],
+  }),
+}));
+
+export const purchaseInvoicesRelations = relations(purchaseInvoices, ({ one }) => ({
+  company: one(companies, {
+    fields: [purchaseInvoices.companyId],
+    references: [companies.id],
+  }),
+  branch: one(branches, {
+    fields: [purchaseInvoices.branchId],
+    references: [branches.id],
+  }),
+  supplier: one(suppliers, {
+    fields: [purchaseInvoices.supplierId],
+    references: [suppliers.id],
+  }),
+  warehouse: one(warehouses, {
+    fields: [purchaseInvoices.warehouseId],
+    references: [warehouses.id],
+  }),
+  creator: one(users, {
+    fields: [purchaseInvoices.createdBy],
+    references: [users.id],
+  }),
+}));
+
+export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
+  user: one(users, {
+    fields: [auditLogs.userId],
+    references: [users.id],
+  }),
+  company: one(companies, {
+    fields: [auditLogs.companyId],
+    references: [companies.id],
+  }),
+  branch: one(branches, {
+    fields: [auditLogs.branchId],
+    references: [branches.id],
   }),
 }));

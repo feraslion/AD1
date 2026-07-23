@@ -72,10 +72,11 @@ export default function Accounting({ settings }: AccountingProps) {
   const [ledgerLoading, setLedgerLoading] = useState(false);
 
   // For manual journal entry modal
+  const [currenciesList, setCurrenciesList] = useState<any[]>([]);
   const [showManualModal, setShowManualModal] = useState(false);
   const [entryDesc, setEntryDesc] = useState('');
   const [entryDate, setEntryDate] = useState(new Date().toISOString().split('T')[0]);
-  const [entryCurrency, setEntryCurrency] = useState('SAR');
+  const [entryCurrency, setEntryCurrency] = useState('USD');
   const [entryExchangeRate, setEntryExchangeRate] = useState<number>(1.0);
   const [entryLines, setEntryLines] = useState<{ accountId: string; debit: number; credit: number; foreignDebit?: number; foreignCredit?: number }[]>([
     { accountId: 'acc_cash', debit: 0, credit: 0, foreignDebit: 0, foreignCredit: 0 },
@@ -94,6 +95,21 @@ export default function Accounting({ settings }: AccountingProps) {
 
       const rulesData = await AccountingService.getPostingRules();
       setPostingRulesList(rulesData);
+
+      try {
+        const curRes = await fetch('/api/currencies');
+        const curJson = await curRes.json();
+        if (curJson.success && Array.isArray(curJson.data)) {
+          setCurrenciesList(curJson.data);
+          const baseCurr = curJson.data.find((c: any) => c.isDefault === 'true' || c.isDefault === true || c.isDefault === '1');
+          if (baseCurr) {
+            setEntryCurrency(baseCurr.code);
+            setEntryExchangeRate(1.0);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch currencies in Accounting:', err);
+      }
     } catch (e) {
       console.error("Error fetching accounting data:", e);
     } finally {
@@ -1261,30 +1277,42 @@ export default function Accounting({ settings }: AccountingProps) {
                   <select
                     value={entryCurrency}
                     onChange={(e) => {
-                      const curr = e.target.value;
-                      setEntryCurrency(curr);
-                      if (curr === 'SAR') setEntryExchangeRate(1.0);
-                      else if (curr === 'USD') setEntryExchangeRate(3.75);
-                      else if (curr === 'TRY') setEntryExchangeRate(0.11);
-                      else if (curr === 'SYP') setEntryExchangeRate(0.00028);
+                      const currCode = e.target.value;
+                      setEntryCurrency(currCode);
+                      const selectedObj = currenciesList.find(c => c.code === currCode);
+                      if (selectedObj) {
+                        setEntryExchangeRate(parseFloat(selectedObj.exchangeRate || '1.0'));
+                      }
                     }}
                     className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-bold bg-white focus:outline-none"
                   >
-                    <option value="SAR">الريال السعودي (SAR)</option>
-                    <option value="USD">الدولار الأمريكي (USD)</option>
-                    <option value="TRY">الليرة التركية (TRY)</option>
-                    <option value="SYP">الليرة السورية (SYP)</option>
+                    {currenciesList.length > 0 ? (
+                      currenciesList.map(c => (
+                        <option key={c.id || c.code} value={c.code}>
+                          {c.name} ({c.code}) {c.isDefault === 'true' || c.isDefault === true || c.isDefault === '1' ? ' - العملة الأساسية' : ''}
+                        </option>
+                      ))
+                    ) : (
+                      <>
+                        <option value="USD">الدولار الأمريكي (USD)</option>
+                        <option value="SYP">الليرة السورية (SYP)</option>
+                        <option value="TRY">الليرة التركية (TRY)</option>
+                        <option value="SAR">الريال السعودي (SAR)</option>
+                      </>
+                    )}
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">سعر الصرف مقابل SAR</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    سعر الصرف مقابل العملة الأساسية
+                  </label>
                   <input 
                     type="number"
                     step="any"
                     value={entryExchangeRate}
                     onChange={(e) => setEntryExchangeRate(parseFloat(e.target.value) || 1.0)}
-                    disabled={entryCurrency === 'SAR'}
+                    disabled={currenciesList.find(c => c.code === entryCurrency)?.isDefault === 'true' || currenciesList.find(c => c.code === entryCurrency)?.isDefault === true || currenciesList.find(c => c.code === entryCurrency)?.isDefault === '1'}
                     className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-mono font-bold bg-white focus:outline-none"
                   />
                 </div>
@@ -1304,84 +1332,88 @@ export default function Accounting({ settings }: AccountingProps) {
                 </div>
 
                 <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                  {entryLines.map((line, idx) => (
-                    <div key={idx} className="flex flex-wrap sm:flex-nowrap gap-2 items-center bg-slate-50/50 p-2 rounded-xl border border-slate-100">
-                      <select
-                        value={line.accountId}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setEntryLines(prev => prev.map((l, i) => i === idx ? { ...l, accountId: val } : l));
-                        }}
-                        className="flex-1 px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg text-right bg-white font-semibold"
-                      >
-                        {accounts.map(a => (
-                          <option key={a.id} value={a.id}>{a.name} ({a.code})</option>
-                        ))}
-                      </select>
+                  {entryLines.map((line, idx) => {
+                    const isBase = currenciesList.find(c => c.code === entryCurrency)?.isDefault === 'true' || currenciesList.find(c => c.code === entryCurrency)?.isDefault === true || currenciesList.find(c => c.code === entryCurrency)?.isDefault === '1';
 
-                      {entryCurrency !== 'SAR' && (
-                        <input 
-                          type="number" 
-                          placeholder={`مدين (${entryCurrency})`}
-                          value={line.foreignDebit || ''}
+                    return (
+                      <div key={idx} className="flex flex-wrap sm:flex-nowrap gap-2 items-center bg-slate-50/50 p-2 rounded-xl border border-slate-100">
+                        <select
+                          value={line.accountId}
                           onChange={(e) => {
-                            const fVal = parseFloat(e.target.value) || 0;
-                            const bVal = fVal * entryExchangeRate;
-                            setEntryLines(prev => prev.map((l, i) => i === idx ? { ...l, foreignDebit: fVal, foreignCredit: 0, debit: bVal, credit: 0 } : l));
+                            const val = e.target.value;
+                            setEntryLines(prev => prev.map((l, i) => i === idx ? { ...l, accountId: val } : l));
                           }}
-                          className="w-24 px-2 py-1.5 text-xs border border-emerald-200 bg-emerald-50/30 rounded-lg text-center font-mono font-bold text-emerald-800"
-                        />
-                      )}
-
-                      <input 
-                        type="number" 
-                        placeholder="مدين (SAR)"
-                        value={line.debit || ''}
-                        onChange={(e) => {
-                          const bVal = parseFloat(e.target.value) || 0;
-                          const fVal = entryExchangeRate > 0 ? bVal / entryExchangeRate : bVal;
-                          setEntryLines(prev => prev.map((l, i) => i === idx ? { ...l, debit: bVal, credit: 0, foreignDebit: fVal, foreignCredit: 0 } : l));
-                        }}
-                        className="w-24 px-2 py-1.5 text-xs border border-slate-200 rounded-lg text-center font-mono font-bold bg-white"
-                      />
-
-                      {entryCurrency !== 'SAR' && (
-                        <input 
-                          type="number" 
-                          placeholder={`دائن (${entryCurrency})`}
-                          value={line.foreignCredit || ''}
-                          onChange={(e) => {
-                            const fVal = parseFloat(e.target.value) || 0;
-                            const bVal = fVal * entryExchangeRate;
-                            setEntryLines(prev => prev.map((l, i) => i === idx ? { ...l, foreignCredit: fVal, foreignDebit: 0, credit: bVal, debit: 0 } : l));
-                          }}
-                          className="w-24 px-2 py-1.5 text-xs border border-rose-200 bg-rose-50/30 rounded-lg text-center font-mono font-bold text-rose-800"
-                        />
-                      )}
-
-                      <input 
-                        type="number" 
-                        placeholder="دائن (SAR)"
-                        value={line.credit || ''}
-                        onChange={(e) => {
-                          const bVal = parseFloat(e.target.value) || 0;
-                          const fVal = entryExchangeRate > 0 ? bVal / entryExchangeRate : bVal;
-                          setEntryLines(prev => prev.map((l, i) => i === idx ? { ...l, credit: bVal, debit: 0, foreignCredit: fVal, foreignDebit: 0 } : l));
-                        }}
-                        className="w-24 px-2 py-1.5 text-xs border border-slate-200 rounded-lg text-center font-mono font-bold bg-white"
-                      />
-
-                      {entryLines.length > 2 && (
-                        <button 
-                          type="button"
-                          onClick={() => setEntryLines(prev => prev.filter((_, i) => i !== idx))}
-                          className="text-red-500 hover:text-red-700 font-bold px-1"
+                          className="flex-1 px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg text-right bg-white font-semibold"
                         >
-                          ×
-                        </button>
-                      )}
-                    </div>
-                  ))}
+                          {accounts.map(a => (
+                            <option key={a.id} value={a.id}>{a.name} ({a.code})</option>
+                          ))}
+                        </select>
+
+                        {!isBase && (
+                          <input 
+                            type="number" 
+                            placeholder={`مدين (${entryCurrency})`}
+                            value={line.foreignDebit || ''}
+                            onChange={(e) => {
+                              const fVal = parseFloat(e.target.value) || 0;
+                              const bVal = fVal * entryExchangeRate;
+                              setEntryLines(prev => prev.map((l, i) => i === idx ? { ...l, foreignDebit: fVal, foreignCredit: 0, debit: bVal, credit: 0 } : l));
+                            }}
+                            className="w-24 px-2 py-1.5 text-xs border border-emerald-200 bg-emerald-50/30 rounded-lg text-center font-mono font-bold text-emerald-800"
+                          />
+                        )}
+
+                        <input 
+                          type="number" 
+                          placeholder="مدين (بالأساسية)"
+                          value={line.debit || ''}
+                          onChange={(e) => {
+                            const bVal = parseFloat(e.target.value) || 0;
+                            const fVal = entryExchangeRate > 0 ? bVal / entryExchangeRate : bVal;
+                            setEntryLines(prev => prev.map((l, i) => i === idx ? { ...l, debit: bVal, credit: 0, foreignDebit: fVal, foreignCredit: 0 } : l));
+                          }}
+                          className="w-24 px-2 py-1.5 text-xs border border-slate-200 rounded-lg text-center font-mono font-bold bg-white"
+                        />
+
+                        {!isBase && (
+                          <input 
+                            type="number" 
+                            placeholder={`دائن (${entryCurrency})`}
+                            value={line.foreignCredit || ''}
+                            onChange={(e) => {
+                              const fVal = parseFloat(e.target.value) || 0;
+                              const bVal = fVal * entryExchangeRate;
+                              setEntryLines(prev => prev.map((l, i) => i === idx ? { ...l, foreignCredit: fVal, foreignDebit: 0, credit: bVal, debit: 0 } : l));
+                            }}
+                            className="w-24 px-2 py-1.5 text-xs border border-rose-200 bg-rose-50/30 rounded-lg text-center font-mono font-bold text-rose-800"
+                          />
+                        )}
+
+                        <input 
+                          type="number" 
+                          placeholder="دائن (بالأساسية)"
+                          value={line.credit || ''}
+                          onChange={(e) => {
+                            const bVal = parseFloat(e.target.value) || 0;
+                            const fVal = entryExchangeRate > 0 ? bVal / entryExchangeRate : bVal;
+                            setEntryLines(prev => prev.map((l, i) => i === idx ? { ...l, credit: bVal, debit: 0, foreignCredit: fVal, foreignDebit: 0 } : l));
+                          }}
+                          className="w-24 px-2 py-1.5 text-xs border border-slate-200 rounded-lg text-center font-mono font-bold bg-white"
+                        />
+
+                        {entryLines.length > 2 && (
+                          <button 
+                            type="button"
+                            onClick={() => setEntryLines(prev => prev.filter((_, i) => i !== idx))}
+                            className="text-red-500 hover:text-red-700 font-bold px-1"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 

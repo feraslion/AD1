@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Product, Category, Customer, CartItem, StoreSettings, Invoice } from '../../types';
 import { 
   ShoppingCart, Search, Plus, Minus, Trash2, UserPlus, CreditCard, 
@@ -10,6 +10,8 @@ import { SalesService } from '../../services/SalesService';
 import { playScannerSound } from '../../utils/audio';
 import { generateZatcaQrDataUrl } from '../../utils/zatca';
 import { OfflineQueue } from '../../utils/offlineQueue';
+import { useBarcodeScanner } from '../../utils/scannerUtility';
+import BarcodeScannerModal from './BarcodeScannerModal';
 
 interface POSProps {
   products: Product[];
@@ -31,7 +33,8 @@ export default function POS({ products, categories, customers, settings, onAddIn
   const [invoiceDiscount, setInvoiceDiscount] = useState<number>(0);
   const [invoiceDiscountType, setInvoiceDiscountType] = useState<'fixed' | 'percentage'>('fixed');
 
-  // Scanner State & Fast Laser Mode
+  // Scanner Modal & Fast Laser Mode
+  const [showScannerModal, setShowScannerModal] = useState<boolean>(false);
   const [showScanner, setShowScanner] = useState<boolean>(false);
   const [scannerInput, setScannerInput] = useState<string>('');
   const [scanMessage, setScanMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
@@ -69,6 +72,11 @@ export default function POS({ products, categories, customers, settings, onAddIn
   const [numpadValue, setNumpadValue] = useState<string>('');
   const [activeCartItemId, setActiveCartItemId] = useState<string | null>(null);
 
+  const triggerScanMessage = useCallback((text: string, type: 'success' | 'error' | 'info') => {
+    setScanMessage({ text, type });
+    setTimeout(() => setScanMessage(null), 3500);
+  }, []);
+
   // Monitor network status online / offline
   useEffect(() => {
     const handleOnline = () => {
@@ -88,7 +96,7 @@ export default function POS({ products, categories, customers, settings, onAddIn
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, []);
+  }, [triggerScanMessage]);
 
   // Sync offline queue with server
   const handleSyncOfflineQueue = async () => {
@@ -111,102 +119,19 @@ export default function POS({ products, categories, customers, settings, onAddIn
     }
   };
 
-  // Fast Barcode scanning (simulating hardware laser gun input)
-  useEffect(() => {
-    let barcodeBuffer = '';
-    let lastKeyTime = Date.now();
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if user is typing in standard text inputs or modals
-      const target = e.target as HTMLElement;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')) {
-        return;
-      }
-
-      const currentTime = Date.now();
-      
-      // If the characters are coming fast (<50ms interval), it is likely a barcode scanner
-      if (currentTime - lastKeyTime > 70) {
-        barcodeBuffer = ''; // reset buffer if slow manual typing
-      }
-      
-      lastKeyTime = currentTime;
-
-      if (e.key === 'Enter') {
-        if (barcodeBuffer.length >= 3) {
-          handleBarcodeScan(barcodeBuffer);
-          barcodeBuffer = '';
-          e.preventDefault();
-        }
-      } else if (e.key !== 'Shift' && e.key !== 'Control' && e.key !== 'Alt') {
-        barcodeBuffer += e.key;
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [products, cart, scalePrefix]);
-
-  // Handle direct barcode scan including electronic scale barcodes
-  const handleBarcodeScan = (barcodeRaw: string) => {
-    const barcode = barcodeRaw.trim();
-    if (!barcode) return;
-
-    // 1. Check if it's a Scale Barcode (e.g., 13 digits starting with scalePrefix '20')
-    if (barcode.length === 13 && barcode.startsWith(scalePrefix)) {
-      // EAN-13 scale barcode format:
-      // Positions 0-1: Prefix (20)
-      // Positions 2-6: Item Code (5 digits)
-      // Positions 7-11: Weight in grams or total price in halalas (5 digits)
-      const itemCode = barcode.substring(2, 7);
-      const valuePart = parseInt(barcode.substring(7, 12), 10);
-      
-      // Find product matching barcode or code
-      const prod = products.find(p => p.barcode === itemCode || p.barcode.endsWith(itemCode));
-      if (prod) {
-        // Assume valuePart is weight in grams (e.g., 01250 = 1.250 kg)
-        const weightKg = valuePart / 1000;
-        addScaledProductToCart(prod, weightKg > 0 ? weightKg : 1);
-        playScannerSound('success');
-        triggerScanMessage(`⚖️ مسح باركود الميزان: ${prod.name} (${weightKg.toFixed(3)} كجم)`, 'success');
-        return;
-      }
-    }
-
-    // 2. Standard exact barcode search
-    const prod = products.find(p => p.barcode === barcode || p.id === barcode);
-    if (prod) {
-      if (prod.stock !== 999 && prod.stock <= 0) {
-        playScannerSound('error');
-        triggerScanMessage(`الصنف "${prod.name}" نفد من المخزن!`, 'error');
-        return;
-      }
-      addToCart(prod);
-      playScannerSound('success');
-      triggerScanMessage(`تم مسح وإضافة: ${prod.name}`, 'success');
-    } else {
-      playScannerSound('error');
-      triggerScanMessage(`كود الباركود (${barcode}) غير مسجل بالنظام!`, 'error');
-    }
-  };
-
-  const triggerScanMessage = (text: string, type: 'success' | 'error' | 'info') => {
-    setScanMessage({ text, type });
-    setTimeout(() => setScanMessage(null), 3500);
-  };
-
   // Cart operations
-  const addToCart = (product: Product) => {
+  const addToCart = useCallback((product: Product, quantity: number = 1) => {
     setCart(prevCart => {
       const existing = prevCart.find(item => item.id === product.id);
       if (existing) {
-        if (product.stock !== 999 && existing.quantity >= product.stock) {
+        const targetQty = existing.quantity + quantity;
+        if (product.stock !== 999 && targetQty > product.stock) {
           playScannerSound('error');
           triggerScanMessage(`تنبيه: لا يوجد سوى ${product.stock} قطع في المخزون`, 'error');
           return prevCart;
         }
         return prevCart.map(item => 
-          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+          item.id === product.id ? { ...item, quantity: parseFloat(targetQty.toFixed(3)) } : item
         );
       } else {
         if (product.stock !== 999 && product.stock <= 0) {
@@ -214,41 +139,45 @@ export default function POS({ products, categories, customers, settings, onAddIn
           triggerScanMessage(`المنتج غير متوفر بالمخزون`, 'error');
           return prevCart;
         }
-        return [...prevCart, { id: product.id, product, quantity: 1, discount: 0, discountType: 'percentage' }];
-      }
-    });
-  };
-
-  const addScaledProductToCart = (product: Product, quantity: number) => {
-    setCart(prevCart => {
-      const existing = prevCart.find(item => item.id === product.id);
-      if (existing) {
-        return prevCart.map(item => 
-          item.id === product.id ? { ...item, quantity: parseFloat((item.quantity + quantity).toFixed(3)) } : item
-        );
-      } else {
         return [...prevCart, { id: product.id, product, quantity: parseFloat(quantity.toFixed(3)), discount: 0, discountType: 'percentage' }];
       }
     });
-  };
+  }, [triggerScanMessage]);
 
-  const updateQuantity = (id: string, qty: number) => {
-    const item = cart.find(i => i.id === id);
-    if (!item) return;
+  const updateQuantity = useCallback((id: string, qty: number) => {
+    setCart(prevCart => {
+      const item = prevCart.find(i => i.id === id);
+      if (!item) return prevCart;
 
-    if (qty <= 0) {
-      setCart(prev => prev.filter(i => i.id !== id));
-      return;
-    }
+      if (qty <= 0) {
+        return prevCart.filter(i => i.id !== id);
+      }
 
-    if (item.product.stock !== 999 && qty > item.product.stock) {
-      playScannerSound('error');
-      triggerScanMessage(`تنبيه: الحد الأقصى للمخزون هو ${item.product.stock}`, 'error');
-      return;
-    }
+      if (item.product.stock !== 999 && qty > item.product.stock) {
+        playScannerSound('error');
+        triggerScanMessage(`تنبيه: الحد الأقصى للمخزون هو ${item.product.stock}`, 'error');
+        return prevCart;
+      }
 
-    setCart(prev => prev.map(i => i.id === id ? { ...i, quantity: parseFloat(qty.toFixed(3)) } : i));
-  };
+      return prevCart.map(i => i.id === id ? { ...i, quantity: parseFloat(qty.toFixed(3)) } : i);
+    });
+  }, [triggerScanMessage]);
+
+  // Integrated USB / Bluetooth Barcode Scanner Utility
+  const {
+    config: scannerConfig,
+    setConfig: setScannerConfig,
+    scanHistory,
+    clearHistory: clearScanHistory,
+    processBarcode: handleBarcodeScan
+  } = useBarcodeScanner({
+    products,
+    cart,
+    onAddToCart: addToCart,
+    onUpdateQuantity: updateQuantity,
+    onScanMessage: triggerScanMessage,
+    config: { scalePrefix }
+  });
 
   const updateItemDiscount = (id: string, discount: number, type: 'fixed' | 'percentage') => {
     setCart(prev => prev.map(i => i.id === id ? { ...i, discount, discountType: type } : i));
@@ -496,16 +425,26 @@ export default function POS({ products, categories, customers, settings, onAddIn
                 />
               </div>
 
-              {/* Laser Simulator & Touch Keypad Buttons */}
+              {/* Laser Scanner & Touch Keypad Buttons */}
               <div className="flex gap-2">
+                <button 
+                  onClick={() => setShowScannerModal(true)}
+                  className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-sm"
+                  title="إدارة وحدة القارئ الضوئي USB / Bluetooth"
+                >
+                  <Scan className="w-4 h-4 text-white animate-pulse" />
+                  <span>القارئ الضوئي ⚡</span>
+                </button>
+
                 <button 
                   onClick={() => setShowScanner(!showScanner)}
                   className={`flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold transition ${
                     showScanner ? 'bg-emerald-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-white'
                   }`}
+                  title="شريط القارئ السريع"
                 >
-                  <Scan className="w-4 h-4" />
-                  <span>محاكاة القارئ</span>
+                  <Zap className="w-4 h-4" />
+                  <span>شريط سريع</span>
                 </button>
 
                 <button
@@ -1285,6 +1224,18 @@ export default function POS({ products, categories, customers, settings, onAddIn
           </form>
         </div>
       )}
+
+      {/* USB / Bluetooth Barcode Scanner Management Modal */}
+      <BarcodeScannerModal
+        isOpen={showScannerModal}
+        onClose={() => setShowScannerModal(false)}
+        config={scannerConfig}
+        onUpdateConfig={(newCfg) => setScannerConfig(prev => ({ ...prev, ...newCfg }))}
+        scanHistory={scanHistory}
+        onClearHistory={clearScanHistory}
+        onScanBarcode={handleBarcodeScan}
+        products={products}
+      />
     </div>
   );
 }
