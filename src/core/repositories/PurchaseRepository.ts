@@ -309,6 +309,97 @@ export class PurchaseRepository {
     return { success: true, message: 'تم إصدار فاتورة المورد والترحيل المحاسبي بنجاح' };
   }
 
+  static async returnPurchaseInvoice(id: string, options?: { notes?: string }) {
+    const pur = await this.findById(id);
+    if (!pur) throw new Error('أمر الشراء غير موجود');
+    if (pur.status === 'returned') {
+      throw new Error('تم إرجاع فاتورة المشتريات هذه مسبقاً');
+    }
+
+    const subtotal = parseFloat(pur.subtotal || '0');
+    const taxAmount = parseFloat(pur.taxAmount || '0');
+    const grandTotal = parseFloat(pur.grandTotal || '0');
+    const invoiceNumber = pur.supplierInvoiceNumber || pur.purchaseNumber;
+
+    // 1. Mark purchase as returned
+    await db.update(purchases).set({
+      status: 'returned',
+      updatedAt: new Date()
+    }).where(eq(purchases.id, id));
+
+    // 2. Reduce inventory for returned items
+    const items = await db.select().from(purchaseItems).where(eq(purchaseItems.purchaseId, id));
+    for (const item of items) {
+      const qty = parseFloat(item.quantity || '0');
+      
+      await InventoryRepository.recordStockMove({
+        productId: item.productId,
+        fromWarehouseId: pur.warehouseId || 'wh_main',
+        quantity: qty,
+        type: 'adjustment',
+        referenceId: invoiceNumber,
+        notes: `مرتجع مشتريات للفاتورة رقم ${invoiceNumber}`
+      });
+
+      // Update product stock balance
+      const [product] = await db.select().from(products).where(eq(products.id, item.productId));
+      if (product) {
+        const curStock = parseFloat(product.stock || '0');
+        const newStock = Math.max(0, curStock - qty);
+        await db.update(products).set({ stock: newStock.toString() }).where(eq(products.id, item.productId));
+      }
+    }
+
+    // 3. Adjust supplier balance if payment method was credit
+    if (pur.paymentMethod === 'credit' && pur.supplierId) {
+      await SupplierRepository.adjustBalance(pur.supplierId, -grandTotal);
+    }
+
+    // 4. Create Reverse Accounting Entry for Purchase Return
+    const getAccountByRule = async (ruleId: string, fallbackAccId: string) => {
+      const rule = await AccountingRepository.findPostingRuleByCode(ruleId);
+      return rule?.accountId || fallbackAccId;
+    };
+
+    const cashAcc = await getAccountByRule('purchase_cash_credit', 'acc_cash');
+    const bankAcc = await getAccountByRule('purchase_bank_credit', 'acc_bank');
+    const payAcc = await getAccountByRule('purchase_credit_credit', 'acc_payable');
+    const invAcc = await getAccountByRule('purchase_inventory_debit', 'acc_inventory');
+    const taxAcc = await getAccountByRule('purchase_tax_debit', 'acc_tax');
+
+    const accountingLines = [];
+
+    // Debit Payable / Cash / Bank
+    if (pur.paymentMethod === 'cash') {
+      accountingLines.push({ accountId: cashAcc, debit: grandTotal, credit: 0 });
+    } else if (pur.paymentMethod === 'card') {
+      accountingLines.push({ accountId: bankAcc, debit: grandTotal, credit: 0 });
+    } else {
+      accountingLines.push({ accountId: payAcc, debit: grandTotal, credit: 0 });
+    }
+
+    // Credit Inventory
+    accountingLines.push({ accountId: invAcc, debit: 0, credit: subtotal });
+
+    // Credit Input VAT Tax
+    if (taxAmount > 0) {
+      accountingLines.push({ accountId: taxAcc, debit: 0, credit: taxAmount });
+    }
+
+    const journalResult = await AccountingRepository.postJournalEntry(
+      `JE-PRET-${invoiceNumber}`,
+      `مرتجع مشتريات للفاتورة رقم ${invoiceNumber}`,
+      new Date().toISOString().split('T')[0],
+      accountingLines,
+      {
+        currency: pur.currency || 'SAR',
+        exchangeRate: parseFloat(pur.exchangeRate || '1.0')
+      }
+    );
+
+    return { success: true, journalEntry: journalResult };
+  }
+
   private static async postPurchaseJournalEntry(data: {
     invoiceNumber: string;
     date: string;

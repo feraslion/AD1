@@ -13,6 +13,8 @@ import {
 } from '../database/schema.ts';
 import { eq, desc, inArray, and, gte, lte } from 'drizzle-orm';
 import { CurrencyRepository } from './CurrencyRepository.ts';
+import { AccountService } from '../services/AccountService.ts';
+import { JournalEngine } from '../services/JournalEngine.ts';
 
 export interface JournalLineInput {
   accountId: string;
@@ -35,53 +37,36 @@ export interface PostJournalEntryOptions {
 
 export class AccountingRepository {
   // 1. CHART OF ACCOUNTS & TREE
-  static async getAccounts() {
-    return await db.select().from(accounts);
+  static async getAccounts(filter?: { companyId?: string; type?: string; activeOnly?: boolean; search?: string }) {
+    return await AccountService.getAccounts(filter);
+  }
+
+  static async getAccountsTree(companyId?: string) {
+    return await AccountService.getAccountsTree(companyId);
   }
 
   static async findAccountById(id: string) {
-    const res = await db.select().from(accounts).where(eq(accounts.id, id));
-    return res[0] || null;
+    return await AccountService.getAccountById(id);
   }
 
   static async findAccountByCode(code: string) {
-    const res = await db.select().from(accounts).where(eq(accounts.code, code));
-    return res[0] || null;
+    return await AccountService.getAccountByCode(code);
   }
 
   static async upsertAccount(data: any) {
-    const baseCode = await CurrencyRepository.getBaseCurrencyCode();
-    const accountId = data.id || 'acc_' + Math.random().toString(36).substr(2, 9);
-    const dbValue = {
-      id: accountId,
-      code: data.code,
-      name: data.name,
-      type: data.type,
-      balance: (data.balance || 0).toString(),
-      currency: data.currency || baseCode,
-      foreignBalance: (data.foreignBalance || 0).toString(),
-      parentId: data.parentId || null,
-      companyId: data.companyId || null,
-      branchId: data.branchId || null
-    };
+    return await AccountService.upsertAccount(data);
+  }
 
-    const existing = await this.findAccountById(accountId);
-    if (existing) {
-      await db.update(accounts).set(dbValue).where(eq(accounts.id, accountId));
-    } else {
-      await db.insert(accounts).values(dbValue);
-    }
-    const updated = await this.findAccountById(accountId);
-    return updated!;
+  static async toggleAccountActive(id: string, isActive: boolean) {
+    return await AccountService.toggleAccountActive(id, isActive);
   }
 
   static async deleteAccount(id: string) {
-    const existingDetails = await db.select().from(journalDetails).where(eq(journalDetails.accountId, id));
-    if (existingDetails.length > 0) {
-      throw new Error('لا يمكن حذف الحساب نظراً لوجود قيود محاسبية مسجلة عليه.');
-    }
-    await db.delete(accounts).where(eq(accounts.id, id));
-    return { success: true };
+    return await AccountService.deleteAccount(id);
+  }
+
+  static async seedDefaultChartOfAccounts(companyId?: string) {
+    return await AccountService.seedDefaultChartOfAccounts(companyId);
   }
 
   // 2. DOUBLE-ENTRY MULTI-CURRENCY POSTING ENGINE
@@ -90,157 +75,9 @@ export class AccountingRepository {
     description: string, 
     date: string, 
     lines: JournalLineInput[],
-    options?: PostJournalEntryOptions
+    options?: PostJournalEntryOptions & { reference?: string; status?: 'draft' | 'posted'; createdBy?: string }
   ) {
-    if (!lines || lines.length < 2) {
-      throw new Error('يجب أن يحتوي القيد على سطرين محاسبيين على الأقل (مدين ودائن).');
-    }
-
-    const baseCurrency = options?.baseCurrency || await CurrencyRepository.getBaseCurrencyCode();
-    const transactionCurrency = options?.currency || lines[0].currency || baseCurrency;
-    const globalRate = options?.exchangeRate || lines[0].exchangeRate || 1.0;
-
-    // Calculate and validate base currency debit/credit totals
-    let totalBaseDebit = 0;
-    let totalBaseCredit = 0;
-    let totalForeignDebit = 0;
-    let totalForeignCredit = 0;
-
-    const normalizedLines = lines.map(line => {
-      const lineCurrency = line.currency || transactionCurrency;
-      const rate = line.exchangeRate || globalRate;
-
-      let fDebit = Number(line.foreignDebit) || 0;
-      let fCredit = Number(line.foreignCredit) || 0;
-      let bDebit = Number(line.debit) || 0;
-      let bCredit = Number(line.credit) || 0;
-
-      // Auto-compute base amount if foreign amount provided and base amount is zero
-      if (fDebit > 0 && bDebit === 0) {
-        bDebit = fDebit * rate;
-      }
-      if (fCredit > 0 && bCredit === 0) {
-        bCredit = fCredit * rate;
-      }
-
-      // Auto-compute foreign amount if base amount provided and foreign amount is zero
-      if (bDebit > 0 && fDebit === 0) {
-        fDebit = rate > 0 ? bDebit / rate : bDebit;
-      }
-      if (bCredit > 0 && fCredit === 0) {
-        fCredit = rate > 0 ? bCredit / rate : bCredit;
-      }
-
-      totalBaseDebit += bDebit;
-      totalBaseCredit += bCredit;
-      totalForeignDebit += fDebit;
-      totalForeignCredit += fCredit;
-
-      return {
-        ...line,
-        currency: lineCurrency,
-        exchangeRate: rate,
-        foreignDebit: fDebit,
-        foreignCredit: fCredit,
-        debit: bDebit,
-        credit: bCredit
-      };
-    });
-
-    const roundedBaseDebit = Math.round(totalBaseDebit * 100) / 100;
-    const roundedBaseCredit = Math.round(totalBaseCredit * 100) / 100;
-
-    // Strict Double-Entry Balance Enforcement in Base Currency
-    if (Math.abs(roundedBaseDebit - roundedBaseCredit) > 0.01) {
-      throw new Error(`القيد غير متزن بالعملة الأساسية! إجمالي المدين (${roundedBaseDebit.toFixed(2)} ${baseCurrency}) لا يساوي إجمالي الدائن (${roundedBaseCredit.toFixed(2)} ${baseCurrency}).`);
-    }
-
-    const entryId = 'je_' + Math.random().toString(36).substr(2, 9);
-    
-    await db.insert(journalEntries).values({
-      id: entryId,
-      entryNumber,
-      description,
-      date,
-      status: 'posted',
-      currency: transactionCurrency,
-      baseCurrency,
-      exchangeRate: globalRate.toString(),
-      foreignAmount: Math.max(totalForeignDebit, totalForeignCredit).toString(),
-      baseAmount: roundedBaseDebit.toString()
-    });
-
-    const accountIds = Array.from(new Set(normalizedLines.map(line => line.accountId)));
-    const accountsList = accountIds.length > 0 
-      ? await db.select().from(accounts).where(inArray(accounts.id, accountIds))
-      : [];
-
-    const accountsMap = new Map(accountsList.map(acc => [acc.id, acc]));
-
-    const detailValues = normalizedLines.map(line => ({
-      id: 'jd_' + Math.random().toString(36).substr(2, 9),
-      journalEntryId: entryId,
-      accountId: line.accountId,
-      currency: line.currency,
-      exchangeRate: line.exchangeRate.toString(),
-      foreignDebit: line.foreignDebit.toString(),
-      foreignCredit: line.foreignCredit.toString(),
-      debit: line.debit.toString(),
-      credit: line.credit.toString()
-    }));
-
-    await db.insert(journalDetails).values(detailValues);
-
-    const lineValues = normalizedLines.map(line => ({
-      id: 'jl_' + Math.random().toString(36).substr(2, 9),
-      journalEntryId: entryId,
-      accountId: line.accountId,
-      currency: line.currency,
-      exchangeRate: line.exchangeRate.toString(),
-      foreignDebit: line.foreignDebit.toString(),
-      foreignCredit: line.foreignCredit.toString(),
-      debit: line.debit.toString(),
-      credit: line.credit.toString(),
-      description: line.description || description
-    }));
-
-    await db.insert(journalLines).values(lineValues);
-
-    // Update account balances atomically (both base and foreign balances)
-    for (const line of normalizedLines) {
-      const account = accountsMap.get(line.accountId);
-      if (account) {
-        let currentBal = parseFloat(account.balance || '0');
-        let currentForeignBal = parseFloat(account.foreignBalance || '0');
-
-        const netBaseChange = line.debit - line.credit;
-        const netForeignChange = line.foreignDebit - line.foreignCredit;
-        
-        if (account.type === 'asset' || account.type === 'expense') {
-          currentBal += netBaseChange;
-          currentForeignBal += netForeignChange;
-        } else {
-          currentBal -= netBaseChange; 
-          currentForeignBal -= netForeignChange;
-        }
-
-        await db.update(accounts)
-          .set({ 
-            balance: currentBal.toString(),
-            foreignBalance: currentForeignBal.toString()
-          })
-          .where(eq(accounts.id, line.accountId));
-      }
-    }
-
-    return { 
-      id: entryId, 
-      entryNumber, 
-      totalDebit: roundedBaseDebit, 
-      totalCredit: roundedBaseCredit,
-      currency: transactionCurrency,
-      foreignAmount: Math.max(totalForeignDebit, totalForeignCredit)
-    };
+    return await JournalEngine.postJournalEntry(entryNumber, description, date, lines, options);
   }
 
   // 3. CURRENCY REVALUATION ENGINE (إعادة تقييم العملات وإثبات الأرباح/الخسائر غير المحققة)
@@ -438,40 +275,41 @@ export class AccountingRepository {
 
     const entryIds = Array.from(new Set(details.map(d => d.journalEntryId)));
     
-    let entries = entryIds.length > 0
+    const allEntries = entryIds.length > 0
       ? await db.select().from(journalEntries).where(inArray(journalEntries.id, entryIds))
       : [];
 
-    if (startDate) {
-      entries = entries.filter(e => e.date >= startDate);
-    }
-    if (endDate) {
-      entries = entries.filter(e => e.date <= endDate);
-    }
-
-    const entriesMap = new Map(entries.map(e => [e.id, e]));
+    const entriesMap = new Map(allEntries.map(e => [e.id, e]));
     const defaultBaseCode = await CurrencyRepository.getBaseCurrencyCode();
-
-    let cumulativeBaseBalance = 0;
-    let cumulativeForeignBalance = 0;
     const isDebitNormal = account.type === 'asset' || account.type === 'expense';
 
-    const lines = details
+    // Sort all details chronologically by entry date and number
+    const sortedDetails = details
       .filter(d => entriesMap.has(d.journalEntryId))
-      .map(d => {
-        const parentEntry = entriesMap.get(d.journalEntryId)!;
-        const debit = parseFloat(d.debit || '0');
-        const credit = parseFloat(d.credit || '0');
-        const foreignDebit = parseFloat(d.foreignDebit || '0');
-        const foreignCredit = parseFloat(d.foreignCredit || '0');
-        
-        const baseChange = isDebitNormal ? (debit - credit) : (credit - debit);
-        const foreignChange = isDebitNormal ? (foreignDebit - foreignCredit) : (foreignCredit - foreignDebit);
-        
-        cumulativeBaseBalance += baseChange;
-        cumulativeForeignBalance += foreignChange;
+      .map(d => ({
+        detail: d,
+        entry: entriesMap.get(d.journalEntryId)!
+      }))
+      .sort((a, b) => a.entry.date.localeCompare(b.entry.date) || a.entry.entryNumber.localeCompare(b.entry.entryNumber));
 
-        return {
+    let openingBaseBalance = 0;
+    let openingForeignBalance = 0;
+    const activeLines: any[] = [];
+
+    for (const { detail: d, entry: parentEntry } of sortedDetails) {
+      const debit = parseFloat(d.debit || '0');
+      const credit = parseFloat(d.credit || '0');
+      const foreignDebit = parseFloat(d.foreignDebit || '0');
+      const foreignCredit = parseFloat(d.foreignCredit || '0');
+      
+      const baseChange = isDebitNormal ? (debit - credit) : (credit - debit);
+      const foreignChange = isDebitNormal ? (foreignDebit - foreignCredit) : (foreignCredit - foreignDebit);
+
+      if (startDate && parentEntry.date < startDate) {
+        openingBaseBalance += baseChange;
+        openingForeignBalance += foreignChange;
+      } else if (!endDate || parentEntry.date <= endDate) {
+        activeLines.push({
           id: d.id,
           journalEntryId: parentEntry.id,
           entryNumber: parentEntry.entryNumber,
@@ -483,18 +321,34 @@ export class AccountingRepository {
           foreignCredit,
           debit,
           credit,
-          runningBaseBalance: cumulativeBaseBalance,
-          runningForeignBalance: cumulativeForeignBalance
-        };
-      })
-      .sort((a, b) => a.date.localeCompare(b.date));
+          baseChange,
+          foreignChange
+        });
+      }
+    }
+
+    let cumulativeBaseBalance = openingBaseBalance;
+    let cumulativeForeignBalance = openingForeignBalance;
+
+    const lines = activeLines.map(l => {
+      cumulativeBaseBalance += l.baseChange;
+      cumulativeForeignBalance += l.foreignChange;
+
+      return {
+        ...l,
+        runningBaseBalance: cumulativeBaseBalance,
+        runningForeignBalance: cumulativeForeignBalance
+      };
+    });
 
     return {
       account: {
         ...account,
-        balance: parseFloat(account.balance || '0'),
-        foreignBalance: parseFloat(account.foreignBalance || '0')
+        balance: Number(account.balance) || 0,
+        foreignBalance: Number(account.foreignBalance) || 0
       },
+      openingBaseBalance,
+      openingForeignBalance,
       lines,
       totalDebit: lines.reduce((s, l) => s + l.debit, 0),
       totalCredit: lines.reduce((s, l) => s + l.credit, 0),
@@ -555,13 +409,17 @@ export class AccountingRepository {
   }
 
   // 6. JOURNAL ENTRIES QUERY
-  static async getJournalEntries(search?: string, date?: string, currencyFilter?: string) {
+  static async getJournalEntries(search?: string, date?: string, currencyFilter?: string, statusFilter?: string) {
     const baseCode = await CurrencyRepository.getBaseCurrencyCode();
-    let entries = await db.select().from(journalEntries).orderBy(desc(journalEntries.date));
+    let entries = await db.select().from(journalEntries).orderBy(desc(journalEntries.date), desc(journalEntries.createdAt));
 
     if (search) {
       const term = search.toLowerCase();
-      entries = entries.filter(e => (e.description && e.description.toLowerCase().includes(term)) || e.entryNumber.toLowerCase().includes(term));
+      entries = entries.filter(e => 
+        (e.description && e.description.toLowerCase().includes(term)) || 
+        e.entryNumber.toLowerCase().includes(term) ||
+        (e.reference && e.reference.toLowerCase().includes(term))
+      );
     }
     if (date) {
       entries = entries.filter(e => e.date === date);
@@ -569,25 +427,49 @@ export class AccountingRepository {
     if (currencyFilter && currencyFilter !== 'ALL') {
       entries = entries.filter(e => e.currency === currencyFilter);
     }
+    if (statusFilter && statusFilter !== 'ALL') {
+      entries = entries.filter(e => e.status === statusFilter);
+    }
 
     const entryIds = entries.map(e => e.id);
-    const allDetails = entryIds.length > 0
-      ? await db.select().from(journalDetails).where(inArray(journalDetails.journalEntryId, entryIds))
+    const allLines = entryIds.length > 0
+      ? await db.select().from(journalLines).where(inArray(journalLines.journalEntryId, entryIds))
       : [];
 
-    return entries.map(entry => ({
-      ...entry,
-      details: allDetails.filter(d => d.journalEntryId === entry.id).map(d => ({
-        id: d.id,
-        accountId: d.accountId,
-        currency: d.currency || entry.currency || baseCode,
-        exchangeRate: parseFloat(d.exchangeRate || entry.exchangeRate || '1.0'),
-        foreignDebit: parseFloat(d.foreignDebit || '0'),
-        foreignCredit: parseFloat(d.foreignCredit || '0'),
-        debit: parseFloat(d.debit || '0'),
-        credit: parseFloat(d.credit || '0')
-      }))
-    }));
+    const accountIds = Array.from(new Set(allLines.map(l => l.accountId)));
+    const accountsList = accountIds.length > 0
+      ? await db.select().from(accounts).where(inArray(accounts.id, accountIds))
+      : [];
+    const accountsMap = new Map(accountsList.map(a => [a.id, a]));
+
+    return entries.map(entry => {
+      const entryLines = allLines.filter(l => l.journalEntryId === entry.id).map(l => {
+        const acc = accountsMap.get(l.accountId);
+        return {
+          id: l.id,
+          accountId: l.accountId,
+          accountCode: acc?.code || '',
+          accountName: acc?.name || '',
+          accountType: acc?.type || '',
+          currency: l.currency || entry.currency || baseCode,
+          exchangeRate: parseFloat(l.exchangeRate || entry.exchangeRate || '1.0'),
+          foreignDebit: parseFloat(l.foreignDebit || '0'),
+          foreignCredit: parseFloat(l.foreignCredit || '0'),
+          debit: parseFloat(l.debit || '0'),
+          credit: parseFloat(l.credit || '0'),
+          description: l.description || entry.description
+        };
+      });
+
+      return {
+        ...entry,
+        foreignAmount: parseFloat(entry.foreignAmount || '0'),
+        baseAmount: parseFloat(entry.baseAmount || '0'),
+        exchangeRate: parseFloat(entry.exchangeRate || '1.0'),
+        lines: entryLines,
+        details: entryLines // backward compatibility
+      };
+    });
   }
 
   // 7. POSTING RULES

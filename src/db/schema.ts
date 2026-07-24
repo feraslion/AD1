@@ -1,4 +1,4 @@
-import { pgTable, text, numeric, timestamp, index, check } from 'drizzle-orm/pg-core';
+import { pgTable, text, numeric, timestamp, index, check, boolean } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
 
 // 1. Companies Table
@@ -389,6 +389,7 @@ export const accounts = pgTable('accounts', {
   companyId: text('company_id').references(() => companies.id, { onDelete: 'cascade' }),
   branchId: text('branch_id').references(() => branches.id, { onDelete: 'cascade' }),
   parentId: text('parent_id'), // hierarchical structure
+  isActive: boolean('is_active').default(true),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 }, (table) => {
@@ -402,14 +403,17 @@ export const accounts = pgTable('accounts', {
 export const journalEntries = pgTable('journal_entries', {
   id: text('id').primaryKey(),
   entryNumber: text('entry_number').notNull().unique(),
+  reference: text('reference'), // e.g. "INV-1001", "POS-5001", "PAY-2002"
   description: text('description'),
   date: text('date').notNull(),
-  status: text('status').default('posted'), // draft, posted
+  status: text('status').default('posted'), // draft, posted, reversed
   currency: text('currency').default('SAR'), // Transaction currency (USD, SYP, TRY, SAR)
   baseCurrency: text('base_currency').default('SAR'), // System base currency (SAR)
   exchangeRate: numeric('exchange_rate').default('1.0'), // Rate to convert to base currency
   foreignAmount: numeric('foreign_amount').default('0'), // Total amount in transaction currency
   baseAmount: numeric('base_amount').default('0'), // Total amount in base currency
+  createdBy: text('created_by'),
+  reversedEntryId: text('reversed_entry_id'),
   companyId: text('company_id').references(() => companies.id, { onDelete: 'cascade' }),
   branchId: text('branch_id').references(() => branches.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at').defaultNow(),
@@ -417,7 +421,7 @@ export const journalEntries = pgTable('journal_entries', {
 }, (table) => {
   return {
     journalEntriesCompanyIdx: index('journal_entries_company_idx').on(table.companyId),
-    journalEntriesStatusCheck: check('journal_entries_status_check', sql`${table.status} in ('draft', 'posted')`),
+    journalEntriesStatusCheck: check('journal_entries_status_check', sql`${table.status} in ('draft', 'posted', 'reversed')`),
   };
 });
 

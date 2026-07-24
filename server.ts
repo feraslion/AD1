@@ -2,6 +2,7 @@ import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { db } from './src/core/database/index.ts';
+import { ensureDatabaseTables } from './src/core/database/initSchema.ts';
 import {
   products,
   customers,
@@ -14,6 +15,7 @@ import {
   accounts,
   journalEntries,
   journalDetails,
+  journalLines,
   expenses,
   settings,
   users,
@@ -49,6 +51,8 @@ import {
   ExpenseRepository,
   ReportsRepository
 } from './src/core/repositories/index.ts';
+import { JournalEngine } from './src/core/services/JournalEngine.ts';
+import { TransactionPostingService } from './src/core/services/TransactionPostingService.ts';
 import { eq, desc, and, or, like, sql, inArray } from 'drizzle-orm';
 
 const app = express();
@@ -1284,37 +1288,97 @@ app.delete('/api/expenses/:id', authorize(['manager', 'accountant']), async (req
   }
 });
 
-// 8. Accounting Reports & Ledger API
-app.get('/api/accounting/accounts', authorize(['manager', 'accountant']), async (req, res) => {
+// 8. ERP Chart of Accounts & Accounting APIs
+app.get(['/api/accounts', '/api/accounting/accounts'], authorize(['manager', 'accountant', 'cashier']), async (req, res) => {
   try {
-    const allAccounts = await AccountingRepository.getAccounts();
-    sendResponse(res, allAccounts.map(acc => ({
-      ...acc,
-      balance: parseFloat(acc.balance || '0')
-    })));
+    const { companyId, type, activeOnly, search } = req.query;
+    const accountsList = await AccountRepository.getAccounts({
+      companyId: companyId as string,
+      type: type as string,
+      activeOnly: activeOnly === 'true',
+      search: search as string
+    });
+    sendResponse(res, accountsList);
   } catch (error) {
-    sendError(res, 'فشل جلب الحسابات', error);
+    sendError(res, 'فشل جلب دليل الحسابات', error);
   }
 });
 
-app.post('/api/accounting/accounts', authorize(['manager', 'accountant']), async (req, res) => {
+app.get('/api/accounts/tree', authorize(['manager', 'accountant', 'cashier']), async (req, res) => {
+  try {
+    const { companyId } = req.query;
+    const tree = await AccountRepository.getAccountsTree(companyId as string);
+    sendResponse(res, tree);
+  } catch (error) {
+    sendError(res, 'فشل جلب الشجرة الهرمية للحسابات', error);
+  }
+});
+
+app.get('/api/accounts/suggest-code', authorize(['manager', 'accountant']), async (req, res) => {
+  try {
+    const { parentId } = req.query;
+    if (!parentId) {
+      return sendError(res, 'معرف الحساب الرئيسي parentId مطلوب', null, 400);
+    }
+    const suggestedCode = await AccountRepository.suggestChildCode(parentId as string);
+    sendResponse(res, { suggestedCode });
+  } catch (error: any) {
+    sendError(res, error.message || 'فشل توليد رمز الحساب الفرعي', error, 400);
+  }
+});
+
+app.get('/api/accounts/:id', authorize(['manager', 'accountant']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const account = await AccountRepository.findAccountById(id);
+    if (!account) {
+      return sendError(res, 'الحساب المالي غير موجود', null, 404);
+    }
+    sendResponse(res, account);
+  } catch (error) {
+    sendError(res, 'فشل جلب تفاصيل الحساب', error);
+  }
+});
+
+app.post(['/api/accounts', '/api/accounting/accounts'], authorize(['manager', 'accountant']), async (req, res) => {
   try {
     const { code, name, type } = req.body;
     if (!code || !name || !type) {
       return sendError(res, 'جميع الحقول الأساسية للحساب مطلوبة (الرمز، الاسم، النوع)', null, 400);
     }
-    const saved = await AccountingRepository.upsertAccount(req.body);
+    const saved = await AccountRepository.upsertAccount(req.body);
     sendResponse(res, saved);
-  } catch (error) {
-    sendError(res, 'فشل حفظ الحساب', error);
+  } catch (error: any) {
+    sendError(res, error.message || 'فشل حفظ الحساب', error, 400);
   }
 });
 
-app.delete('/api/accounting/accounts/:id', authorize(['manager', 'accountant']), async (req, res) => {
+app.post('/api/accounts/:id/toggle-active', authorize(['manager', 'accountant']), async (req, res) => {
   try {
     const { id } = req.params;
-    await AccountingRepository.deleteAccount(id);
-    sendResponse(res, { success: true });
+    const { isActive } = req.body;
+    const updated = await AccountRepository.toggleAccountActive(id, isActive !== false);
+    sendResponse(res, updated);
+  } catch (error: any) {
+    sendError(res, error.message || 'فشل تغيير حالة الحساب', error, 400);
+  }
+});
+
+app.post('/api/accounts/seed', authorize(['manager', 'accountant']), async (req, res) => {
+  try {
+    const { companyId } = req.body;
+    const result = await AccountRepository.seedDefaultChartOfAccounts(companyId);
+    sendResponse(res, result);
+  } catch (error: any) {
+    sendError(res, error.message || 'فشل زرع دليل الحسابات القياسي', error);
+  }
+});
+
+app.delete(['/api/accounts/:id', '/api/accounting/accounts/:id'], authorize(['manager', 'accountant']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await AccountRepository.deleteAccount(id);
+    sendResponse(res, result);
   } catch (error: any) {
     sendError(res, error.message || 'فشل حذف الحساب', error, 400);
   }
@@ -1351,30 +1415,120 @@ app.get('/api/accounting/trial-balance', authorize(['manager', 'accountant']), a
 
 app.get('/api/accounting/journal-entries', authorize(['manager', 'accountant']), async (req, res) => {
   try {
-    const { search, date, currency } = req.query;
-    const entries = await AccountingRepository.getJournalEntries(search as string, date as string, currency as string);
+    const { search, date, currency, status } = req.query;
+    const entries = await AccountingRepository.getJournalEntries(
+      search as string, 
+      date as string, 
+      currency as string,
+      status as string
+    );
     sendResponse(res, entries);
   } catch (error) {
     sendError(res, 'فشل جلب قيود اليومية', error);
   }
 });
 
-app.post('/api/accounting/journal-entries', authorize(['manager', 'accountant']), async (req, res) => {
+app.get('/api/accounting/journal-entries/:id', authorize(['manager', 'accountant']), async (req, res) => {
   try {
-    const { description, date, lines, currency, baseCurrency, exchangeRate, foreignAmount } = req.body;
+    const { id } = req.params;
+    const [entry] = await db.select().from(journalEntries).where(eq(journalEntries.id, id));
+    if (!entry) return sendError(res, 'القيد المحاسبي غير موجود', null, 404);
+
+    const lines = await db.select().from(journalLines).where(eq(journalLines.journalEntryId, id));
+    const accountIds = Array.from(new Set(lines.map(l => l.accountId)));
+    const accs = accountIds.length > 0 ? await db.select().from(accounts).where(inArray(accounts.id, accountIds)) : [];
+    const accMap = new Map(accs.map(a => [a.id, a]));
+
+    const mappedLines = lines.map(l => {
+      const acc = accMap.get(l.accountId);
+      return {
+        id: l.id,
+        accountId: l.accountId,
+        accountCode: acc?.code || '',
+        accountName: acc?.name || '',
+        accountType: acc?.type || '',
+        currency: l.currency || entry.currency || 'SAR',
+        exchangeRate: parseFloat(l.exchangeRate || '1.0'),
+        foreignDebit: parseFloat(l.foreignDebit || '0'),
+        foreignCredit: parseFloat(l.foreignCredit || '0'),
+        debit: parseFloat(l.debit || '0'),
+        credit: parseFloat(l.credit || '0'),
+        description: l.description || entry.description
+      };
+    });
+
+    sendResponse(res, {
+      ...entry,
+      foreignAmount: parseFloat(entry.foreignAmount || '0'),
+      baseAmount: parseFloat(entry.baseAmount || '0'),
+      exchangeRate: parseFloat(entry.exchangeRate || '1.0'),
+      lines: mappedLines
+    });
+  } catch (error) {
+    sendError(res, 'فشل جلب تفاصيل القيد المحاسبي', error);
+  }
+});
+
+app.post('/api/accounting/journal-entries', authorize(['manager', 'accountant']), async (req: any, res) => {
+  try {
+    const { description, date, reference, lines, currency, baseCurrency, exchangeRate, status } = req.body;
     if (!description || !date || !lines || !Array.isArray(lines) || lines.length === 0) {
       return sendError(res, 'بيانات قيد اليومية غير مكتملة', null, 400);
     }
     const entryNum = 'JE-MAN-' + Math.floor(1000 + Math.random() * 9000);
-    const result = await AccountingRepository.postJournalEntry(entryNum, description, date, lines, {
-      currency,
-      baseCurrency,
-      exchangeRate: exchangeRate ? parseFloat(exchangeRate) : undefined,
-      foreignAmount: foreignAmount ? parseFloat(foreignAmount) : undefined
-    });
+    const createdBy = req.user?.name || 'المحاسب المالي';
+
+    const result = await JournalEngine.postJournalEntry(
+      entryNum, 
+      description, 
+      date, 
+      lines, 
+      {
+        reference,
+        currency,
+        baseCurrency,
+        exchangeRate: exchangeRate ? parseFloat(exchangeRate) : undefined,
+        status: status || 'posted',
+        createdBy
+      }
+    );
     sendResponse(res, { success: true, ...result });
   } catch (error: any) {
     sendError(res, error.message || 'فشل حفظ القيد المحاسبي اليدوي', error, 400);
+  }
+});
+
+app.post('/api/accounting/journal-entries/:id/post', authorize(['manager', 'accountant']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await JournalEngine.postDraftEntry(id);
+    sendResponse(res, result);
+  } catch (error: any) {
+    sendError(res, error.message || 'فشل ترحيل قيد المسودة', error, 400);
+  }
+});
+
+app.post('/api/accounting/journal-entries/:id/reverse', authorize(['manager', 'accountant']), async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+    if (!reason || !reason.trim()) {
+      return sendError(res, 'يجب كتابة سبب عكس وتعديل القيد المحاسبي لأغراض التدقيق', null, 400);
+    }
+    const createdBy = req.user?.name || 'مدير التدقيق المحاسبي';
+    const result = await JournalEngine.reverseJournalEntry(id, reason, createdBy);
+    sendResponse(res, result);
+  } catch (error: any) {
+    sendError(res, error.message || 'فشل عكس القيد المحاسبي', error, 400);
+  }
+});
+
+app.get('/api/accounting/audit-health', authorize(['manager', 'accountant']), async (req, res) => {
+  try {
+    const health = await JournalEngine.verifyAccountingIntegrity();
+    sendResponse(res, health);
+  } catch (error) {
+    sendError(res, 'فشل تنفيذ فحص التدقيق المحاسبي', error);
   }
 });
 
@@ -2055,7 +2209,12 @@ app.get('/api/reports/profit', async (req, res) => {
 
 app.get('/api/reports/financial-statements', async (req, res) => {
   try {
-    const report = await ReportsRepository.getFinancialStatements();
+    const filter = {
+      startDate: req.query.startDate as string,
+      endDate: req.query.endDate as string,
+      currency: req.query.currency as string
+    };
+    const report = await ReportsRepository.getFinancialStatements(filter);
     sendResponse(res, report);
   } catch (error) {
     sendError(res, 'فشل توليد القوائم المالية المحاسبية', error);
@@ -2132,6 +2291,17 @@ app.post('/api/purchases/:id/invoice', authorize(['manager', 'accountant']), asy
     sendResponse(res, result);
   } catch (error: any) {
     sendError(res, error.message || 'فشل إصدار فاتورة المورد', error);
+  }
+});
+
+// Return Purchase Invoice & Post Accounting Reversal
+app.post('/api/purchases/:id/return', authorize(['manager', 'accountant', 'inventory']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await PurchaseRepository.returnPurchaseInvoice(id, req.body || {});
+    sendResponse(res, result);
+  } catch (error: any) {
+    sendError(res, error.message || 'فشل تسجيل مرتجع المشتريات والترحيل المحاسبي', error);
   }
 });
 
@@ -2270,6 +2440,8 @@ app.post('/api/payments/supplier', authorize(['manager', 'inventory', 'accountan
 // ─── DATABASE SEEDER FOR DEFAULT ERP CONVENTIONS ───
 async function seedDefaultData() {
   try {
+    await ensureDatabaseTables();
+
     const existingCompanies = await db.select().from(companies);
     if (existingCompanies.length === 0) {
       console.log('Seeding default Company...');
@@ -2507,8 +2679,6 @@ async function seedDefaultData() {
 
 // ─── VITE DEV / PROD MIDDLEWARE INTEGRATION ───
 async function startServer() {
-  await seedDefaultData();
-
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -2525,6 +2695,9 @@ async function startServer() {
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    seedDefaultData().catch(err => {
+      console.error('Error during seedDefaultData:', err);
+    });
   });
 }
 

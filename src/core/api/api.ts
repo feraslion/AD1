@@ -144,23 +144,51 @@ export const PaymentService = {
 };
 
 export const AccountingService = {
-  getAccounts: (): Promise<any[]> => 
-    apiClient.get<any[]>('/api/accounting/accounts'),
+  getAccounts: (params?: { companyId?: string; type?: string; activeOnly?: boolean; search?: string }): Promise<any[]> => 
+    apiClient.get<any[]>('/api/accounts', params),
+
+  getAccountsTree: (params?: { companyId?: string }): Promise<any[]> =>
+    apiClient.get<any[]>('/api/accounts/tree', params),
+
+  suggestChildCode: (parentId: string): Promise<{ suggestedCode: string }> =>
+    apiClient.get<{ suggestedCode: string }>('/api/accounts/suggest-code', { parentId }),
 
   createAccount: (accountData: any): Promise<any> => 
-    apiClient.post<any>('/api/accounting/accounts', accountData),
+    apiClient.post<any>('/api/accounts', accountData),
+
+  toggleAccountActive: (id: string, isActive: boolean): Promise<any> =>
+    apiClient.post<any>(`/api/accounts/${id}/toggle-active`, { isActive }),
+
+  seedDefaultAccounts: (companyId?: string): Promise<any> =>
+    apiClient.post<any>('/api/accounts/seed', { companyId }),
 
   deleteAccount: (id: string): Promise<void> => 
-    apiClient.delete<void>(`/api/accounting/accounts/${id}`),
+    apiClient.delete<void>(`/api/accounts/${id}`),
 
-  getLedger: (accountId: string): Promise<any> => 
-    apiClient.get<any>(`/api/accounting/ledger`, { accountId }),
+  getLedger: (params: { accountId: string; startDate?: string; endDate?: string; currency?: string } | string): Promise<any> => {
+    if (typeof params === 'string') {
+      return apiClient.get<any>('/api/accounting/ledger', { accountId: params });
+    }
+    return apiClient.get<any>('/api/accounting/ledger', params);
+  },
 
-  getJournalEntries: (params?: { page?: number; limit?: number; search?: string; date?: string }): Promise<any[]> => 
+  getJournalEntries: (params?: { page?: number; limit?: number; search?: string; date?: string; currency?: string; status?: string }): Promise<any[]> => 
     apiClient.get<any[]>('/api/accounting/journal-entries', params),
+
+  getJournalEntryById: (id: string): Promise<any> =>
+    apiClient.get<any>(`/api/accounting/journal-entries/${id}`),
 
   createJournalEntry: (entryData: any): Promise<any> => 
     apiClient.post<any>('/api/accounting/journal-entries', entryData),
+
+  postDraftJournalEntry: (id: string): Promise<any> =>
+    apiClient.post<any>(`/api/accounting/journal-entries/${id}/post`, {}),
+
+  reverseJournalEntry: (id: string, reason: string): Promise<any> =>
+    apiClient.post<any>(`/api/accounting/journal-entries/${id}/reverse`, { reason }),
+
+  getAuditHealth: (): Promise<any> =>
+    apiClient.get<any>('/api/accounting/audit-health'),
 
   getTrialBalance: (): Promise<any> =>
     apiClient.get<any>('/api/accounting/trial-balance'),
@@ -363,8 +391,8 @@ export const ReportService = {
   getProfitReport: (params?: { startDate?: string; endDate?: string }): Promise<any> =>
     apiClient.get<any>('/api/reports/profit', params),
 
-  getFinancialStatements: (): Promise<any> =>
-    apiClient.get<any>('/api/reports/financial-statements'),
+  getFinancialStatements: (params?: { startDate?: string; endDate?: string; currency?: string }): Promise<any> =>
+    apiClient.get<any>('/api/reports/financial-statements', params),
 };
 
 

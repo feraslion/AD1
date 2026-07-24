@@ -6,7 +6,16 @@ export interface Account {
   name: string;
   type: string;
   balance: number;
+  currency?: string;
+  foreignBalance?: number;
   parentId?: string | null;
+  companyId?: string | null;
+  isActive?: boolean;
+}
+
+export interface AccountTreeNode extends Account {
+  level: number;
+  children: AccountTreeNode[];
 }
 
 export interface JournalLine {
@@ -23,11 +32,19 @@ export interface JournalLine {
 export const AccountingService = {
   // Underlying API services proxy
   getAccounts: RawAccountingService.getAccounts,
+  getAccountsTree: RawAccountingService.getAccountsTree,
+  suggestChildCode: RawAccountingService.suggestChildCode,
   createAccount: RawAccountingService.createAccount,
+  toggleAccountActive: RawAccountingService.toggleAccountActive,
+  seedDefaultAccounts: RawAccountingService.seedDefaultAccounts,
   deleteAccount: RawAccountingService.deleteAccount,
   getLedger: RawAccountingService.getLedger,
   getJournalEntries: RawAccountingService.getJournalEntries,
+  getJournalEntryById: RawAccountingService.getJournalEntryById,
   createJournalEntry: RawAccountingService.createJournalEntry,
+  postDraftJournalEntry: RawAccountingService.postDraftJournalEntry,
+  reverseJournalEntry: RawAccountingService.reverseJournalEntry,
+  getAuditHealth: RawAccountingService.getAuditHealth,
   getTrialBalance: RawAccountingService.getTrialBalance,
   getPostingRules: RawAccountingService.getPostingRules,
   updatePostingRule: RawAccountingService.updatePostingRule,

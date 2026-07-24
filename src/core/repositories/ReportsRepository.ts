@@ -357,32 +357,48 @@ export class ReportsRepository {
     };
   }
 
-  // 7. FINANCIAL STATEMENTS (القوائم المالية المحاسبية)
-  static async getFinancialStatements() {
+  // 7. FINANCIAL STATEMENTS (القوائم المالية المحاسبية الشاملة)
+  static async getFinancialStatements(filter?: ReportFilter & { currency?: string }) {
     const allAccounts = await db.select().from(accounts).orderBy(asc(accounts.code));
-    const lines = await db.select().from(journalLines);
+    
+    // Get entries & lines with optional date and currency filters
+    let entries = await db.select().from(journalEntries);
+    if (filter?.startDate) {
+      entries = entries.filter(e => e.date >= filter.startDate!);
+    }
+    if (filter?.endDate) {
+      entries = entries.filter(e => e.date <= filter.endDate!);
+    }
+    if (filter?.currency && filter.currency !== 'ALL') {
+      entries = entries.filter(e => e.currency === filter.currency);
+    }
 
-    const accountBalances: Record<string, { debit: number; credit: number; balance: number }> = {};
+    const validEntryIds = new Set(entries.map(e => e.id));
+    const allLines = await db.select().from(journalLines);
+    const lines = allLines.filter(l => validEntryIds.has(l.journalEntryId));
+
+    const accountStats: Record<string, { debit: number; credit: number; foreignDebit: number; foreignCredit: number }> = {};
 
     lines.forEach(line => {
       const accId = line.accountId;
-      if (!accountBalances[accId]) {
-        accountBalances[accId] = { debit: 0, credit: 0, balance: 0 };
+      if (!accountStats[accId]) {
+        accountStats[accId] = { debit: 0, credit: 0, foreignDebit: 0, foreignCredit: 0 };
       }
-      const debit = Number(line.debit) || 0;
-      const credit = Number(line.credit) || 0;
-
-      accountBalances[accId].debit += debit;
-      accountBalances[accId].credit += credit;
+      accountStats[accId].debit += Number(line.debit) || 0;
+      accountStats[accId].credit += Number(line.credit) || 0;
+      accountStats[accId].foreignDebit += Number(line.foreignDebit) || 0;
+      accountStats[accId].foreignCredit += Number(line.foreignCredit) || 0;
     });
 
-    // Trial Balance
+    // 1. Trial Balance (ميزان المراجعة)
     let totalTrialDebit = 0;
     let totalTrialCredit = 0;
 
-    const trialBalance = allAccounts.map(acc => {
-      const stats = accountBalances[acc.id] || { debit: 0, credit: 0, balance: 0 };
-      const netBal = stats.debit - stats.credit;
+    const trialBalanceAccounts = allAccounts.map(acc => {
+      const stats = accountStats[acc.id] || { debit: 0, credit: 0, foreignDebit: 0, foreignCredit: 0 };
+      const baseBalance = Number(acc.balance) || 0;
+      const isDebitSide = acc.type === 'asset' || acc.type === 'expense';
+      const netBal = isDebitSide ? (stats.debit - stats.credit) : (stats.credit - stats.debit);
 
       totalTrialDebit += stats.debit;
       totalTrialCredit += stats.credit;
@@ -392,51 +408,138 @@ export class ReportsRepository {
         code: acc.code,
         name: acc.name,
         type: acc.type,
-        totalDebit: stats.debit,
-        totalCredit: stats.credit,
+        currency: acc.currency || 'SAR',
+        currentBalance: baseBalance,
+        periodDebit: stats.debit,
+        periodCredit: stats.credit,
         netBalance: netBal
       };
     });
 
-    // Income Statement (Revenues, Cost, Expenses)
-    const revenues = trialBalance.filter(a => a.type === 'revenue' || a.code.startsWith('4'));
-    const expenses = trialBalance.filter(a => a.type === 'expense' || a.code.startsWith('5') || a.code.startsWith('6'));
+    const isTrialBalanced = Math.abs(totalTrialDebit - totalTrialCredit) < 0.01;
 
-    const totalIncome = revenues.reduce((sum, a) => sum + (a.totalCredit - a.totalDebit), 0);
-    const totalExpenses = expenses.reduce((sum, a) => sum + (a.totalDebit - a.totalCredit), 0);
-    const statementNetProfit = totalIncome - totalExpenses;
+    // 2. Income Statement (قائمة الدخل)
+    const revenues = trialBalanceAccounts.filter(a => a.type === 'revenue' || a.code.startsWith('4'));
+    const cogsAccounts = trialBalanceAccounts.filter(a => a.code.startsWith('51') || a.code === 'acc_cogs');
+    const operatingExpenses = trialBalanceAccounts.filter(a => (a.type === 'expense' || a.code.startsWith('5') || a.code.startsWith('6')) && !a.code.startsWith('51') && a.code !== 'acc_cogs');
 
-    // Balance Sheet (Assets, Liabilities, Equity)
-    const assets = trialBalance.filter(a => a.type === 'asset' || a.code.startsWith('1'));
-    const liabilities = trialBalance.filter(a => a.type === 'liability' || a.code.startsWith('2'));
-    const equity = trialBalance.filter(a => a.type === 'equity' || a.code.startsWith('3'));
+    const totalRevenues = revenues.reduce((sum, a) => sum + (a.periodCredit - a.periodDebit), 0);
+    const totalCOGS = cogsAccounts.reduce((sum, a) => sum + (a.periodDebit - a.periodCredit), 0);
+    const grossProfit = totalRevenues - totalCOGS;
 
-    const totalAssets = assets.reduce((sum, a) => sum + (a.totalDebit - a.totalCredit), 0);
-    const totalLiabilities = liabilities.reduce((sum, a) => sum + (a.totalCredit - a.totalDebit), 0);
-    const totalEquity = equity.reduce((sum, a) => sum + (a.totalCredit - a.totalDebit), 0) + statementNetProfit;
+    const totalExpenses = operatingExpenses.reduce((sum, a) => sum + (a.periodDebit - a.periodCredit), 0);
+    const netProfit = grossProfit - totalExpenses;
+    const profitMargin = totalRevenues > 0 ? (netProfit / totalRevenues) * 100 : 0;
+
+    // 3. Balance Sheet (الميزانية العمومية)
+    const assets = trialBalanceAccounts.filter(a => a.type === 'asset' || a.code.startsWith('1'));
+    const liabilities = trialBalanceAccounts.filter(a => a.type === 'liability' || a.code.startsWith('2'));
+    const equityAccounts = trialBalanceAccounts.filter(a => a.type === 'equity' || a.code.startsWith('3'));
+
+    const totalAssets = assets.reduce((sum, a) => sum + (a.currentBalance || (a.netBalance)), 0);
+    const totalLiabilities = liabilities.reduce((sum, a) => sum + (a.currentBalance || (a.netBalance)), 0);
+    const totalEquityWithoutProfit = equityAccounts.reduce((sum, a) => sum + (a.currentBalance || (a.netBalance)), 0);
+    
+    // Retained Earnings / Current Net Profit
+    const totalEquity = totalEquityWithoutProfit + netProfit;
+
+    // Verify Accounting Equation: Assets = Liabilities + Equity
+    const equationDiff = Math.abs(totalAssets - (totalLiabilities + totalEquity));
+    const isEquationBalanced = equationDiff < 0.01;
+
+    // 4. Cash Flow Statement (قائمة التدفقات النقدية)
+    let operatingInflows = 0;
+    let operatingOutflows = 0;
+    let investingInflows = 0;
+    let investingOutflows = 0;
+    let financingInflows = 0;
+    let financingOutflows = 0;
+
+    lines.forEach(l => {
+      const acc = allAccounts.find(a => a.id === l.accountId);
+      const debit = Number(l.debit) || 0;
+      const credit = Number(l.credit) || 0;
+
+      // Cash/Bank account movements
+      if (acc?.code.startsWith('1101') || acc?.code.startsWith('1102') || acc?.id === 'acc_cash' || acc?.id === 'acc_bank') {
+        if (debit > 0) {
+          // Cash Inflow
+          operatingInflows += debit;
+        }
+        if (credit > 0) {
+          // Cash Outflow
+          operatingOutflows += credit;
+        }
+      }
+    });
+
+    const netOperatingCash = operatingInflows - operatingOutflows;
+    const netInvestingCash = investingInflows - investingOutflows;
+    const netFinancingCash = financingInflows - financingOutflows;
+    const netCashFlow = netOperatingCash + netInvestingCash + netFinancingCash;
+
+    const cashAndBankAccounts = allAccounts.filter(a => a.code.startsWith('1101') || a.code.startsWith('1102') || a.id === 'acc_cash' || a.id === 'acc_bank');
+    const endingCashBalance = cashAndBankAccounts.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
+    const beginningCashBalance = endingCashBalance - netCashFlow;
 
     return {
+      filter: {
+        startDate: filter?.startDate || null,
+        endDate: filter?.endDate || null,
+        currency: filter?.currency || 'ALL'
+      },
       trialBalance: {
-        accounts: trialBalance,
+        accounts: trialBalanceAccounts,
         totalDebit: totalTrialDebit,
         totalCredit: totalTrialCredit,
-        isBalanced: Math.abs(totalTrialDebit - totalTrialCredit) < 0.01
+        isBalanced: isTrialBalanced
       },
       incomeStatement: {
         revenues,
-        expenses,
-        totalIncome,
+        cogsAccounts,
+        operatingExpenses,
+        totalRevenues,
+        totalCOGS,
+        grossProfit,
         totalExpenses,
-        netProfit: statementNetProfit
+        netProfit,
+        profitMargin
       },
       balanceSheet: {
         assets,
         liabilities,
-        equity,
+        equity: equityAccounts,
         totalAssets,
         totalLiabilities,
+        totalEquityWithoutProfit,
+        netProfit,
         totalEquity,
-        isBalanced: Math.abs(totalAssets - (totalLiabilities + totalEquity)) < 0.01
+        equation: {
+          assets: totalAssets,
+          liabilitiesPlusEquity: totalLiabilities + totalEquity,
+          difference: equationDiff,
+          isBalanced: isEquationBalanced
+        }
+      },
+      cashFlowStatement: {
+        operating: {
+          inflows: operatingInflows,
+          outflows: operatingOutflows,
+          net: netOperatingCash
+        },
+        investing: {
+          inflows: investingInflows,
+          outflows: investingOutflows,
+          net: netInvestingCash
+        },
+        financing: {
+          inflows: financingInflows,
+          outflows: financingOutflows,
+          net: netFinancingCash
+        },
+        netCashFlow,
+        beginningCashBalance,
+        endingCashBalance
       }
     };
   }
