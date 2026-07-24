@@ -8,6 +8,9 @@ export interface PurchaseItem {
 
 export const PurchaseService = {
   // Underlying API services proxy
+  getPurchaseRequests: RawPurchaseService.getPurchaseRequests,
+  createPurchaseRequest: RawPurchaseService.createPurchaseRequest,
+  convertRequestToOrder: RawPurchaseService.convertRequestToOrder,
   getPurchases: RawPurchaseService.getPurchases,
   createPurchase: RawPurchaseService.createPurchase,
   receiveGoods: RawPurchaseService.receiveGoods,

@@ -12,7 +12,10 @@ export {
   WarehouseService,
   CurrencyService,
   TaxService,
-  PaymentMethodService
+  PaymentMethodService,
+  TreasuryService,
+  ExpenseService,
+  ReportService
 } from '../core/api/api';
 
 export { SalesService } from './SalesService';

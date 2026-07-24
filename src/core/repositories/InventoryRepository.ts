@@ -1,5 +1,5 @@
 import { db } from '../database/index.ts';
-import { products, warehouses, stockMoves } from '../database/schema.ts';
+import { products, warehouses, stockMoves, companies } from '../database/schema.ts';
 import { eq, desc, inArray, and, or } from 'drizzle-orm';
 import { AccountingRepository } from './AccountingRepository.ts';
 
@@ -19,20 +19,41 @@ export interface StockMoveInput {
 export class InventoryRepository {
   // 1. WAREHOUSES MANAGEMENT
   static async getWarehouses() {
-    let list = await db.select().from(warehouses);
-    if (list.length === 0) {
-      // Auto-seed default main warehouse if none exists
-      const defaultWh = {
-        id: 'wh_main',
-        companyId: 'company-1',
-        name: 'المستودع الرئيسي',
-        code: 'WH-MAIN',
-        location: 'المركز الرئيسي'
-      };
-      await db.insert(warehouses).values(defaultWh);
-      list = [defaultWh as any];
+    try {
+      let list = await db.select().from(warehouses);
+      if (list.length === 0) {
+        // Ensure default company exists first to avoid FK constraint failure
+        const existingCompanies = await db.select().from(companies);
+        let compId = 'company-1';
+        if (existingCompanies.length === 0) {
+          await db.insert(companies).values({
+            id: 'company-1',
+            name: 'المؤسسة الرئيسية',
+            taxNumber: '300000000000003',
+            email: 'info@company.com',
+            phone: '0110000000',
+            address: 'الرياض'
+          });
+        } else {
+          compId = existingCompanies[0].id;
+        }
+
+        // Auto-seed default main warehouse if none exists
+        const defaultWh = {
+          id: 'wh_main',
+          companyId: compId,
+          name: 'المستودع الرئيسي',
+          code: 'WH-MAIN',
+          location: 'المركز الرئيسي'
+        };
+        await db.insert(warehouses).values(defaultWh);
+        list = [defaultWh as any];
+      }
+      return list;
+    } catch (error) {
+      console.error('Error in getWarehouses:', error);
+      return [];
     }
-    return list;
   }
 
   static async findWarehouseById(id: string) {
@@ -238,6 +259,98 @@ export class InventoryRepository {
       newStock: actualQuantity,
       delta,
       totalValueDiff,
+      journalEntry: journalResult
+    };
+  }
+
+  // 5.5 MANUAL STOCK MOVEMENTS (أذن إضافة / إذن صرف مخزني)
+  static async recordManualStockMove(input: {
+    productId: string;
+    warehouseId: string;
+    type: 'in' | 'out';
+    quantity: number;
+    unitCost?: number;
+    referenceId?: string;
+    notes?: string;
+  }) {
+    if (input.quantity <= 0) {
+      throw new Error('الكمية يجب أن تكون أكبر من الصفر.');
+    }
+
+    const [product] = await db.select().from(products).where(eq(products.id, input.productId));
+    if (!product) {
+      throw new Error('المنتج غير موجود.');
+    }
+
+    const currentStock = parseFloat(product.stock || '0');
+    const oldCost = parseFloat(product.purchasePrice || '0');
+    const inputCost = input.unitCost !== undefined && input.unitCost !== null && input.unitCost >= 0 ? input.unitCost : oldCost;
+
+    let newStock = currentStock;
+    let newAvgCost = oldCost;
+
+    if (input.type === 'in') {
+      newStock = currentStock + input.quantity;
+      if (newStock > 0 && inputCost >= 0) {
+        newAvgCost = ((currentStock * oldCost) + (input.quantity * inputCost)) / newStock;
+        newAvgCost = Math.round(newAvgCost * 100) / 100;
+      }
+      await db.update(products).set({
+        stock: newStock.toString(),
+        purchasePrice: newAvgCost.toString()
+      }).where(eq(products.id, input.productId));
+    } else {
+      if (currentStock < input.quantity) {
+        throw new Error(`رصيد المخزون الحالي (${currentStock}) لا يكفي لصرف كمية (${input.quantity}).`);
+      }
+      newStock = currentStock - input.quantity;
+      await db.update(products).set({ stock: newStock.toString() }).where(eq(products.id, input.productId));
+    }
+
+    // Record Move
+    const move = await this.recordStockMove({
+      productId: input.productId,
+      fromWarehouseId: input.type === 'out' ? input.warehouseId : null,
+      toWarehouseId: input.type === 'in' ? input.warehouseId : null,
+      quantity: input.quantity,
+      unitCost: inputCost,
+      type: input.type === 'in' ? 'purchase' : 'sale',
+      referenceId: input.referenceId || `STK-${input.type.toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`,
+      notes: input.notes || (input.type === 'in' ? 'إذن إدخال مخزني يدوي' : 'إذن صرف مخزني يدوي')
+    });
+
+    // Accounting Journal Entry
+    const totalValue = input.quantity * inputCost;
+    let journalResult = null;
+    if (totalValue > 0) {
+      const invAcc = 'acc_inventory';
+      const cogsAcc = 'acc_cogs';
+      const entryDate = new Date().toISOString().split('T')[0];
+      const entryNum = 'JE-STK-' + Math.floor(1000 + Math.random() * 9000);
+
+      const lines = [];
+      if (input.type === 'in') {
+        lines.push({ accountId: invAcc, debit: totalValue, credit: 0 });
+        lines.push({ accountId: 'acc_cash', debit: 0, credit: totalValue });
+      } else {
+        lines.push({ accountId: cogsAcc, debit: totalValue, credit: 0 });
+        lines.push({ accountId: invAcc, debit: 0, credit: totalValue });
+      }
+
+      journalResult = await AccountingRepository.postJournalEntry(
+        entryNum,
+        `إذن حركة مخزنية (${input.type === 'in' ? 'إضافة/توريد' : 'صرف/إتلاف'}) - ${product.name}`,
+        entryDate,
+        lines
+      );
+    }
+
+    return {
+      success: true,
+      previousStock: currentStock,
+      newStock,
+      newAvgCost,
+      move,
       journalEntry: journalResult
     };
   }

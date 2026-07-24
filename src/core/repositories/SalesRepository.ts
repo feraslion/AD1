@@ -1,5 +1,5 @@
 import { db } from '../database/index.ts';
-import { invoices, invoiceItems, products } from '../database/schema.ts';
+import { invoices, invoiceItems, products, quotations, quotationItems, salesOrders, salesOrderItems, payments } from '../database/schema.ts';
 import { eq, desc, inArray, and, sql } from 'drizzle-orm';
 import { InventoryRepository } from './InventoryRepository.ts';
 import { CustomerRepository } from './CustomerRepository.ts';
@@ -372,5 +372,303 @@ export class SalesRepository {
     );
 
     return { success: true, journalEntry: journalResult };
+  }
+
+  // ==================== 1. QUOTATIONS (عروض الأسعار) ====================
+  static async findAllQuotations() {
+    const list = await db.select().from(quotations).orderBy(desc(quotations.createdAt));
+    const qIds = list.map(q => q.id);
+    const allItems = qIds.length > 0
+      ? await db.select().from(quotationItems).where(inArray(quotationItems.quotationId, qIds))
+      : [];
+
+    return list.map(q => ({
+      id: q.id,
+      quotationNumber: q.quotationNumber,
+      customerId: q.customerId || undefined,
+      customerName: q.customerName || undefined,
+      date: q.date,
+      validUntil: q.validUntil || undefined,
+      subtotal: parseFloat(q.subtotal || '0'),
+      taxAmount: parseFloat(q.taxAmount || '0'),
+      discountAmount: parseFloat(q.discountAmount || '0'),
+      grandTotal: parseFloat(q.grandTotal || '0'),
+      currency: q.currency || 'SAR',
+      exchangeRate: parseFloat(q.exchangeRate || '1.0'),
+      status: q.status || 'draft',
+      notes: q.notes || undefined,
+      items: allItems.filter(item => item.quotationId === q.id).map(item => ({
+        id: item.id,
+        productId: item.productId,
+        productName: item.productName,
+        price: parseFloat(item.price || '0'),
+        quantity: parseFloat(item.quantity || '0'),
+        discount: parseFloat(item.discount || '0'),
+        taxAmount: parseFloat(item.taxAmount || '0'),
+        total: parseFloat(item.total || '0')
+      }))
+    }));
+  }
+
+  static async createQuotation(data: any) {
+    const id = data.id || 'quote_' + Math.random().toString(36).substr(2, 9);
+    const quotationNumber = data.quotationNumber || 'QT-' + Date.now().toString().slice(-6);
+
+    await db.insert(quotations).values({
+      id,
+      quotationNumber,
+      customerId: data.customerId || null,
+      customerName: data.customerName || null,
+      date: data.date || new Date().toISOString().split('T')[0],
+      validUntil: data.validUntil || null,
+      subtotal: (data.subtotal || 0).toString(),
+      taxAmount: (data.taxAmount || 0).toString(),
+      discountAmount: (data.discountAmount || 0).toString(),
+      grandTotal: (data.grandTotal || 0).toString(),
+      currency: data.currency || 'SAR',
+      exchangeRate: (data.exchangeRate || 1.0).toString(),
+      status: data.status || 'draft',
+      notes: data.notes || null
+    });
+
+    if (data.items && data.items.length > 0) {
+      const itemValues = data.items.map((item: any) => ({
+        id: 'qitem_' + Math.random().toString(36).substr(2, 9),
+        quotationId: id,
+        productId: item.productId || null,
+        productName: item.productName,
+        price: (item.price || 0).toString(),
+        quantity: (item.quantity || 0).toString(),
+        discount: (item.discount || 0).toString(),
+        taxAmount: (item.taxAmount || 0).toString(),
+        total: (item.total || 0).toString()
+      }));
+      await db.insert(quotationItems).values(itemValues);
+    }
+
+    return { id, quotationNumber, success: true };
+  }
+
+  // ==================== 2. SALES ORDERS (أوامر المبيعات) ====================
+  static async findAllSalesOrders() {
+    const list = await db.select().from(salesOrders).orderBy(desc(salesOrders.createdAt));
+    const oIds = list.map(o => o.id);
+    const allItems = oIds.length > 0
+      ? await db.select().from(salesOrderItems).where(inArray(salesOrderItems.orderId, oIds))
+      : [];
+
+    return list.map(o => ({
+      id: o.id,
+      orderNumber: o.orderNumber,
+      quotationId: o.quotationId || undefined,
+      customerId: o.customerId || undefined,
+      customerName: o.customerName || undefined,
+      date: o.date,
+      deliveryDate: o.deliveryDate || undefined,
+      subtotal: parseFloat(o.subtotal || '0'),
+      taxAmount: parseFloat(o.taxAmount || '0'),
+      discountAmount: parseFloat(o.discountAmount || '0'),
+      grandTotal: parseFloat(o.grandTotal || '0'),
+      currency: o.currency || 'SAR',
+      exchangeRate: parseFloat(o.exchangeRate || '1.0'),
+      status: o.status || 'confirmed',
+      notes: o.notes || undefined,
+      items: allItems.filter(item => item.orderId === o.id).map(item => ({
+        id: item.id,
+        productId: item.productId,
+        productName: item.productName,
+        price: parseFloat(item.price || '0'),
+        quantity: parseFloat(item.quantity || '0'),
+        discount: parseFloat(item.discount || '0'),
+        taxAmount: parseFloat(item.taxAmount || '0'),
+        total: parseFloat(item.total || '0')
+      }))
+    }));
+  }
+
+  static async createSalesOrder(data: any) {
+    const id = data.id || 'order_' + Math.random().toString(36).substr(2, 9);
+    const orderNumber = data.orderNumber || 'SO-' + Date.now().toString().slice(-6);
+
+    await db.insert(salesOrders).values({
+      id,
+      orderNumber,
+      quotationId: data.quotationId || null,
+      customerId: data.customerId || null,
+      customerName: data.customerName || null,
+      date: data.date || new Date().toISOString().split('T')[0],
+      deliveryDate: data.deliveryDate || null,
+      subtotal: (data.subtotal || 0).toString(),
+      taxAmount: (data.taxAmount || 0).toString(),
+      discountAmount: (data.discountAmount || 0).toString(),
+      grandTotal: (data.grandTotal || 0).toString(),
+      currency: data.currency || 'SAR',
+      exchangeRate: (data.exchangeRate || 1.0).toString(),
+      status: data.status || 'confirmed',
+      notes: data.notes || null
+    });
+
+    if (data.items && data.items.length > 0) {
+      const itemValues = data.items.map((item: any) => ({
+        id: 'soitem_' + Math.random().toString(36).substr(2, 9),
+        orderId: id,
+        productId: item.productId || null,
+        productName: item.productName,
+        price: (item.price || 0).toString(),
+        quantity: (item.quantity || 0).toString(),
+        discount: (item.discount || 0).toString(),
+        taxAmount: (item.taxAmount || 0).toString(),
+        total: (item.total || 0).toString()
+      }));
+      await db.insert(salesOrderItems).values(itemValues);
+    }
+
+    // If converted from quotation, update quotation status
+    if (data.quotationId) {
+      await db.update(quotations).set({ status: 'converted' }).where(eq(quotations.id, data.quotationId));
+    }
+
+    return { id, orderNumber, success: true };
+  }
+
+  // ==================== 3. CONVERSION WORKFLOWS ====================
+  static async convertQuotationToOrder(quotationId: string) {
+    const [q] = await db.select().from(quotations).where(eq(quotations.id, quotationId));
+    if (!q) throw new Error('عرض السعر غير موجود');
+
+    const items = await db.select().from(quotationItems).where(eq(quotationItems.quotationId, quotationId));
+
+    return await this.createSalesOrder({
+      quotationId: q.id,
+      customerId: q.customerId,
+      customerName: q.customerName,
+      date: new Date().toISOString().split('T')[0],
+      subtotal: parseFloat(q.subtotal || '0'),
+      taxAmount: parseFloat(q.taxAmount || '0'),
+      discountAmount: parseFloat(q.discountAmount || '0'),
+      grandTotal: parseFloat(q.grandTotal || '0'),
+      currency: q.currency,
+      exchangeRate: parseFloat(q.exchangeRate || '1.0'),
+      status: 'confirmed',
+      notes: `تم تحويله تلقائياً من عرض السعر رقم ${q.quotationNumber}`,
+      items: items.map(i => ({
+        productId: i.productId,
+        productName: i.productName,
+        price: parseFloat(i.price || '0'),
+        quantity: parseFloat(i.quantity || '0'),
+        discount: parseFloat(i.discount || '0'),
+        taxAmount: parseFloat(i.taxAmount || '0'),
+        total: parseFloat(i.total || '0')
+      }))
+    });
+  }
+
+  static async convertOrderToInvoice(orderId: string, paymentMethod: 'cash' | 'card' | 'credit' = 'credit') {
+    const [o] = await db.select().from(salesOrders).where(eq(salesOrders.id, orderId));
+    if (!o) throw new Error('أمر المبيعات غير موجود');
+
+    const items = await db.select().from(salesOrderItems).where(eq(salesOrderItems.orderId, orderId));
+    const invNumber = 'INV-' + Date.now().toString().slice(-6);
+
+    const res = await this.createSaleInvoice({
+      invoiceNumber: invNumber,
+      date: new Date().toISOString().split('T')[0],
+      customerId: o.customerId,
+      customerName: o.customerName,
+      totalWithoutTax: parseFloat(o.subtotal || '0'),
+      taxAmount: parseFloat(o.taxAmount || '0'),
+      discountAmount: parseFloat(o.discountAmount || '0'),
+      grandTotal: parseFloat(o.grandTotal || '0'),
+      paymentMethod,
+      currency: o.currency,
+      exchangeRate: parseFloat(o.exchangeRate || '1.0'),
+      status: paymentMethod === 'credit' ? 'unpaid' : 'paid',
+      cashierName: 'النظام الآلي',
+      items: items.map(i => ({
+        productId: i.productId,
+        productName: i.productName,
+        price: parseFloat(i.price || '0'),
+        quantity: parseFloat(i.quantity || '0'),
+        discount: parseFloat(i.discount || '0'),
+        total: parseFloat(i.total || '0'),
+        taxAmount: parseFloat(i.taxAmount || '0')
+      }))
+    });
+
+    await db.update(salesOrders).set({ status: 'converted' }).where(eq(salesOrders.id, orderId));
+    return res;
+  }
+
+  // ==================== 4. CUSTOMER PAYMENTS (تحصيل سندات المبيعات) ====================
+  static async recordCustomerPayment(paymentData: {
+    customerId: string;
+    customerName?: string;
+    amount: number;
+    method: 'cash' | 'bank' | 'check';
+    currency?: string;
+    exchangeRate?: number;
+    reference?: string;
+    notes?: string;
+  }) {
+    if (!paymentData.customerId || paymentData.amount <= 0) {
+      throw new Error('يرجى تحديد العميل والمبلغ الصحيح لتحصيل الدفعة');
+    }
+
+    const payId = 'pay_' + Math.random().toString(36).substr(2, 9);
+    const paymentNumber = 'PAY-' + Date.now().toString().slice(-6);
+    const date = new Date().toISOString().split('T')[0];
+
+    // 1. Record payment in database
+    await db.insert(payments).values({
+      id: payId,
+      companyId: 'comp_default',
+      paymentNumber,
+      date,
+      type: 'receipt', // Incoming receipt voucher
+      partyId: paymentData.customerId,
+      partyType: 'customer',
+      amount: paymentData.amount.toString(),
+      method: paymentData.method || 'cash',
+      reference: paymentData.reference || null,
+      notes: paymentData.notes || `تحصيل دفعة مبيعات من العميل ${paymentData.customerName || paymentData.customerId}`
+    });
+
+    // 2. Reduce Customer Credit Balance
+    await CustomerRepository.adjustBalance(paymentData.customerId, -paymentData.amount);
+
+    // 3. Post Double-Entry Accounting Journal Entry
+    const getAccountByRule = async (ruleId: string, fallbackAccId: string) => {
+      const rule = await AccountingRepository.findPostingRuleByCode(ruleId);
+      return rule?.accountId || fallbackAccId;
+    };
+
+    const cashAcc = await getAccountByRule('sales_cash_debit', 'acc_cash');
+    const bankAcc = await getAccountByRule('sales_bank_debit', 'acc_bank');
+    const recAcc = await getAccountByRule('sales_credit_debit', 'acc_receivable');
+
+    const debitAcc = paymentData.method === 'bank' ? bankAcc : cashAcc;
+
+    const journalLines = [
+      { accountId: debitAcc, debit: paymentData.amount, credit: 0 },
+      { accountId: recAcc, debit: 0, credit: paymentData.amount }
+    ];
+
+    const journalResult = await AccountingRepository.postJournalEntry(
+      `JE-${paymentNumber}`,
+      `سند قبض تحصيل دفعة مبيعات - ${paymentData.customerName || paymentData.customerId}`,
+      date,
+      journalLines,
+      {
+        currency: paymentData.currency || 'SAR',
+        exchangeRate: paymentData.exchangeRate || 1.0
+      }
+    );
+
+    return {
+      success: true,
+      paymentId: payId,
+      paymentNumber,
+      journalEntry: journalResult
+    };
   }
 }

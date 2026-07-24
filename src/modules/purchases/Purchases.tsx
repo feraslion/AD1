@@ -38,6 +38,32 @@ interface Supplier {
   balance: number;
 }
 
+interface PurchaseRequest {
+  id: string;
+  requestNumber: string;
+  requesterName?: string;
+  department?: string;
+  date: string;
+  requiredDate?: string;
+  subtotal: number;
+  taxAmount: number;
+  grandTotal: number;
+  currency: string;
+  exchangeRate: number;
+  status: 'draft' | 'pending' | 'approved' | 'converted' | 'rejected';
+  notes?: string;
+  supplierId?: string;
+  supplierName?: string;
+  items: {
+    id?: string;
+    productId?: string;
+    productName: string;
+    estimatedPrice: number;
+    quantity: number;
+    total: number;
+  }[];
+}
+
 interface PurchaseOrder {
   id: string;
   purchaseNumber: string;
@@ -53,6 +79,8 @@ interface PurchaseOrder {
   supplierPhone?: string;
   warehouseId?: string;
   notes?: string;
+  currency?: string;
+  exchangeRate?: number;
   items: {
     id?: string;
     productId: string;
@@ -72,9 +100,11 @@ interface PurchasesProps {
 }
 
 export default function Purchases({ products, customers, settings, onRefreshData }: PurchasesProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'orders' | 'purchase_invoice' | 'supplier_payment' | 'ledger' | 'directory'>('orders');
+  const [activeSubTab, setActiveSubTab] = useState<'requests' | 'orders' | 'purchase_invoice' | 'supplier_payment' | 'ledger' | 'directory'>('requests');
   
   // Data state
+  const [requestsList, setRequestsList] = useState<PurchaseRequest[]>([]);
+  const [loadingRequests, setLoadingRequests] = useState(false);
   const [purchasesList, setPurchasesList] = useState<PurchaseOrder[]>([]);
   const [loadingPurchases, setLoadingPurchases] = useState(false);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -82,9 +112,31 @@ export default function Purchases({ products, customers, settings, onRefreshData
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  // Multi-currency list
+  const currenciesList = [
+    { code: 'SAR', name: 'ريال سعودي', symbol: 'ر.س', rate: 1.0 },
+    { code: 'USD', name: 'دولار أمريكي', symbol: '$', rate: 3.75 },
+    { code: 'SYP', name: 'ليرة سورية', symbol: 'ل.س', rate: 13000 },
+    { code: 'TRY', name: 'ليرة تركية', symbol: '₺', rate: 32.5 },
+  ];
+
   // Directory & Search Search
   const [searchQuery, setSearchQuery] = useState('');
   const [partnerType, setPartnerType] = useState<'all' | 'customers' | 'suppliers'>('all');
+
+  // Purchase Request Modal & Form
+  const [showRequestModal, setShowRequestModal] = useState(false);
+  const [reqSupplierId, setReqSupplierId] = useState('');
+  const [reqRequesterName, setReqRequesterName] = useState('إدارة المشتريات');
+  const [reqDepartment, setReqDepartment] = useState('المخازن والمشتريات');
+  const [reqDate, setReqDate] = useState(new Date().toISOString().split('T')[0]);
+  const [reqRequiredDate, setReqRequiredDate] = useState(new Date().toISOString().split('T')[0]);
+  const [reqCurrency, setReqCurrency] = useState('SAR');
+  const [reqExchangeRate, setReqExchangeRate] = useState(1.0);
+  const [reqNotes, setReqNotes] = useState('');
+  const [reqItems, setReqItems] = useState<{ productId: string; productName: string; estimatedPrice: number; quantity: number }[]>([
+    { productId: '', productName: '', estimatedPrice: 0, quantity: 1 }
+  ]);
 
   // Supplier Add Modal
   const [showSupplierModal, setShowSupplierModal] = useState(false);
@@ -98,6 +150,8 @@ export default function Purchases({ products, customers, settings, onRefreshData
   const [purInvoiceNumber, setPurInvoiceNumber] = useState('');
   const [purDate, setPurDate] = useState(new Date().toISOString().split('T')[0]);
   const [purStatus, setPurStatus] = useState<'ordered' | 'completed'>('ordered');
+  const [purCurrency, setPurCurrency] = useState('SAR');
+  const [purExchangeRate, setPurExchangeRate] = useState(1.0);
   const [purNotes, setPurNotes] = useState('');
   const [purItems, setPurItems] = useState<{ productId: string; purchasePrice: number; quantity: number }[]>([
     { productId: '', purchasePrice: 0, quantity: 1 }
@@ -107,6 +161,8 @@ export default function Purchases({ products, customers, settings, onRefreshData
   const [paySupplierId, setPaySupplierId] = useState('');
   const [payAmount, setPayAmount] = useState('');
   const [payPaymentMethod, setPayPaymentMethod] = useState<'cash' | 'card'>('cash');
+  const [payCurrency, setPayCurrency] = useState('SAR');
+  const [payExchangeRate, setPayExchangeRate] = useState(1.0);
   const [payDate, setPayDate] = useState(new Date().toISOString().split('T')[0]);
   const [payNumber, setPayNumber] = useState('');
 
@@ -128,6 +184,18 @@ export default function Purchases({ products, customers, settings, onRefreshData
   const [selectedLedgerSupplierId, setSelectedLedgerSupplierId] = useState('');
   const [supplierLedgerData, setSupplierLedgerData] = useState<any | null>(null);
   const [ledgerLoading, setLedgerLoading] = useState(false);
+
+  const fetchRequests = async () => {
+    setLoadingRequests(true);
+    try {
+      const data = await PurchaseService.getPurchaseRequests();
+      setRequestsList(data);
+    } catch (e) {
+      console.error('Error fetching purchase requests:', e);
+    } finally {
+      setLoadingRequests(false);
+    }
+  };
 
   const fetchSuppliers = async () => {
     setLoadingSuppliers(true);
@@ -170,6 +238,7 @@ export default function Purchases({ products, customers, settings, onRefreshData
   };
 
   useEffect(() => {
+    fetchRequests();
     fetchSuppliers();
     fetchPurchases();
     // Auto-generate reference numbers
@@ -182,6 +251,78 @@ export default function Purchases({ products, customers, settings, onRefreshData
       fetchLedger(selectedLedgerSupplierId);
     }
   }, [selectedLedgerSupplierId, activeSubTab]);
+
+  // Handle PR creation
+  const handleCreatePRSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMessage(null);
+
+    const invalidItems = reqItems.some(i => (!i.productId && !i.productName) || i.quantity <= 0);
+    if (invalidItems) {
+      setMessage({ type: 'error', text: 'الرجاء تحديد بيانات أصناف طلب الشراء بشكل صحيح.' });
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const subtotal = reqItems.reduce((sum, item) => sum + (item.estimatedPrice * item.quantity), 0);
+      const taxRateVal = settings.taxRate || 15;
+      const taxAmount = (subtotal * taxRateVal) / 100;
+      const grandTotal = subtotal + taxAmount;
+
+      await PurchaseService.createPurchaseRequest({
+        supplierId: reqSupplierId || null,
+        requesterName: reqRequesterName,
+        department: reqDepartment,
+        date: reqDate,
+        requiredDate: reqRequiredDate,
+        currency: reqCurrency,
+        exchangeRate: reqExchangeRate,
+        subtotal,
+        taxAmount,
+        grandTotal,
+        notes: reqNotes,
+        items: reqItems.map(i => {
+          const prod = products.find(p => p.id === i.productId);
+          return {
+            productId: i.productId || null,
+            productName: i.productName || (prod ? prod.name : 'صنف غير محدد'),
+            estimatedPrice: i.estimatedPrice,
+            quantity: i.quantity
+          };
+        })
+      });
+
+      setMessage({
+        type: 'success',
+        text: 'تم حفظ طلب الشراء بنجاح وهو في انتظار المراجعة والتحويل إلى أمر شراء.'
+      });
+
+      setShowRequestModal(false);
+      setReqItems([{ productId: '', productName: '', estimatedPrice: 0, quantity: 1 }]);
+      setReqNotes('');
+
+      await fetchRequests();
+      if (onRefreshData) await onRefreshData();
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message || 'حدث خطأ أثناء حفظ طلب الشراء.' });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Convert Purchase Request to Purchase Order
+  const handleConvertPRToOrder = async (prId: string) => {
+    try {
+      const res = await PurchaseService.convertRequestToOrder(prId);
+      alert(`تم تحويل طلب الشراء إلى أمر شراء برقم (${res.purchaseNumber}) بنجاح!`);
+      await fetchRequests();
+      await fetchPurchases();
+      if (onRefreshData) await onRefreshData();
+    } catch (e: any) {
+      alert(e.message || 'فشل تحويل طلب الشراء إلى أمر شراء');
+    }
+  };
 
   // Handle Supplier Creation
   const handleAddSupplier = async (e: React.FormEvent) => {
@@ -239,6 +380,8 @@ export default function Purchases({ products, customers, settings, onRefreshData
         items: purItems,
         paymentMethod: purPaymentMethod,
         invoiceNumber: purInvoiceNumber,
+        currency: purCurrency,
+        exchangeRate: purExchangeRate,
         taxAmount,
         totalWithoutTax,
         grandTotal,
@@ -423,33 +566,37 @@ export default function Purchases({ products, customers, settings, onRefreshData
         </div>
 
         {/* Workflow Visual Pipeline */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 pt-2 border-t border-slate-700/60 text-[11px] font-bold">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 pt-2 border-t border-slate-700/60 text-[11px] font-bold">
           <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700 text-center space-y-0.5">
-            <span className="text-slate-400 text-[10px] block">1. المورد</span>
+            <span className="text-slate-400 text-[10px] block">1. طلب الشراء</span>
+            <span className="text-cyan-400">PR Request</span>
+          </div>
+          <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700 text-center space-y-0.5">
+            <span className="text-slate-400 text-[10px] block">2. المورد</span>
             <span className="text-emerald-400">Supplier</span>
           </div>
           <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700 text-center space-y-0.5">
-            <span className="text-slate-400 text-[10px] block">2. أمر الشراء</span>
+            <span className="text-slate-400 text-[10px] block">3. أمر الشراء</span>
             <span className="text-amber-400">Purchase Order</span>
           </div>
           <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700 text-center space-y-0.5">
-            <span className="text-slate-400 text-[10px] block">3. الاستلام</span>
+            <span className="text-slate-400 text-[10px] block">4. الاستلام</span>
             <span className="text-blue-400">Receiving</span>
           </div>
           <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700 text-center space-y-0.5">
-            <span className="text-slate-400 text-[10px] block">4. المخزون</span>
+            <span className="text-slate-400 text-[10px] block">5. المخزون</span>
             <span className="text-indigo-400">Inventory Update</span>
           </div>
           <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700 text-center space-y-0.5">
-            <span className="text-slate-400 text-[10px] block">5. فاتورة المورد</span>
+            <span className="text-slate-400 text-[10px] block">6. فاتورة المورد</span>
             <span className="text-purple-400">Supplier Invoice</span>
           </div>
           <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700 text-center space-y-0.5">
-            <span className="text-slate-400 text-[10px] block">6. القيد المحاسبي</span>
+            <span className="text-slate-400 text-[10px] block">7. القيد المحاسبي</span>
             <span className="text-teal-400">Accounting Entry</span>
           </div>
           <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700 text-center space-y-0.5">
-            <span className="text-slate-400 text-[10px] block">7. السداد</span>
+            <span className="text-slate-400 text-[10px] block">8. السداد</span>
             <span className="text-emerald-300">Payment</span>
           </div>
         </div>
@@ -458,13 +605,24 @@ export default function Purchases({ products, customers, settings, onRefreshData
       {/* Main Sub Tabs */}
       <div className="flex border-b border-slate-200 gap-2 sm:gap-6 overflow-x-auto pb-1 text-xs sm:text-sm scrollbar-none">
         <button
+          onClick={() => setActiveSubTab('requests')}
+          className={`pb-3 font-extrabold transition whitespace-nowrap relative flex items-center gap-1.5 ${
+            activeSubTab === 'requests' ? 'text-emerald-600' : 'text-slate-400 hover:text-slate-600'
+          }`}
+        >
+          <FileText className="w-4 h-4" />
+          <span>طلبات الشراء ({requestsList.length})</span>
+          {activeSubTab === 'requests' && <div className="absolute bottom-0 right-0 left-0 h-0.5 bg-emerald-500 rounded-full"></div>}
+        </button>
+
+        <button
           onClick={() => setActiveSubTab('orders')}
           className={`pb-3 font-extrabold transition whitespace-nowrap relative flex items-center gap-1.5 ${
             activeSubTab === 'orders' ? 'text-emerald-600' : 'text-slate-400 hover:text-slate-600'
           }`}
         >
           <ClipboardList className="w-4 h-4" />
-          <span>أوامر وطلبات الشراء ({purchasesList.length})</span>
+          <span>أوامر الشراء ({purchasesList.length})</span>
           {activeSubTab === 'orders' && <div className="absolute bottom-0 right-0 left-0 h-0.5 bg-emerald-500 rounded-full"></div>}
         </button>
 
@@ -519,6 +677,106 @@ export default function Purchases({ products, customers, settings, onRefreshData
         }`}>
           {message.type === 'success' ? <CheckCircle2 className="w-5 h-5 text-emerald-600" /> : <AlertTriangle className="w-5 h-5 text-rose-600" />}
           <span>{message.text}</span>
+        </div>
+      )}
+
+      {/* SUB TAB 0: PURCHASE REQUESTS (طلبات الشراء) */}
+      {activeSubTab === 'requests' && (
+        <div className="space-y-6">
+          <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4">
+            <div>
+              <h3 className="font-extrabold text-slate-800 text-base">سجل طلبات الشراء الداخلية (Purchase Requests)</h3>
+              <p className="text-xs text-slate-400">إدارة طلبات الشراء الواردة من الأقسام والمستودع وتحويلها لأوامر شراء</p>
+            </div>
+            <button
+              onClick={() => setShowRequestModal(true)}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2 rounded-xl text-xs sm:text-sm transition flex items-center justify-center gap-1.5 shadow-sm"
+            >
+              <Plus className="w-4 h-4" />
+              <span>طلب شراء جديد</span>
+            </button>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-right text-xs sm:text-sm">
+                <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold">
+                  <tr>
+                    <th className="p-3.5">رقم الطلب</th>
+                    <th className="p-3.5">التاريخ / الاحتياج</th>
+                    <th className="p-3.5">الطالب / القسم</th>
+                    <th className="p-3.5">المورد المقترح</th>
+                    <th className="p-3.5">المبلغ التقديري</th>
+                    <th className="p-3.5">العملة</th>
+                    <th className="p-3.5">حالة الطلب</th>
+                    <th className="p-3.5 text-center">الإجراء</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                  {requestsList.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="p-8 text-center text-slate-400">
+                        لا توجد طلبات شراء مسجلة بالنظام بعد.
+                      </td>
+                    </tr>
+                  ) : (
+                    requestsList.map((req) => (
+                      <tr key={req.id} className="hover:bg-slate-50/80 transition">
+                        <td className="p-3.5">
+                          <div className="font-extrabold text-slate-900 font-mono">{req.requestNumber}</div>
+                        </td>
+                        <td className="p-3.5 font-mono text-slate-500">
+                          <div>{req.date}</div>
+                          {req.requiredDate && <div className="text-[10px] text-amber-600">مطلوب لغاية: {req.requiredDate}</div>}
+                        </td>
+                        <td className="p-3.5">
+                          <div className="font-bold text-slate-800">{req.requesterName || 'غير محدد'}</div>
+                          <div className="text-[10px] text-slate-400">{req.department}</div>
+                        </td>
+                        <td className="p-3.5 text-slate-700">{req.supplierName || 'غير محدد'}</td>
+                        <td className="p-3.5 font-mono font-bold text-slate-900">
+                          {req.grandTotal.toFixed(2)}
+                        </td>
+                        <td className="p-3.5 font-bold">
+                          <span className="bg-slate-100 px-2 py-0.5 rounded text-[11px] text-slate-700">
+                            {req.currency || 'SAR'} {req.exchangeRate && req.exchangeRate !== 1 ? `(${req.exchangeRate})` : ''}
+                          </span>
+                        </td>
+                        <td className="p-3.5">
+                          {req.status === 'converted' ? (
+                            <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs px-2.5 py-1 rounded-lg font-bold">
+                              تم التحويل لأمر شراء
+                            </span>
+                          ) : req.status === 'approved' ? (
+                            <span className="bg-blue-50 text-blue-700 border border-blue-200 text-xs px-2.5 py-1 rounded-lg font-bold">
+                              معتمد
+                            </span>
+                          ) : (
+                            <span className="bg-amber-50 text-amber-700 border border-amber-200 text-xs px-2.5 py-1 rounded-lg font-bold">
+                              قيد المراجعة
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3.5 text-center">
+                          {req.status !== 'converted' ? (
+                            <button
+                              onClick={() => handleConvertPRToOrder(req.id)}
+                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center justify-center gap-1 mx-auto"
+                            >
+                              <PlusCircle className="w-3.5 h-3.5" />
+                              <span>تحويل لأمر شراء</span>
+                            </button>
+                          ) : (
+                            <span className="text-xs text-slate-400 font-bold">مكتمل</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1232,6 +1490,215 @@ export default function Purchases({ products, customers, settings, onRefreshData
                 className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition"
               >
                 حفظ بيانات المورد
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* NEW PURCHASE REQUEST MODAL */}
+      {showRequestModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h3 className="font-extrabold text-slate-800 text-sm flex items-center gap-2">
+                <FileText className="w-5 h-5 text-emerald-600" />
+                <span>إنشاء طلب شراء جديد (New Purchase Request)</span>
+              </h3>
+              <button onClick={() => setShowRequestModal(false)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+            </div>
+
+            <form onSubmit={handleCreatePRSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">اسم الطالب</label>
+                  <input
+                    type="text"
+                    value={reqRequesterName}
+                    onChange={(e) => setReqRequesterName(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-700"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">القسم / الإدارة</label>
+                  <input
+                    type="text"
+                    value={reqDepartment}
+                    onChange={(e) => setReqDepartment(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-700"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">تاريخ الطلب</label>
+                  <input
+                    type="date"
+                    value={reqDate}
+                    onChange={(e) => setReqDate(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-700"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">تاريخ الاحتياج المطلوب</label>
+                  <input
+                    type="date"
+                    value={reqRequiredDate}
+                    onChange={(e) => setReqRequiredDate(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-700"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">المورد المقترح (اختياري)</label>
+                  <select
+                    value={reqSupplierId}
+                    onChange={(e) => setReqSupplierId(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-700"
+                  >
+                    <option value="">-- غير محدد --</option>
+                    {suppliers.map(s => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">العملة وسعر الصرف</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <select
+                      value={reqCurrency}
+                      onChange={(e) => {
+                        const curr = e.target.value;
+                        setReqCurrency(curr);
+                        const found = currenciesList.find(c => c.code === curr);
+                        if (found) setReqExchangeRate(found.rate);
+                      }}
+                      className="w-full px-2 py-2 border border-slate-200 rounded-xl text-xs text-slate-700 font-bold"
+                    >
+                      {currenciesList.map(c => (
+                        <option key={c.code} value={c.code}>{c.name} ({c.code})</option>
+                      ))}
+                    </select>
+
+                    <input
+                      type="number"
+                      step="any"
+                      min="0.0001"
+                      value={reqExchangeRate}
+                      onChange={(e) => setReqExchangeRate(parseFloat(e.target.value) || 1)}
+                      className="w-full px-2 py-2 border border-slate-200 rounded-xl text-xs font-mono text-slate-700"
+                      placeholder="سعر الصرف"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Items Table */}
+              <div className="space-y-2 pt-2 border-t border-slate-100">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-extrabold text-slate-700">الأصناف والكميات المطلوبة</span>
+                  <button
+                    type="button"
+                    onClick={() => setReqItems([...reqItems, { productId: '', productName: '', estimatedPrice: 0, quantity: 1 }])}
+                    className="text-xs font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-1"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>إضافة صنف</span>
+                  </button>
+                </div>
+
+                {reqItems.map((item, idx) => (
+                  <div key={idx} className="grid grid-cols-12 gap-2 items-center bg-slate-50 p-2 rounded-xl">
+                    <div className="col-span-5">
+                      <select
+                        value={item.productId}
+                        onChange={(e) => {
+                          const next = [...reqItems];
+                          const prod = products.find(p => p.id === e.target.value);
+                          next[idx].productId = e.target.value;
+                          if (prod) {
+                            next[idx].productName = prod.name;
+                            next[idx].estimatedPrice = prod.purchasePrice || 0;
+                          }
+                          setReqItems(next);
+                        }}
+                        className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs"
+                      >
+                        <option value="">-- اختر صنف المخزون --</option>
+                        {products.map(p => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="col-span-3">
+                      <input
+                        type="number"
+                        step="any"
+                        placeholder="السعر التقديري"
+                        value={item.estimatedPrice}
+                        onChange={(e) => {
+                          const next = [...reqItems];
+                          next[idx].estimatedPrice = parseFloat(e.target.value) || 0;
+                          setReqItems(next);
+                        }}
+                        className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs font-mono"
+                      />
+                    </div>
+
+                    <div className="col-span-2">
+                      <input
+                        type="number"
+                        step="any"
+                        placeholder="الكمية"
+                        value={item.quantity}
+                        onChange={(e) => {
+                          const next = [...reqItems];
+                          next[idx].quantity = parseFloat(e.target.value) || 1;
+                          setReqItems(next);
+                        }}
+                        className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs font-mono"
+                      />
+                    </div>
+
+                    <div className="col-span-2 text-center">
+                      {reqItems.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => setReqItems(reqItems.filter((_, i) => i !== idx))}
+                          className="text-rose-500 hover:text-rose-700 p-1"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">ملاحظات أو مبررات طلب الشراء</label>
+                <textarea
+                  rows={2}
+                  value={reqNotes}
+                  onChange={(e) => setReqNotes(e.target.value)}
+                  placeholder="مثال: استكمال النقص بمنتجات قسم الضيافة"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-700"
+                ></textarea>
+              </div>
+
+              <button
+                type="submit"
+                disabled={submitting}
+                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition"
+              >
+                {submitting ? 'جاري الحفظ...' : 'حفظ وإرسال طلب الشراء'}
               </button>
             </form>
           </div>

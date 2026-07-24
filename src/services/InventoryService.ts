@@ -21,6 +21,7 @@ export const InventoryService = {
 
   getStockMoves: WarehouseService.getStockMoves,
   transferStock: WarehouseService.transferStock,
+  recordManualStockMove: WarehouseService.recordManualStockMove,
   adjustPhysicalStock: WarehouseService.adjustPhysicalStock,
   getProductStockLedger: WarehouseService.getProductStockLedger,
   getInventoryValuation: WarehouseService.getInventoryValuation,

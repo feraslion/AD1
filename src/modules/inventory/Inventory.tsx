@@ -40,10 +40,27 @@ export default function Inventory({
   onDeleteCategory,
   onRefresh 
 }: InventoryProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'products' | 'warehouses' | 'transfers' | 'adjustments' | 'ledger' | 'valuation' | 'lowstock' | 'categories'>('products');
+  const [activeSubTab, setActiveSubTab] = useState<'products' | 'movements' | 'warehouses' | 'transfers' | 'adjustments' | 'ledger' | 'valuation' | 'lowstock' | 'categories'>('products');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [stockFilter, setStockFilter] = useState<'all' | 'low' | 'out'>('all');
+
+  // Valuation Method State (WAC vs FIFO)
+  const [valuationMethod, setValuationMethod] = useState<'average' | 'fifo'>('average');
+
+  // Manual Stock Movement State (أذونات حركة المخزون)
+  const [moveProdId, setMoveProdId] = useState<string>('');
+  const [moveWhId, setMoveWhId] = useState<string>('');
+  const [moveType, setMoveType] = useState<'in' | 'out'>('in');
+  const [moveQty, setMoveQty] = useState<string>('1');
+  const [moveUnitCost, setMoveUnitCost] = useState<string>('');
+  const [moveRef, setMoveRef] = useState<string>('');
+  const [moveNotes, setMoveNotes] = useState<string>('');
+  const [moveLoading, setMoveLoading] = useState<boolean>(false);
+
+  // All Stock Moves list
+  const [allStockMoves, setAllStockMoves] = useState<any[]>([]);
+  const [stockMovesLoading, setStockMovesLoading] = useState<boolean>(false);
 
   // Low Stock Alerts State
   const [lowStockAlerts, setLowStockAlerts] = useState<any[]>([]);
@@ -106,12 +123,15 @@ export default function Inventory({
 
   useEffect(() => {
     if (activeSubTab === 'valuation') {
-      fetchValuation();
+      fetchValuation(valuationMethod);
     }
     if (activeSubTab === 'lowstock') {
       fetchLowStockAlerts();
     }
-  }, [activeSubTab, products]);
+    if (activeSubTab === 'movements') {
+      fetchStockMoves();
+    }
+  }, [activeSubTab, valuationMethod, products]);
 
   useEffect(() => {
     if (ledgerProdId) {
@@ -139,21 +159,72 @@ export default function Inventory({
         if (!fromWhId) setFromWhId(list[0].id);
         if (!toWhId && list.length > 1) setToWhId(list[1].id);
         if (!adjWhId) setAdjWhId(list[0].id);
+        if (!moveWhId) setMoveWhId(list[0].id);
       }
     } catch (e) {
       console.error(e);
     }
   };
 
-  const fetchValuation = async () => {
+  const fetchValuation = async (method: 'average' | 'fifo' = 'average') => {
     setValuationLoading(true);
     try {
-      const data = await InventoryService.getInventoryValuation();
+      const data = await InventoryService.getInventoryValuation(method);
       setValuationData(data);
     } catch (e) {
       console.error(e);
     } finally {
       setValuationLoading(false);
+    }
+  };
+
+  const fetchStockMoves = async () => {
+    setStockMovesLoading(true);
+    try {
+      const moves = await InventoryService.getStockMoves();
+      setAllStockMoves(moves);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setStockMovesLoading(false);
+    }
+  };
+
+  const handleManualMoveSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!moveProdId || !moveWhId || !moveQty) return;
+
+    setMoveLoading(true);
+    try {
+      const res = await InventoryService.recordManualStockMove({
+        productId: moveProdId,
+        warehouseId: moveWhId,
+        type: moveType,
+        quantity: parseFloat(moveQty),
+        unitCost: moveUnitCost ? parseFloat(moveUnitCost) : undefined,
+        referenceId: moveRef || undefined,
+        notes: moveNotes || undefined
+      });
+
+      let msg = `تم تسجيل إذن الحركة المخزنية (${moveType === 'in' ? 'إضافة/توريد' : 'صرف/إتلاف'}) بنجاح!\nالرصيد الجديد: ${res.newStock}`;
+      if (res.newAvgCost) {
+        msg += `\nمتوسط سعر التكلفة المرجح WAC الجديد: ${res.newAvgCost} ${settings.currency}`;
+      }
+      if (res.journalEntry) {
+        msg += `\n\nتم توليد القيد المحاسبي المزدوج الآلي رقم ${res.journalEntry.entryNumber} تلقائياً.`;
+      }
+      alert(msg);
+
+      setMoveQty('1');
+      setMoveUnitCost('');
+      setMoveRef('');
+      setMoveNotes('');
+      fetchStockMoves();
+      if (onRefresh) onRefresh();
+    } catch (e: any) {
+      alert(e.message || 'فشل تسجيل إذن الحركة المخزنية');
+    } finally {
+      setMoveLoading(false);
     }
   };
 
@@ -344,8 +415,19 @@ export default function Inventory({
             activeSubTab === 'products' ? 'text-emerald-600' : 'text-slate-400 hover:text-slate-600'
           }`}
         >
-          📦 الاصناف والمنتجات
+          📦 الأصناف والمنتجات
           {activeSubTab === 'products' && <div className="absolute bottom-0 right-0 left-0 h-0.5 bg-emerald-500 rounded-full"></div>}
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('movements')}
+          className={`pb-3 font-bold transition whitespace-nowrap relative flex items-center gap-1 ${
+            activeSubTab === 'movements' ? 'text-emerald-600' : 'text-slate-400 hover:text-slate-600'
+          }`}
+        >
+          <Layers className="w-4 h-4" />
+          <span>أذونات حركات المخزون</span>
+          {activeSubTab === 'movements' && <div className="absolute bottom-0 right-0 left-0 h-0.5 bg-emerald-500 rounded-full"></div>}
         </button>
 
         <button
@@ -557,6 +639,215 @@ export default function Inventory({
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* SUB TAB 1.5: STOCK MOVEMENTS (أذونات الحركات المخزنية اليدوية وسجل الحركات) */}
+      {activeSubTab === 'movements' && (
+        <div className="space-y-6">
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm max-w-3xl mx-auto space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center font-bold">
+                  <Layers className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-800 text-base">تسجيل إذن حركة مخزنية (Stock Voucher)</h3>
+                  <p className="text-xs text-slate-400">إضافة إذن توريد أو صرف يدوي للمخزون مع تحديث التكلفة والقيد الآلي</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => setMoveType('in')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    moveType === 'in' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  📥 إذن توريد / إضافة (+)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMoveType('out')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    moveType === 'out' ? 'bg-rose-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  📤 إذن صرف / إتلاف (-)
+                </button>
+              </div>
+            </div>
+
+            <form onSubmit={handleManualMoveSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">اختر الصنف / المنتج</label>
+                <select
+                  value={moveProdId}
+                  onChange={(e) => {
+                    setMoveProdId(e.target.value);
+                    const p = products.find(x => x.id === e.target.value);
+                    if (p) setMoveUnitCost(p.purchasePrice.toString());
+                  }}
+                  required
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                >
+                  <option value="">-- اختر المنتج --</option>
+                  {products.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} (المتوفّر: {p.stock} {p.unit} | التكلفة الحالية: {p.purchasePrice} {settings.currency})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">المستودع</label>
+                  <select
+                    value={moveWhId}
+                    onChange={(e) => setMoveWhId(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-700 focus:outline-none"
+                  >
+                    {warehouses.map((w) => (
+                      <option key={w.id} value={w.id}>{w.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">الكمية</label>
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="any"
+                    value={moveQty}
+                    onChange={(e) => setMoveQty(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">سعر التكلفة للوحدة ({settings.currency})</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    placeholder="التكلفة الحالية"
+                    value={moveUnitCost}
+                    onChange={(e) => setMoveUnitCost(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">رقم المستند / أذن الإضافة والبدل</label>
+                  <input
+                    type="text"
+                    placeholder="مثال: VOUCH-2026-001"
+                    value={moveRef}
+                    onChange={(e) => setMoveRef(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">سبب الحركة / البيان</label>
+                  <input
+                    type="text"
+                    placeholder="مثال: توريد مواد من المورد / عينات ترويجية"
+                    value={moveNotes}
+                    onChange={(e) => setMoveNotes(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={moveLoading}
+                className={`w-full py-3 text-white font-bold rounded-xl text-xs sm:text-sm transition flex items-center justify-center gap-2 shadow-sm ${
+                  moveType === 'in' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-rose-600 hover:bg-rose-700'
+                }`}
+              >
+                <FileText className="w-4 h-4" />
+                <span>
+                  {moveLoading ? 'جاري حفظ حركة المخزون...' : moveType === 'in' ? 'اعتماد أذن التوريد / الإضافة' : 'اعتماد أذن الصرف / الإتلاف'}
+                </span>
+              </button>
+            </form>
+          </div>
+
+          {/* Table of all stock movements */}
+          <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm space-y-3 p-4">
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+              <div>
+                <h4 className="font-extrabold text-slate-800 text-sm">سجل الأذونات والحركات المخزنية الأخيرة</h4>
+                <p className="text-xs text-slate-400">عرض جميع حركات التوريد والتعديل والتحويلات والمبيعات</p>
+              </div>
+              <button
+                onClick={fetchStockMoves}
+                className="p-1.5 text-slate-500 hover:bg-slate-100 rounded-lg text-xs font-bold flex items-center gap-1 transition"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>تحديث</span>
+              </button>
+            </div>
+
+            {stockMovesLoading ? (
+              <div className="p-8 text-center text-slate-400 text-xs">جاري تحميل سجل الحركات...</div>
+            ) : allStockMoves.length === 0 ? (
+              <div className="p-8 text-center text-slate-400 text-xs">لا توجد حركات مخزنية مسجلة حتى الآن.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-right text-xs">
+                  <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
+                    <tr>
+                      <th className="p-3">التاريخ والوقت</th>
+                      <th className="p-3">نوع الحركة</th>
+                      <th className="p-3">المنتج</th>
+                      <th className="p-3">الكمية</th>
+                      <th className="p-3">تكلّفة الحركة</th>
+                      <th className="p-3">المرجع</th>
+                      <th className="p-3">ملاحظات</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                    {allStockMoves.slice(0, 30).map((m: any) => {
+                      const prd = products.find(x => x.id === m.productId);
+                      return (
+                        <tr key={m.id} className="hover:bg-slate-50 transition">
+                          <td className="p-3 text-slate-400 font-mono dir-ltr text-[11px]">
+                            {m.createdAt ? new Date(m.createdAt).toLocaleString('ar-SA') : '-'}
+                          </td>
+                          <td className="p-3">
+                            <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${
+                              m.type === 'purchase' ? 'bg-emerald-100 text-emerald-800' :
+                              m.type === 'sale' ? 'bg-blue-100 text-blue-800' :
+                              m.type === 'transfer' ? 'bg-purple-100 text-purple-800' : 'bg-amber-100 text-amber-900'
+                            }`}>
+                              {m.type === 'purchase' ? 'إضافة / مشتريات' :
+                               m.type === 'sale' ? 'صرف / مبيعات' :
+                               m.type === 'transfer' ? 'تحويل مستودعي' : 'تسوية مخزنية'}
+                            </span>
+                          </td>
+                          <td className="p-3 font-bold text-slate-900">{prd ? prd.name : m.productId}</td>
+                          <td className="p-3 font-bold font-mono dir-ltr">{m.quantity}</td>
+                          <td className="p-3 font-mono">{m.unitCost ? `${m.unitCost} ${settings.currency}` : '-'}</td>
+                          <td className="p-3 font-mono dir-ltr text-slate-500">{m.referenceId || '-'}</td>
+                          <td className="p-3 text-slate-500 max-w-xs truncate">{m.notes || '-'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -952,15 +1243,70 @@ export default function Inventory({
       {/* SUB TAB 6: INVENTORY VALUATION */}
       {activeSubTab === 'valuation' && (
         <div className="space-y-6">
+          <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <h3 className="font-extrabold text-slate-800 text-base">تقييم المخزون المالي والتكلفة المحاسبية</h3>
+              <p className="text-xs text-slate-400">حساب قيمة المخزون الدفتري وإجمالي الأرباح الكامنة حسب السياسة المحاسبية المعتمدة</p>
+            </div>
+
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+              <button
+                type="button"
+                onClick={() => setValuationMethod('average')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  valuationMethod === 'average' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                📊 المتوسط المرجح (WAC)
+              </button>
+              <button
+                type="button"
+                onClick={() => setValuationMethod('fifo')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  valuationMethod === 'fifo' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                🔄 الوارد أولاً صادر أولاً (FIFO)
+              </button>
+            </div>
+          </div>
+
+          {/* Inventory Accounting Mapping Legend */}
+          <div className="bg-slate-900 text-slate-200 rounded-2xl p-4 shadow-sm border border-slate-800">
+            <h4 className="font-extrabold text-emerald-400 text-xs mb-2 flex items-center gap-1">
+              <span>🏛️ ربط شجرة الحسابات المحاسبية الدفترية للمخزون (Inventory Accounting Ledger Integration)</span>
+            </h4>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-[11px]">
+              <div className="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700">
+                <span className="block text-slate-400 text-[10px]">حساب المخزون (أصول متداولة)</span>
+                <span className="font-bold text-white font-mono">1201 - المخزون السلعي</span>
+              </div>
+              <div className="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700">
+                <span className="block text-slate-400 text-[10px]">حساب التكلفة (مصروفات)</span>
+                <span className="font-bold text-amber-300 font-mono">5101 - تكلفة البضاعة المباعة (COGS)</span>
+              </div>
+              <div className="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700">
+                <span className="block text-slate-400 text-[10px]">حساب عجز الجرد والتالف</span>
+                <span className="font-bold text-rose-300 font-mono">5105 - خسائر عجز المخزون</span>
+              </div>
+              <div className="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700">
+                <span className="block text-slate-400 text-[10px]">حساب فائض التسوية الجردية</span>
+                <span className="font-bold text-emerald-300 font-mono">4202 - إيرادات تسوية مخزنية</span>
+              </div>
+            </div>
+          </div>
+
           {valuationLoading ? (
             <div className="bg-white p-12 rounded-2xl border border-slate-200 text-center text-slate-400 text-sm">
-              جاري حساب تقييم وتكلفة المخزون المالي...
+              جاري حساب تقييم وتكلفة المخزون المالي بـ طريقة ({valuationMethod === 'fifo' ? 'الوارد أولاً صادر أولاً FIFO' : 'المتوسط المرجح WAC'})...
             </div>
           ) : valuationData ? (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-1">
-                  <span className="text-xs font-bold text-slate-400">إجمالي قيمة التكلفة (الوسطي المرجح)</span>
+                  <span className="text-xs font-bold text-slate-400">
+                    إجمالي التكلفة ({valuationMethod === 'fifo' ? 'حسب FIFO' : 'حسب المتوسط المرجح WAC'})
+                  </span>
                   <div className="text-2xl font-black text-slate-900 font-mono">
                     {valuationData.totalCostSum.toFixed(2)} <span className="text-sm font-normal">{settings.currency}</span>
                   </div>
@@ -988,7 +1334,7 @@ export default function Inventory({
                       <tr>
                         <th className="p-3.5">اسم المنتج</th>
                         <th className="p-3.5">المخزون الحالي</th>
-                        <th className="p-3.5">متوسط التكلفة</th>
+                        <th className="p-3.5">{valuationMethod === 'fifo' ? 'تكلفة FIFO للوحدة' : 'متوسط التكلفة WAC'}</th>
                         <th className="p-3.5">إجمالي قيمة التكلفة</th>
                         <th className="p-3.5">سعر البيع</th>
                         <th className="p-3.5">إجمالي قيمة البيع</th>
@@ -1000,7 +1346,9 @@ export default function Inventory({
                         <tr key={item.id} className="hover:bg-slate-50/80 transition">
                           <td className="p-3.5 font-bold text-slate-900">{item.name}</td>
                           <td className="p-3.5 font-bold font-mono">{item.stock} {item.unit}</td>
-                          <td className="p-3.5 font-mono">{item.avgCost} {settings.currency}</td>
+                          <td className="p-3.5 font-mono">
+                            {valuationMethod === 'fifo' ? item.fifoCost : item.avgCost} {settings.currency}
+                          </td>
                           <td className="p-3.5 font-bold font-mono text-slate-800">{item.totalCostValue} {settings.currency}</td>
                           <td className="p-3.5 font-mono text-emerald-600">{item.sellingPrice} {settings.currency}</td>
                           <td className="p-3.5 font-bold font-mono text-emerald-700">{item.totalSalesValue} {settings.currency}</td>

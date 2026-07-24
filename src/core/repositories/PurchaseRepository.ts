@@ -1,11 +1,122 @@
 import { db } from '../database/index.ts';
-import { purchases, purchaseItems, suppliers, products } from '../database/schema.ts';
+import { purchases, purchaseItems, suppliers, products, purchaseRequests, purchaseRequestItems } from '../database/schema.ts';
 import { eq, desc, inArray } from 'drizzle-orm';
 import { InventoryRepository } from './InventoryRepository.ts';
 import { SupplierRepository } from './SupplierRepository.ts';
 import { AccountingRepository } from './AccountingRepository.ts';
 
 export class PurchaseRepository {
+  static async findAllPurchaseRequests() {
+    const reqList = await db.select().from(purchaseRequests).orderBy(desc(purchaseRequests.createdAt));
+    if (reqList.length === 0) return [];
+
+    const reqIds = reqList.map(r => r.id);
+    const itemsList = await db.select().from(purchaseRequestItems).where(inArray(purchaseRequestItems.requestId, reqIds));
+    const supplierList = await db.select().from(suppliers);
+    const suppliersMap = new Map(supplierList.map(s => [s.id, s]));
+
+    return reqList.map(req => {
+      const rItems = itemsList
+        .filter(item => item.requestId === req.id)
+        .map(i => ({
+          ...i,
+          estimatedPrice: parseFloat(i.estimatedPrice || '0'),
+          quantity: parseFloat(i.quantity || '0'),
+          total: parseFloat(i.total || '0')
+        }));
+
+      const supp = req.supplierId ? suppliersMap.get(req.supplierId) : null;
+
+      return {
+        ...req,
+        subtotal: parseFloat(req.subtotal || '0'),
+        taxAmount: parseFloat(req.taxAmount || '0'),
+        grandTotal: parseFloat(req.grandTotal || '0'),
+        exchangeRate: parseFloat(req.exchangeRate || '1.0'),
+        supplierName: supp ? supp.name : 'غير محدد',
+        items: rItems
+      };
+    });
+  }
+
+  static async createPurchaseRequest(data: any) {
+    const reqId = data.id || `pr_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    const reqNum = data.requestNumber || `PR-${Math.floor(100000 + Math.random() * 900000)}`;
+
+    const reqVal = {
+      id: reqId,
+      requestNumber: reqNum,
+      requesterName: data.requesterName || 'إدارة المشتريات',
+      department: data.department || 'المستودع والمشتريات',
+      date: data.date || new Date().toISOString().split('T')[0],
+      requiredDate: data.requiredDate || data.date || new Date().toISOString().split('T')[0],
+      subtotal: (data.subtotal || 0).toString(),
+      taxAmount: (data.taxAmount || 0).toString(),
+      grandTotal: (data.grandTotal || 0).toString(),
+      currency: data.currency || 'SAR',
+      exchangeRate: (data.exchangeRate || 1.0).toString(),
+      status: data.status || 'pending', // 'draft' | 'pending' | 'approved' | 'converted' | 'rejected'
+      notes: data.notes || '',
+      supplierId: data.supplierId || null
+    };
+
+    const rItemsVal = (data.items || []).map((item: any) => ({
+      id: `pri_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      requestId: reqId,
+      productId: item.productId || null,
+      productName: item.productName || 'صنف غير محدد',
+      estimatedPrice: (item.estimatedPrice || item.purchasePrice || 0).toString(),
+      quantity: (item.quantity || 1).toString(),
+      total: ((item.quantity || 1) * (item.estimatedPrice || item.purchasePrice || 0)).toString()
+    }));
+
+    await db.insert(purchaseRequests).values(reqVal);
+    if (rItemsVal.length > 0) {
+      await db.insert(purchaseRequestItems).values(rItemsVal);
+    }
+
+    return { success: true, requestId: reqId, requestNumber: reqNum };
+  }
+
+  static async convertRequestToOrder(requestId: string) {
+    const [req] = await db.select().from(purchaseRequests).where(eq(purchaseRequests.id, requestId));
+    if (!req) throw new Error('طلب الشراء غير موجود');
+
+    const items = await db.select().from(purchaseRequestItems).where(eq(purchaseRequestItems.requestId, requestId));
+
+    const poNumber = `PO-${Math.floor(100000 + Math.random() * 900000)}`;
+    const purchaseData = {
+      supplierId: req.supplierId,
+      date: new Date().toISOString().split('T')[0],
+      invoiceNumber: poNumber,
+      purchaseNumber: poNumber,
+      currency: req.currency,
+      exchangeRate: req.exchangeRate,
+      status: 'ordered',
+      paymentMethod: 'credit',
+      subtotal: parseFloat(req.subtotal || '0'),
+      taxAmount: parseFloat(req.taxAmount || '0'),
+      grandTotal: parseFloat(req.grandTotal || '0'),
+      notes: `محول من طلب شراء رقم ${req.requestNumber}`,
+      items: items.map(i => ({
+        productId: i.productId,
+        productName: i.productName,
+        purchasePrice: parseFloat(i.estimatedPrice || '0'),
+        quantity: parseFloat(i.quantity || '0'),
+        total: parseFloat(i.total || '0'),
+        taxAmount: 0
+      }))
+    };
+
+    const orderRes = await this.createPurchaseOrder(purchaseData);
+
+    await db.update(purchaseRequests).set({
+      status: 'converted',
+      updatedAt: new Date()
+    }).where(eq(purchaseRequests.id, requestId));
+
+    return { success: true, orderId: orderRes.purchaseId, purchaseNumber: poNumber };
+  }
   static async findAllPurchases() {
     const purchaseList = await db.select().from(purchases).orderBy(desc(purchases.createdAt));
     if (purchaseList.length === 0) return [];

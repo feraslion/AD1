@@ -6,6 +6,7 @@ import {
   products,
   customers,
   suppliers,
+  payments,
   purchases,
   purchaseItems,
   invoices,
@@ -27,7 +28,9 @@ import {
   currencies,
   exchangeRatesHistory,
   taxes,
-  paymentMethods
+  paymentMethods,
+  companies,
+  branches
 } from './src/core/database/schema.ts';
 import { DEFAULT_CURRENCIES, CurrencyService } from './src/services/CurrencyService.ts';
 import { 
@@ -41,7 +44,10 @@ import {
   AccountingRepository,
   AccountRepository,
   CurrencyRepository,
-  InvoiceRepository
+  InvoiceRepository,
+  TreasuryRepository,
+  ExpenseRepository,
+  ReportsRepository
 } from './src/core/repositories/index.ts';
 import { eq, desc, and, or, like, sql, inArray } from 'drizzle-orm';
 
@@ -363,6 +369,15 @@ app.delete('/api/products/:id', authorize(['manager', 'inventory']), async (req,
   }
 });
 
+app.get('/api/products/:id/history', async (req, res) => {
+  try {
+    const history = await ProductRepository.getProductHistory(req.params.id);
+    sendResponse(res, history);
+  } catch (error) {
+    sendError(res, 'فشل جلب سجل حركة المنتج', error);
+  }
+});
+
 // 2. Categories API
 app.get('/api/categories', async (req, res) => {
   try {
@@ -494,6 +509,27 @@ app.get('/api/stock-moves', authorize(['manager', 'inventory', 'accountant']), a
 });
 
 // Warehouse Transfer API
+app.post('/api/stock-moves/manual', authorize(['manager', 'inventory']), async (req, res) => {
+  try {
+    const { productId, warehouseId, type, quantity, unitCost, referenceId, notes } = req.body;
+    if (!productId || !warehouseId || !type || !quantity) {
+      return sendError(res, 'بيانات حركة المخزون اليدوية غير مكتملة', null, 400);
+    }
+    const result = await InventoryRepository.recordManualStockMove({
+      productId,
+      warehouseId,
+      type,
+      quantity: parseFloat(quantity),
+      unitCost: unitCost !== undefined && unitCost !== null && unitCost !== '' ? parseFloat(unitCost) : undefined,
+      referenceId,
+      notes
+    });
+    sendResponse(res, result);
+  } catch (error: any) {
+    sendError(res, error.message || 'فشل تسجيل إذن الحركة المخزنية اليدوية', error);
+  }
+});
+
 app.post('/api/stock-moves/transfer', authorize(['manager', 'inventory']), async (req, res) => {
   try {
     const { productId, fromWarehouseId, toWarehouseId, quantity, notes } = req.body;
@@ -795,6 +831,9 @@ app.get('/api/customers', async (req, res) => {
   try {
     const { page, limit, search } = req.query;
     
+    const pageNum = page ? parseInt(page as string) : undefined;
+    const limitNum = limit ? parseInt(limit as string) : undefined;
+
     const conditions = [];
     if (search) {
       conditions.push(
@@ -804,25 +843,24 @@ app.get('/api/customers', async (req, res) => {
         )
       );
     }
-    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
     let total = 0;
-    if (page || limit) {
-      const countResult = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(customers)
-        .where(whereClause);
+    if (pageNum || limitNum) {
+      const countQuery = db.select({ count: sql<number>`count(*)` }).from(customers);
+      const countResult = conditions.length > 0
+        ? await countQuery.where(and(...conditions))
+        : await countQuery;
       total = Number(countResult[0]?.count || 0);
     }
 
     let query = db.select().from(customers);
-    if (whereClause) {
-      query = query.where(whereClause) as any;
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions)) as any;
     }
 
-    if (page && limit) {
-      const p = parseInt(page as string) || 1;
-      const l = parseInt(limit as string) || 10;
+    if (pageNum && limitNum) {
+      const p = pageNum || 1;
+      const l = limitNum || 10;
       query = query.limit(l).offset((p - 1) * l) as any;
     }
 
@@ -830,18 +868,41 @@ app.get('/api/customers', async (req, res) => {
     const mapped = allCustomers.map(c => ({
       ...c,
       balance: parseFloat(c.balance || '0'),
-      creditLimit: parseFloat(c.creditLimit || '5000')
+      creditLimit: parseFloat(c.creditLimit || '5000'),
+      openingBalance: parseFloat(c.openingBalance || '0')
     }));
 
-    if (page || limit) {
-      const p = parseInt(page as string) || 1;
-      const l = parseInt(limit as string) || 10;
+    if (pageNum || limitNum) {
+      const p = pageNum || 1;
+      const l = limitNum || 10;
       sendResponse(res, mapped, 200, { page: p, limit: l, total });
     } else {
       sendResponse(res, mapped);
     }
   } catch (error) {
     sendError(res, 'فشل جلب العملاء', error);
+  }
+});
+
+// GET /api/customers/reports/aging - Debt aging analysis
+app.get('/api/customers/reports/aging', authorize(['manager', 'accountant']), async (req, res) => {
+  try {
+    const agingReport = await CustomerRepository.getDebtAging();
+    sendResponse(res, agingReport);
+  } catch (error) {
+    sendError(res, 'فشل جلب تقرير أعمار الديون', error);
+  }
+});
+
+// GET /api/customers/:id/ledger - Customer Statement of Account
+app.get('/api/customers/:id/ledger', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { startDate, endDate } = req.query;
+    const ledger = await CustomerRepository.getCustomerLedger(id, startDate as string, endDate as string);
+    sendResponse(res, ledger);
+  } catch (error) {
+    sendError(res, 'فشل جلب كشف حساب العميل', error);
   }
 });
 
@@ -859,8 +920,15 @@ app.post('/api/customers', authorize(['manager', 'cashier', 'accountant']), asyn
       name: c.name,
       phone: c.phone || '',
       email: c.email || '',
-      balance: (c.balance || 0).toString(),
-      creditLimit: (c.creditLimit || 5000).toString()
+      balance: (c.balance ?? 0).toString(),
+      creditLimit: (c.creditLimit ?? 5000).toString(),
+      taxNumber: c.taxNumber || '',
+      crNumber: c.crNumber || '',
+      address: c.address || '',
+      type: c.type || 'retail',
+      status: c.status || 'active',
+      notes: c.notes || '',
+      openingBalance: (c.openingBalance ?? 0).toString()
     };
 
     const saved = await CustomerRepository.upsert(dbValue);
@@ -1052,6 +1120,73 @@ app.post('/api/invoices/:id/return', authorize(['manager', 'cashier', 'accountan
     sendResponse(res, result);
   } catch (error: any) {
     sendError(res, error.message || 'فشل معالجة مرتجع الفاتورة', error);
+  }
+});
+
+// 6b. Quotations API (عروض الأسعار)
+app.get('/api/quotations', async (req, res) => {
+  try {
+    const quotes = await SalesRepository.findAllQuotations();
+    sendResponse(res, quotes);
+  } catch (error) {
+    sendError(res, 'فشل جلب عروض الأسعار', error);
+  }
+});
+
+app.post('/api/quotations', authorize(['manager', 'cashier', 'accountant']), async (req, res) => {
+  try {
+    const result = await SalesRepository.createQuotation(req.body);
+    sendResponse(res, result);
+  } catch (error) {
+    sendError(res, 'فشل إنشاء عرض السعر', error);
+  }
+});
+
+app.post('/api/quotations/:id/convert-order', authorize(['manager', 'cashier', 'accountant']), async (req, res) => {
+  try {
+    const result = await SalesRepository.convertQuotationToOrder(req.params.id);
+    sendResponse(res, result);
+  } catch (error: any) {
+    sendError(res, error.message || 'فشل تحويل عرض السعر إلى أمر مبيعات', error);
+  }
+});
+
+// 6c. Sales Orders API (أوامر المبيعات)
+app.get('/api/sales-orders', async (req, res) => {
+  try {
+    const orders = await SalesRepository.findAllSalesOrders();
+    sendResponse(res, orders);
+  } catch (error) {
+    sendError(res, 'فشل جلب أوامر المبيعات', error);
+  }
+});
+
+app.post('/api/sales-orders', authorize(['manager', 'cashier', 'accountant']), async (req, res) => {
+  try {
+    const result = await SalesRepository.createSalesOrder(req.body);
+    sendResponse(res, result);
+  } catch (error) {
+    sendError(res, 'فشل إنشاء أمر المبيعات', error);
+  }
+});
+
+app.post('/api/sales-orders/:id/convert-invoice', authorize(['manager', 'cashier', 'accountant']), async (req, res) => {
+  try {
+    const { paymentMethod } = req.body;
+    const result = await SalesRepository.convertOrderToInvoice(req.params.id, paymentMethod || 'credit');
+    sendResponse(res, result);
+  } catch (error: any) {
+    sendError(res, error.message || 'فشل تحويل أمر المبيعات إلى فاتورة', error);
+  }
+});
+
+// 6d. Customer Payments API (تحصيل سندات المبيعات)
+app.post('/api/customer-payments', authorize(['manager', 'cashier', 'accountant']), async (req, res) => {
+  try {
+    const result = await SalesRepository.recordCustomerPayment(req.body);
+    sendResponse(res, result);
+  } catch (error: any) {
+    sendError(res, error.message || 'فشل تسجيل تحصيل دفعة العميل', error);
   }
 });
 
@@ -1647,7 +1782,314 @@ app.post('/api/cashboxes/close', authorize(['manager', 'cashier']), async (req, 
   }
 });
 
+// 11b. Treasury & Banking API (الخزينة والبنوك)
+app.get('/api/treasury/cashboxes', async (req, res) => {
+  try {
+    const list = await TreasuryRepository.getCashboxes();
+    sendResponse(res, list);
+  } catch (error) {
+    sendError(res, 'فشل جلب صناديق الخزينة', error);
+  }
+});
+
+app.post('/api/treasury/cashboxes', authorize(['manager', 'accountant']), async (req, res) => {
+  try {
+    const item = await TreasuryRepository.upsertCashbox(req.body);
+    sendResponse(res, item);
+  } catch (error) {
+    sendError(res, 'فشل حفظ صندوق الخزينة', error);
+  }
+});
+
+app.delete('/api/treasury/cashboxes/:id', authorize(['manager']), async (req, res) => {
+  try {
+    await TreasuryRepository.deleteCashbox(req.params.id);
+    sendResponse(res, { success: true });
+  } catch (error) {
+    sendError(res, 'فشل حذف الخزينة', error);
+  }
+});
+
+app.get('/api/treasury/bank-accounts', async (req, res) => {
+  try {
+    const list = await TreasuryRepository.getBankAccounts();
+    sendResponse(res, list);
+  } catch (error) {
+    sendError(res, 'فشل جلب الحسابات البنكية', error);
+  }
+});
+
+app.post('/api/treasury/bank-accounts', authorize(['manager', 'accountant']), async (req, res) => {
+  try {
+    const item = await TreasuryRepository.upsertBankAccount(req.body);
+    sendResponse(res, item);
+  } catch (error) {
+    sendError(res, 'فشل حفظ الحساب البنكي', error);
+  }
+});
+
+app.delete('/api/treasury/bank-accounts/:id', authorize(['manager']), async (req, res) => {
+  try {
+    await TreasuryRepository.deleteBankAccount(req.params.id);
+    sendResponse(res, { success: true });
+  } catch (error) {
+    sendError(res, 'فشل حذف الحساب البنكي', error);
+  }
+});
+
+app.get('/api/treasury/transactions', async (req, res) => {
+  try {
+    const type = req.query.type as string;
+    const list = await TreasuryRepository.getTransactions(type);
+    sendResponse(res, list);
+  } catch (error) {
+    sendError(res, 'فشل جلب معاملات الخزينة والبنوك', error);
+  }
+});
+
+app.post('/api/treasury/deposits', authorize(['manager', 'accountant', 'cashier']), async (req, res) => {
+  try {
+    const result = await TreasuryRepository.createDeposit(req.body);
+    sendResponse(res, result);
+  } catch (error: any) {
+    sendError(res, error.message || 'فشل تسجيل الإيداع', error);
+  }
+});
+
+app.post('/api/treasury/withdrawals', authorize(['manager', 'accountant']), async (req, res) => {
+  try {
+    const result = await TreasuryRepository.createWithdrawal(req.body);
+    sendResponse(res, result);
+  } catch (error: any) {
+    sendError(res, error.message || 'فشل تسجيل السحب/المصروف', error);
+  }
+});
+
+app.post('/api/treasury/transfers', authorize(['manager', 'accountant']), async (req, res) => {
+  try {
+    const result = await TreasuryRepository.createTransfer(req.body);
+    sendResponse(res, result);
+  } catch (error: any) {
+    sendError(res, error.message || 'فشل تنفيذ التحويل المالي', error);
+  }
+});
+
+app.get('/api/treasury/reconciliations/:bankAccountId', async (req, res) => {
+  try {
+    const list = await TreasuryRepository.getBankReconciliations(req.params.bankAccountId);
+    sendResponse(res, list);
+  } catch (error) {
+    sendError(res, 'فشل جلب سجل التسويات البنكية', error);
+  }
+});
+
+app.get('/api/treasury/unreconciled/:bankAccountId', async (req, res) => {
+  try {
+    const list = await TreasuryRepository.getUnreconciledTransactions(req.params.bankAccountId);
+    sendResponse(res, list);
+  } catch (error) {
+    sendError(res, 'فشل جلب المعاملات غير المسواة', error);
+  }
+});
+
+app.post('/api/treasury/reconcile', authorize(['manager', 'accountant']), async (req, res) => {
+  try {
+    const result = await TreasuryRepository.executeBankReconciliation(req.body);
+    sendResponse(res, result);
+  } catch (error: any) {
+    sendError(res, error.message || 'فشل إتمام التسوية البنكية', error);
+  }
+});
+
+// 11c. Expense Management API (إدارة المصروفات والتصنيفات)
+app.get('/api/expenses/categories', async (req, res) => {
+  try {
+    const list = await ExpenseRepository.getCategories();
+    sendResponse(res, list);
+  } catch (error) {
+    sendError(res, 'فشل جلب تصنيفات المصروفات', error);
+  }
+});
+
+app.post('/api/expenses/categories', authorize(['manager', 'accountant']), async (req, res) => {
+  try {
+    const cat = await ExpenseRepository.upsertCategory(req.body);
+    sendResponse(res, cat);
+  } catch (error) {
+    sendError(res, 'فشل حفظ تصنيف المصروفات', error);
+  }
+});
+
+app.delete('/api/expenses/categories/:id', authorize(['manager']), async (req, res) => {
+  try {
+    await ExpenseRepository.deleteCategory(req.params.id);
+    sendResponse(res, { success: true });
+  } catch (error) {
+    sendError(res, 'فشل حذف تصنيف المصروفات', error);
+  }
+});
+
+app.get('/api/expenses/requests', async (req, res) => {
+  try {
+    const statusFilter = req.query.status as string;
+    const list = await ExpenseRepository.getRequests(statusFilter);
+    sendResponse(res, list);
+  } catch (error) {
+    sendError(res, 'فشل جلب طلبات المصروفات', error);
+  }
+});
+
+app.post('/api/expenses/requests', async (req, res) => {
+  try {
+    const item = await ExpenseRepository.createRequest(req.body);
+    sendResponse(res, item);
+  } catch (error: any) {
+    sendError(res, error.message || 'فشل إنشاء طلب المصروف', error);
+  }
+});
+
+app.post('/api/expenses/requests/:id/approve', authorize(['manager', 'accountant']), async (req, res) => {
+  try {
+    const approvedBy = req.body.approvedBy || (req as any).user?.name || 'مدير النظام';
+    const result = await ExpenseRepository.approveRequest(req.params.id, approvedBy);
+    sendResponse(res, result);
+  } catch (error: any) {
+    sendError(res, error.message || 'فشل الموافقة على طلب المصروف', error);
+  }
+});
+
+app.post('/api/expenses/requests/:id/reject', authorize(['manager', 'accountant']), async (req, res) => {
+  try {
+    const reason = req.body.reason || 'تم رفض الطلب بواسطة الإدارة';
+    const result = await ExpenseRepository.rejectRequest(req.params.id, reason);
+    sendResponse(res, result);
+  } catch (error: any) {
+    sendError(res, error.message || 'فشل رفض طلب المصروف', error);
+  }
+});
+
+app.post('/api/expenses/requests/:id/pay', authorize(['manager', 'accountant', 'cashier']), async (req, res) => {
+  try {
+    const result = await ExpenseRepository.payExpense(req.params.id, req.body);
+    sendResponse(res, result);
+  } catch (error: any) {
+    sendError(res, error.message || 'فشل سداد المصروف القيد المحاسبي', error);
+  }
+});
+
+app.get('/api/expenses/reports', async (req, res) => {
+  try {
+    const reports = await ExpenseRepository.getExpenseReports();
+    sendResponse(res, reports);
+  } catch (error) {
+    sendError(res, 'فشل جلب تقارير المصروفات', error);
+  }
+});
+
+// 11d. Reporting Engine API (محرك التقارير والشاشات التحليلية)
+app.get('/api/reports/sales', async (req, res) => {
+  try {
+    const filter = {
+      startDate: req.query.startDate as string,
+      endDate: req.query.endDate as string
+    };
+    const report = await ReportsRepository.getSalesReport(filter);
+    sendResponse(res, report);
+  } catch (error) {
+    sendError(res, 'فشل توليد تقرير المبيعات', error);
+  }
+});
+
+app.get('/api/reports/purchases', async (req, res) => {
+  try {
+    const filter = {
+      startDate: req.query.startDate as string,
+      endDate: req.query.endDate as string
+    };
+    const report = await ReportsRepository.getPurchaseReport(filter);
+    sendResponse(res, report);
+  } catch (error) {
+    sendError(res, 'فشل توليد تقرير المشتريات', error);
+  }
+});
+
+app.get('/api/reports/inventory', async (req, res) => {
+  try {
+    const report = await ReportsRepository.getInventoryReport();
+    sendResponse(res, report);
+  } catch (error) {
+    sendError(res, 'فشل توليد تقرير المخزون', error);
+  }
+});
+
+app.get('/api/reports/customers', async (req, res) => {
+  try {
+    const report = await ReportsRepository.getCustomerReport();
+    sendResponse(res, report);
+  } catch (error) {
+    sendError(res, 'فشل توليد تقرير العملاء', error);
+  }
+});
+
+app.get('/api/reports/suppliers', async (req, res) => {
+  try {
+    const report = await ReportsRepository.getSupplierReport();
+    sendResponse(res, report);
+  } catch (error) {
+    sendError(res, 'فشل توليد تقرير الموردين', error);
+  }
+});
+
+app.get('/api/reports/profit', async (req, res) => {
+  try {
+    const filter = {
+      startDate: req.query.startDate as string,
+      endDate: req.query.endDate as string
+    };
+    const report = await ReportsRepository.getProfitReport(filter);
+    sendResponse(res, report);
+  } catch (error) {
+    sendError(res, 'فشل توليد تقرير الأرباح والخسائر', error);
+  }
+});
+
+app.get('/api/reports/financial-statements', async (req, res) => {
+  try {
+    const report = await ReportsRepository.getFinancialStatements();
+    sendResponse(res, report);
+  } catch (error) {
+    sendError(res, 'فشل توليد القوائم المالية المحاسبية', error);
+  }
+});
+
 // 12. Purchasing API (ERP Procurement Workflow)
+app.get('/api/purchase-requests', async (req, res) => {
+  try {
+    const list = await PurchaseRepository.findAllPurchaseRequests();
+    sendResponse(res, list);
+  } catch (error) {
+    sendError(res, 'فشل جلب طلبات الشراء', error);
+  }
+});
+
+app.post('/api/purchase-requests', authorize(['manager', 'inventory', 'accountant']), async (req, res) => {
+  try {
+    const result = await PurchaseRepository.createPurchaseRequest(req.body);
+    sendResponse(res, result);
+  } catch (error) {
+    sendError(res, 'فشل إنشاء طلب الشراء', error);
+  }
+});
+
+app.post('/api/purchase-requests/:id/convert-order', authorize(['manager', 'inventory', 'accountant']), async (req, res) => {
+  try {
+    const result = await PurchaseRepository.convertRequestToOrder(req.params.id);
+    sendResponse(res, result);
+  } catch (error: any) {
+    sendError(res, error.message || 'فشل تحويل طلب الشراء إلى أمر شراء', error);
+  }
+});
+
 app.get('/api/purchases', async (req, res) => {
   try {
     const list = await PurchaseRepository.findAllPurchases();
@@ -1694,24 +2136,75 @@ app.post('/api/purchases/:id/invoice', authorize(['manager', 'accountant']), asy
 });
 
 // 13. Customer Receipt Payments API
+app.get('/api/payments/customer', authorize(['manager', 'cashier', 'accountant']), async (req, res) => {
+  try {
+    const { customerId } = req.query;
+    let query = db.select().from(payments).where(eq(payments.type, 'receipt'));
+    if (customerId) {
+      query = db.select().from(payments).where(
+        and(
+          eq(payments.type, 'receipt'),
+          eq(payments.partyId, customerId as string)
+        )
+      ) as any;
+    }
+    const list = await query;
+    const mapped = list.map(p => ({
+      id: p.id,
+      receiptNumber: p.paymentNumber,
+      customerId: p.partyId,
+      amount: parseFloat(p.amount || '0'),
+      paymentMethod: p.method,
+      date: p.date,
+      reference: p.reference || '',
+      notes: p.notes || '',
+      createdAt: p.createdAt
+    }));
+    sendResponse(res, mapped);
+  } catch (error) {
+    sendError(res, 'فشل جلب سندات القبض', error);
+  }
+});
+
 app.post('/api/payments/customer', authorize(['manager', 'cashier', 'accountant']), async (req, res) => {
   try {
-    const { customerId, amount, paymentMethod, date, receiptNumber } = req.body;
+    const { customerId, amount, paymentMethod, date, receiptNumber, reference, notes, invoiceId } = req.body;
     if (!customerId || !amount || parseFloat(amount) <= 0) {
       return sendError(res, 'بيانات سند القبض غير كاملة أو غير صالحة', null, 400);
     }
     
     const customer = await CustomerRepository.findById(customerId);
     if (!customer) throw new Error('العميل غير موجود');
+
+    const num = receiptNumber || `RCPT-${Date.now().toString().slice(-6)}`;
+    const pmtDate = date || new Date().toISOString().split('T')[0];
+    const pmtMethod = paymentMethod || 'cash';
     
     await CustomerRepository.adjustBalance(customerId, -amount);
 
+    // Record in payments table
+    await db.insert(payments).values({
+      id: 'pay_' + Math.random().toString(36).substr(2, 9),
+      companyId: customer.companyId || 'company_default',
+      branchId: customer.branchId || 'branch_default',
+      paymentNumber: num,
+      date: pmtDate,
+      type: 'receipt',
+      partyId: customerId,
+      partyType: 'customer',
+      amount: amount.toString(),
+      method: pmtMethod,
+      reference: reference || invoiceId || '',
+      notes: notes || `سند قبض من العميل: ${customer.name}`
+    });
+
+    // Accounting Entry
     const cashAcc = await getAccountByRule('payment_customer_debit_cash', 'acc_cash');
     const bankAcc = await getAccountByRule('payment_customer_debit_bank', 'acc_bank');
     const custCreditAcc = await getAccountByRule('payment_customer_credit', 'acc_receivable');
 
     const accountingLines = [];
-    if (paymentMethod === 'cash') {
+    if (pmtMethod === 'cash') {
       accountingLines.push({ accountId: cashAcc, debit: amount, credit: 0 });
     } else {
       accountingLines.push({ accountId: bankAcc, debit: amount, credit: 0 });
@@ -1719,13 +2212,13 @@ app.post('/api/payments/customer', authorize(['manager', 'cashier', 'accountant'
     accountingLines.push({ accountId: custCreditAcc, debit: 0, credit: amount });
 
     await postJournalEntry(
-      `JE-RCPT-${receiptNumber}`,
-      `سند قبض عميل: ${customer.name}`,
-      date,
+      `JE-RCPT-${num}`,
+      `سند قبض عميل: ${customer.name} - ${num}`,
+      pmtDate,
       accountingLines
     );
 
-    sendResponse(res, { success: true });
+    sendResponse(res, { success: true, receiptNumber: num, customerName: customer.name });
   } catch (error) {
     sendError(res, 'فشل تسجيل سند القبض', error);
   }
@@ -1777,6 +2270,31 @@ app.post('/api/payments/supplier', authorize(['manager', 'inventory', 'accountan
 // ─── DATABASE SEEDER FOR DEFAULT ERP CONVENTIONS ───
 async function seedDefaultData() {
   try {
+    const existingCompanies = await db.select().from(companies);
+    if (existingCompanies.length === 0) {
+      console.log('Seeding default Company...');
+      await db.insert(companies).values({
+        id: 'company-1',
+        name: 'المؤسسة الرئيسية',
+        taxNumber: '300000000000003',
+        email: 'info@company.com',
+        phone: '0110000000',
+        address: 'الرياض، المملكة العربية السعودية'
+      });
+    }
+
+    const existingBranches = await db.select().from(branches);
+    if (existingBranches.length === 0) {
+      console.log('Seeding default Branch...');
+      await db.insert(branches).values({
+        id: 'branch-1',
+        companyId: 'company-1',
+        name: 'الفرع الرئيسي',
+        code: 'BR-MAIN',
+        address: 'الرياض'
+      });
+    }
+
     const existingAccounts = await db.select().from(accounts);
     if (existingAccounts.length === 0) {
       console.log('Seeding default Chart of Accounts...');

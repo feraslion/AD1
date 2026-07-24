@@ -1,11 +1,24 @@
 import { Invoice, CartItem, Product } from '../types';
-import { InvoiceService } from '../core/api/api';
+import { InvoiceService, QuotationService, SalesOrderService, PaymentService } from '../core/api/api';
 
 export const SalesService = {
   // Underlying API services proxy
   getInvoices: InvoiceService.getInvoices,
   createInvoice: InvoiceService.createInvoice,
   returnInvoice: InvoiceService.returnInvoice,
+
+  // Quotations
+  getQuotations: QuotationService.getQuotations,
+  createQuotation: QuotationService.createQuotation,
+  convertQuotationToSalesOrder: QuotationService.convertToSalesOrder,
+
+  // Sales Orders
+  getSalesOrders: SalesOrderService.getSalesOrders,
+  createSalesOrder: SalesOrderService.createSalesOrder,
+  convertSalesOrderToInvoice: SalesOrderService.convertToInvoice,
+
+  // Customer Receipt Payments
+  recordCustomerPayment: PaymentService.payCustomer,
 
   // Calculation business logic
   calculateSubtotal: (cart: CartItem[]): number => {

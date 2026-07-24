@@ -1,6 +1,6 @@
 import { db } from '../database/index.ts';
-import { products, categories, units } from '../database/schema.ts';
-import { eq } from 'drizzle-orm';
+import { products, categories, units, stockMoves, warehouses } from '../database/schema.ts';
+import { eq, desc } from 'drizzle-orm';
 
 export class ProductRepository {
   static async findAll(params?: { search?: string; category?: string }) {
@@ -18,6 +18,56 @@ export class ProductRepository {
   static async findById(id: string) {
     const result = await db.select().from(products).where(eq(products.id, id));
     return result[0] || null;
+  }
+
+  static async getProductHistory(productId: string) {
+    const moves = await db
+      .select({
+        id: stockMoves.id,
+        productId: stockMoves.productId,
+        quantity: stockMoves.quantity,
+        unitCost: stockMoves.unitCost,
+        type: stockMoves.type,
+        referenceId: stockMoves.referenceId,
+        notes: stockMoves.notes,
+        createdAt: stockMoves.createdAt,
+        fromWarehouseId: stockMoves.fromWarehouseId,
+        toWarehouseId: stockMoves.toWarehouseId,
+      })
+      .from(stockMoves)
+      .where(eq(stockMoves.productId, productId))
+      .orderBy(desc(stockMoves.createdAt));
+
+    let runningStock = 0;
+    const history = moves.map(m => {
+      const qty = parseFloat(m.quantity || '0');
+      const isIncrease = ['purchase', 'adjustment_in', 'initial', 'return'].includes(m.type) || (m.type === 'adjustment' && qty > 0);
+      const qtyIn = isIncrease ? Math.abs(qty) : 0;
+      const qtyOut = !isIncrease ? Math.abs(qty) : 0;
+      
+      let typeLabel = 'حركة مخزنية';
+      if (m.type === 'sale') typeLabel = 'فاتورة مبيعات POS';
+      else if (m.type === 'purchase') typeLabel = 'فاتورة توريد مشتريات';
+      else if (m.type === 'transfer') typeLabel = 'تحويل بين المستودعات';
+      else if (m.type === 'adjustment') typeLabel = 'تسوية مخزنية أسبوعية/سنوية';
+      else if (m.type === 'initial') typeLabel = 'رصيد افتتاحي للمنتج';
+      else if (m.type === 'return') typeLabel = 'مرتجع مبيعات/مشتريات';
+
+      return {
+        id: m.id,
+        date: m.createdAt ? new Date(m.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+        type: m.type,
+        typeLabel,
+        reference: m.referenceId || 'N/A',
+        quantityIn: qtyIn,
+        quantityOut: qtyOut,
+        balanceAfter: 0, // Calculated client side or in accumulator
+        unitPrice: parseFloat(m.unitCost || '0'),
+        notes: m.notes || ''
+      };
+    });
+
+    return history;
   }
 
   static async upsert(productData: any) {

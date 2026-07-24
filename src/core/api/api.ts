@@ -1,4 +1,4 @@
-import { Product, Category, Customer, Unit, StoreSettings, Invoice } from '../../types';
+import { Product, Category, Customer, Unit, StoreSettings, Invoice, ProductHistoryEntry } from '../../types';
 import { apiClient } from './client';
 
 export const ProductService = {
@@ -10,10 +10,13 @@ export const ProductService = {
   
   deleteProduct: (id: string): Promise<void> => 
     apiClient.delete<void>(`/api/products/${id}`),
+
+  getProductHistory: (id: string): Promise<ProductHistoryEntry[]> =>
+    apiClient.get<ProductHistoryEntry[]>(`/api/products/${id}/history`),
 };
 
 export const CustomerService = {
-  getCustomers: (params?: { page?: number; limit?: number; search?: string }): Promise<Customer[]> => 
+  getCustomers: (params?: { page?: number; limit?: number; search?: string; type?: string; status?: string }): Promise<Customer[]> => 
     apiClient.get<Customer[]>('/api/customers', params),
   
   createCustomer: (c: Customer): Promise<Customer> => 
@@ -21,6 +24,12 @@ export const CustomerService = {
   
   deleteCustomer: (id: string): Promise<void> => 
     apiClient.delete<void>(`/api/customers/${id}`),
+
+  getCustomerLedger: (id: string, startDate?: string, endDate?: string): Promise<any> =>
+    apiClient.get<any>(`/api/customers/${id}/ledger`, { startDate, endDate }),
+
+  getDebtAging: (): Promise<any[]> =>
+    apiClient.get<any[]>('/api/customers/reports/aging'),
 };
 
 export const SupplierService = {
@@ -46,6 +55,28 @@ export const InvoiceService = {
 
   returnInvoice: (id: string): Promise<any> =>
     apiClient.post<any>(`/api/invoices/${id}/return`, {}),
+};
+
+export const QuotationService = {
+  getQuotations: (): Promise<any[]> =>
+    apiClient.get<any[]>('/api/quotations'),
+
+  createQuotation: (data: any): Promise<any> =>
+    apiClient.post<any>('/api/quotations', data),
+
+  convertToSalesOrder: (id: string): Promise<any> =>
+    apiClient.post<any>(`/api/quotations/${id}/convert-order`, {})
+};
+
+export const SalesOrderService = {
+  getSalesOrders: (): Promise<any[]> =>
+    apiClient.get<any[]>('/api/sales-orders'),
+
+  createSalesOrder: (data: any): Promise<any> =>
+    apiClient.post<any>('/api/sales-orders', data),
+
+  convertToInvoice: (id: string, paymentMethod: string = 'credit'): Promise<any> =>
+    apiClient.post<any>(`/api/sales-orders/${id}/convert-invoice`, { paymentMethod })
 };
 
 export const SettingsService = {
@@ -79,6 +110,15 @@ export const UnitService = {
 };
 
 export const PurchaseService = {
+  getPurchaseRequests: (): Promise<any[]> =>
+    apiClient.get<any[]>('/api/purchase-requests'),
+
+  createPurchaseRequest: (data: any): Promise<any> =>
+    apiClient.post<any>('/api/purchase-requests', data),
+
+  convertRequestToOrder: (id: string): Promise<any> =>
+    apiClient.post<any>(`/api/purchase-requests/${id}/convert-order`, {}),
+
   getPurchases: (): Promise<any[]> =>
     apiClient.get<any[]>('/api/purchases'),
 
@@ -93,8 +133,11 @@ export const PurchaseService = {
 };
 
 export const PaymentService = {
+  getCustomerPayments: (customerId?: string): Promise<any[]> =>
+    apiClient.get<any[]>('/api/payments/customer', { customerId }),
+
   payCustomer: (data: any): Promise<any> => 
-    apiClient.post<any>('/api/payments/customer', data),
+    apiClient.post<any>('/api/customer-payments', data),
 
   paySupplier: (data: any): Promise<any> => 
     apiClient.post<any>('/api/payments/supplier', data)
@@ -182,14 +225,17 @@ export const WarehouseService = {
   transferStock: (data: { productId: string; fromWarehouseId: string; toWarehouseId: string; quantity: number; notes?: string }): Promise<any> =>
     apiClient.post<any>('/api/stock-moves/transfer', data),
 
+  recordManualStockMove: (data: { productId: string; warehouseId: string; type: 'in' | 'out'; quantity: number; unitCost?: number; referenceId?: string; notes?: string }): Promise<any> =>
+    apiClient.post<any>('/api/stock-moves/manual', data),
+
   adjustPhysicalStock: (data: { productId: string; warehouseId: string; actualQuantity: number; notes?: string }): Promise<any> =>
     apiClient.post<any>('/api/stock-moves/adjustment', data),
 
   getProductStockLedger: (productId: string): Promise<any> =>
     apiClient.get<any>(`/api/inventory/ledger/${productId}`),
 
-  getInventoryValuation: (): Promise<any> =>
-    apiClient.get<any>('/api/inventory/valuation'),
+  getInventoryValuation: (method: 'average' | 'fifo' = 'average'): Promise<any> =>
+    apiClient.get<any>(`/api/inventory/valuation?method=${method}`),
 
   getLowStockAlerts: (): Promise<any[]> =>
     apiClient.get<any[]>('/api/inventory/low-stock'),
@@ -227,3 +273,98 @@ export const PaymentMethodService = {
   deletePaymentMethod: (id: string): Promise<void> => 
     apiClient.delete<void>(`/api/payment-methods/${id}`),
 };
+
+export const TreasuryService = {
+  getCashboxes: (): Promise<any[]> =>
+    apiClient.get<any[]>('/api/treasury/cashboxes'),
+
+  createCashbox: (data: any): Promise<any> =>
+    apiClient.post<any>('/api/treasury/cashboxes', data),
+
+  deleteCashbox: (id: string): Promise<void> =>
+    apiClient.delete<void>(`/api/treasury/cashboxes/${id}`),
+
+  getBankAccounts: (): Promise<any[]> =>
+    apiClient.get<any[]>('/api/treasury/bank-accounts'),
+
+  createBankAccount: (data: any): Promise<any> =>
+    apiClient.post<any>('/api/treasury/bank-accounts', data),
+
+  deleteBankAccount: (id: string): Promise<void> =>
+    apiClient.delete<void>(`/api/treasury/bank-accounts/${id}`),
+
+  getTransactions: (type?: string): Promise<any[]> =>
+    apiClient.get<any[]>('/api/treasury/transactions', { type }),
+
+  createDeposit: (data: any): Promise<any> =>
+    apiClient.post<any>('/api/treasury/deposits', data),
+
+  createWithdrawal: (data: any): Promise<any> =>
+    apiClient.post<any>('/api/treasury/withdrawals', data),
+
+  createTransfer: (data: any): Promise<any> =>
+    apiClient.post<any>('/api/treasury/transfers', data),
+
+  getReconciliations: (bankAccountId: string): Promise<any[]> =>
+    apiClient.get<any[]>(`/api/treasury/reconciliations/${bankAccountId}`),
+
+  getUnreconciledTransactions: (bankAccountId: string): Promise<any[]> =>
+    apiClient.get<any[]>(`/api/treasury/unreconciled/${bankAccountId}`),
+
+  executeReconciliation: (data: any): Promise<any> =>
+    apiClient.post<any>('/api/treasury/reconcile', data),
+};
+
+export const ExpenseService = {
+  getCategories: (): Promise<any[]> =>
+    apiClient.get<any[]>('/api/expenses/categories'),
+
+  createCategory: (data: any): Promise<any> =>
+    apiClient.post<any>('/api/expenses/categories', data),
+
+  deleteCategory: (id: string): Promise<void> =>
+    apiClient.delete<void>(`/api/expenses/categories/${id}`),
+
+  getRequests: (status?: string): Promise<any[]> =>
+    apiClient.get<any[]>('/api/expenses/requests', { status }),
+
+  createRequest: (data: any): Promise<any> =>
+    apiClient.post<any>('/api/expenses/requests', data),
+
+  approveRequest: (id: string, approvedBy?: string): Promise<any> =>
+    apiClient.post<any>(`/api/expenses/requests/${id}/approve`, { approvedBy }),
+
+  rejectRequest: (id: string, reason?: string): Promise<any> =>
+    apiClient.post<any>(`/api/expenses/requests/${id}/reject`, { reason }),
+
+  payExpense: (id: string, data: any): Promise<any> =>
+    apiClient.post<any>(`/api/expenses/requests/${id}/pay`, data),
+
+  getReports: (): Promise<any> =>
+    apiClient.get<any>('/api/expenses/reports'),
+};
+
+export const ReportService = {
+  getSalesReport: (params?: { startDate?: string; endDate?: string }): Promise<any> =>
+    apiClient.get<any>('/api/reports/sales', params),
+
+  getPurchaseReport: (params?: { startDate?: string; endDate?: string }): Promise<any> =>
+    apiClient.get<any>('/api/reports/purchases', params),
+
+  getInventoryReport: (): Promise<any> =>
+    apiClient.get<any>('/api/reports/inventory'),
+
+  getCustomerReport: (): Promise<any> =>
+    apiClient.get<any>('/api/reports/customers'),
+
+  getSupplierReport: (): Promise<any> =>
+    apiClient.get<any>('/api/reports/suppliers'),
+
+  getProfitReport: (params?: { startDate?: string; endDate?: string }): Promise<any> =>
+    apiClient.get<any>('/api/reports/profit', params),
+
+  getFinancialStatements: (): Promise<any> =>
+    apiClient.get<any>('/api/reports/financial-statements'),
+};
+
+

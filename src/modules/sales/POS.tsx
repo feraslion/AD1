@@ -3,8 +3,8 @@ import { Product, Category, Customer, CartItem, StoreSettings, Invoice } from '.
 import { 
   ShoppingCart, Search, Plus, Minus, Trash2, UserPlus, CreditCard, 
   DollarSign, Wallet, FileText, CheckCircle, X, Printer, QrCode, 
-  Scan, AlertCircle, Wifi, WifiOff, RefreshCw, Settings, Calculator, 
-  Zap, Percent, Tag, Scale, Volume2, Check
+  Scan, AlertCircle, AlertTriangle, Wifi, WifiOff, RefreshCw, Settings, Calculator, 
+  Zap, Percent, Tag, Scale, Volume2, Check, Monitor, RotateCcw, Lock, Unlock, Coins
 } from 'lucide-react';
 import { SalesService } from '../../services/SalesService';
 import { playScannerSound } from '../../utils/audio';
@@ -67,10 +67,53 @@ export default function POS({ products, categories, customers, settings, onAddIn
   const [newCustName, setNewCustName] = useState<string>('');
   const [newCustPhone, setNewCustPhone] = useState<string>('');
 
+  // Multi-currency State
+  const [posCurrency, setPosCurrency] = useState<string>(settings.currency || 'SAR');
+  const [currencyRates] = useState<{ [key: string]: number }>({
+    SAR: 1,
+    USD: 3.75,
+    EUR: 4.10,
+    SYP: 13000,
+    TRY: 32.5
+  });
+
+  // Cash Drawer & Shift State
+  const [showCashDrawerModal, setShowCashDrawerModal] = useState<boolean>(false);
+  const [cashDrawerOpen, setCashDrawerOpen] = useState<boolean>(false);
+  const [shiftStartBalance] = useState<number>(500);
+  const [shiftCurrentCash] = useState<number>(0);
+
+  // Returns / Refunds State
+  const [showReturnsModal, setShowReturnsModal] = useState<boolean>(false);
+  const [returnSearchQuery, setReturnSearchQuery] = useState<string>('');
+  const [selectedReturnInvoice, setSelectedReturnInvoice] = useState<Invoice | null>(null);
+  const [returnQuantities, setReturnQuantities] = useState<{ [productId: string]: number }>({});
+  const [isProcessingReturn, setIsProcessingReturn] = useState<boolean>(false);
+
+  // Customer Display Modal State
+  const [showCustomerDisplay, setShowCustomerDisplay] = useState<boolean>(false);
+
   // Fast Touch Numpad / Calculator Drawer
   const [showNumpad, setShowNumpad] = useState<boolean>(false);
   const [numpadValue, setNumpadValue] = useState<string>('');
   const [activeCartItemId, setActiveCartItemId] = useState<string | null>(null);
+
+  const convertFromSAR = useCallback((amountInSAR: number, targetCurrency: string = posCurrency) => {
+    const rate = currencyRates[targetCurrency] || 1;
+    return amountInSAR / rate;
+  }, [currencyRates, posCurrency]);
+
+  const formatAmount = useCallback((amountInSAR: number) => {
+    const converted = convertFromSAR(amountInSAR, posCurrency);
+    return `${converted.toFixed(2)} ${posCurrency}`;
+  }, [convertFromSAR, posCurrency]);
+
+  const handleTriggerCashDrawer = () => {
+    setCashDrawerOpen(true);
+    playScannerSound('success');
+    triggerScanMessage('🔓 تم إرسال نبضة فتح درج النقدية ESC/POS Pulse بنجاح', 'success');
+    setTimeout(() => setCashDrawerOpen(false), 2000);
+  };
 
   const triggerScanMessage = useCallback((text: string, type: 'success' | 'error' | 'info') => {
     setScanMessage({ text, type });
@@ -219,6 +262,58 @@ export default function POS({ products, categories, customers, settings, onAddIn
     triggerScanMessage(`تمت إضافة العميل "${newCust.name}" بنجاح`, 'success');
   };
 
+  // Return / Refund Handlers
+  const handleSearchReturnInvoice = async () => {
+    if (!returnSearchQuery.trim()) return;
+    try {
+      const list = await SalesService.getInvoices();
+      const found = (list || []).find((i: Invoice) => 
+        i.invoiceNumber.toLowerCase().includes(returnSearchQuery.trim().toLowerCase()) ||
+        i.id === returnSearchQuery.trim()
+      );
+      if (found) {
+        setSelectedReturnInvoice(found);
+        const initialQtys: { [key: string]: number } = {};
+        found.items.forEach(item => {
+          initialQtys[item.productId] = item.quantity;
+        });
+        setReturnQuantities(initialQtys);
+        triggerScanMessage(`تم العثور على الفاتورة: ${found.invoiceNumber}`, 'success');
+      } else {
+        triggerScanMessage('لم يتم العثور على فاتورة بهذا الرقم', 'error');
+      }
+    } catch (err) {
+      console.error('Error fetching invoices:', err);
+    }
+  };
+
+  const handleExecuteReturn = async () => {
+    if (!selectedReturnInvoice) return;
+    setIsProcessingReturn(true);
+    try {
+      await SalesService.returnInvoice(selectedReturnInvoice.id);
+      
+      // Restore inventory stock locally
+      selectedReturnInvoice.items.forEach(item => {
+        const retQty = returnQuantities[item.productId] || item.quantity;
+        const targetProd = products.find(p => p.id === item.productId);
+        if (targetProd && targetProd.stock !== 999) {
+          onUpdateProductStock(item.productId, targetProd.stock + retQty);
+        }
+      });
+
+      triggerScanMessage(`✅ تم تسجيل إرجاع الفاتورة ${selectedReturnInvoice.invoiceNumber} وعكس القيد والمخزون بنجاح!`, 'success');
+      setSelectedReturnInvoice(null);
+      setReturnSearchQuery('');
+      setShowReturnsModal(false);
+      playScannerSound('success');
+    } catch (err: any) {
+      triggerScanMessage(err.message || 'فشل معالجة الإرجاع', 'error');
+    } finally {
+      setIsProcessingReturn(false);
+    }
+  };
+
   // Payment checkout opening
   const handleCheckout = () => {
     if (cart.length === 0) return;
@@ -353,16 +448,16 @@ export default function POS({ products, categories, customers, settings, onAddIn
       {/* Top Status & POS Command Bar */}
       <div className="bg-slate-900 text-white rounded-2xl p-3 px-4 shadow-sm border border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
         {/* Connection Status & Offline Queue Indicator */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
           {isOnline ? (
             <div className="flex items-center gap-1.5 bg-emerald-950/80 border border-emerald-500/40 text-emerald-400 px-3 py-1.5 rounded-xl font-bold">
               <Wifi className="w-4 h-4 animate-pulse text-emerald-400" />
-              <span>متصل بالشبكة (أونلاين)</span>
+              <span>أونلاين</span>
             </div>
           ) : (
             <div className="flex items-center gap-1.5 bg-amber-950/90 border border-amber-500/50 text-amber-300 px-3 py-1.5 rounded-xl font-bold animate-pulse">
               <WifiOff className="w-4 h-4 text-amber-400" />
-              <span>نمط محلي (أوفلاين)</span>
+              <span>أوفلاين (محلي)</span>
             </div>
           )}
 
@@ -374,23 +469,84 @@ export default function POS({ products, categories, customers, settings, onAddIn
               title="مزامنة الفواتير غير المحفوظة بالخادم"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-              <span>مزامنة المعلقة ({pendingSyncCount})</span>
+              <span>مزامنة ({pendingSyncCount})</span>
             </button>
           )}
+
+          {/* Multi-Currency Selector */}
+          <div className="flex items-center gap-1.5 bg-slate-800 border border-slate-700 px-2.5 py-1 rounded-xl">
+            <Coins className="w-3.5 h-3.5 text-amber-400" />
+            <span className="text-slate-400 font-bold hidden sm:inline">العملة:</span>
+            <select
+              value={posCurrency}
+              onChange={(e) => setPosCurrency(e.target.value)}
+              className="bg-slate-900 border border-slate-700 text-amber-400 rounded px-2 py-0.5 font-bold focus:outline-none text-[11px]"
+            >
+              <option value="SAR">SAR (ر.س)</option>
+              <option value="USD">USD ($)</option>
+              <option value="EUR">EUR (€)</option>
+              <option value="SYP">SYP (ل.س)</option>
+              <option value="TRY">TRY (₺)</option>
+            </select>
+          </div>
         </div>
 
-        {/* Quick Thermal Printer Settings */}
-        <div className="flex items-center gap-2.5">
+        {/* Professional Hardware Tools: Cash Drawer, Returns, Customer Display, Thermal Printer */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Cash Drawer Button */}
+          <button
+            onClick={handleTriggerCashDrawer}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition border ${
+              cashDrawerOpen
+                ? 'bg-emerald-600 border-emerald-400 text-white animate-bounce'
+                : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200'
+            }`}
+            title="فتح درج النقدية يدوياً"
+          >
+            <Unlock className="w-3.5 h-3.5 text-emerald-400" />
+            <span>درج النقدية 🔓</span>
+          </button>
+
+          {/* Shift Cash Balance Modal Trigger */}
+          <button
+            onClick={() => setShowCashDrawerModal(true)}
+            className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 px-3 py-1.5 rounded-xl font-bold text-xs transition"
+            title="تقرير الصندوق والوردية"
+          >
+            <DollarSign className="w-3.5 h-3.5 text-amber-400" />
+            <span>الوردية</span>
+          </button>
+
+          {/* Sales Return / Refund Button */}
+          <button
+            onClick={() => setShowReturnsModal(true)}
+            className="flex items-center gap-1.5 bg-rose-950/80 hover:bg-rose-900 border border-rose-800/60 text-rose-300 px-3 py-1.5 rounded-xl font-bold text-xs transition"
+            title="إرجاع واسترداد فاتورة مبيعات"
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-rose-400" />
+            <span>مرتجع الفواتير</span>
+          </button>
+
+          {/* Customer Dual Screen Display Button */}
+          <button
+            onClick={() => setShowCustomerDisplay(true)}
+            className="flex items-center gap-1.5 bg-blue-950/80 hover:bg-blue-900 border border-blue-800/60 text-blue-300 px-3 py-1.5 rounded-xl font-bold text-xs transition"
+            title="شاشة العرض الثانوية المزدوجة للعميل"
+          >
+            <Monitor className="w-3.5 h-3.5 text-blue-400" />
+            <span>شاشة العميل 🖥️</span>
+          </button>
+
+          {/* Quick Thermal Printer Settings */}
           <div className="flex items-center gap-1.5 bg-slate-800 border border-slate-700 px-2.5 py-1 rounded-xl">
             <Printer className="w-3.5 h-3.5 text-slate-400" />
-            <span className="text-slate-400 font-bold">ورق الطباعة:</span>
             <select
               value={printerPaperWidth}
               onChange={(e) => setPrinterPaperWidth(e.target.value as '80mm' | '58mm')}
               className="bg-slate-900 border border-slate-700 text-white rounded px-2 py-0.5 font-bold focus:outline-none text-[11px]"
             >
-              <option value="80mm">80mm (قياسي)</option>
-              <option value="58mm">58mm (مدمج)</option>
+              <option value="80mm">80mm</option>
+              <option value="58mm">58mm</option>
             </select>
           </div>
 
@@ -401,7 +557,7 @@ export default function POS({ products, categories, customers, settings, onAddIn
               onChange={(e) => setAutoPrintAfterCheckout(e.target.checked)}
               className="rounded bg-slate-900 border-slate-700 text-emerald-500 focus:ring-0 w-3.5 h-3.5"
             />
-            <span className="font-semibold text-slate-300">طباعة تلقائية</span>
+            <span className="font-semibold text-slate-300 hidden md:inline">طباعة تلقائية</span>
           </label>
         </div>
       </div>
@@ -803,24 +959,24 @@ export default function POS({ products, categories, customers, settings, onAddIn
 
             <div className="flex justify-between text-xs text-slate-600">
               <span>المجموع قبل الضريبة:</span>
-              <span className="font-mono font-bold">{taxableAmount.toFixed(2)} {settings.currency}</span>
+              <span className="font-mono font-bold">{formatAmount(taxableAmount)}</span>
             </div>
 
             <div className="flex justify-between text-xs text-slate-600">
               <span>ضريبة القيمة المضافة ({taxRate}%):</span>
-              <span className="font-mono font-bold">{taxAmount.toFixed(2)} {settings.currency}</span>
+              <span className="font-mono font-bold">{formatAmount(taxAmount)}</span>
             </div>
 
             {totalDiscount > 0 && (
               <div className="flex justify-between text-xs text-rose-600 font-bold">
                 <span>إجمالي الخصم:</span>
-                <span className="font-mono">-{totalDiscount.toFixed(2)} {settings.currency}</span>
+                <span className="font-mono">-{formatAmount(totalDiscount)}</span>
               </div>
             )}
 
             <div className="flex justify-between text-sm font-extrabold text-slate-800 pt-2 border-t border-slate-300">
               <span>الإجمالي النهائي المستحق:</span>
-              <span className="font-mono text-emerald-600 text-base sm:text-lg">{grandTotal.toFixed(2)} {settings.currency}</span>
+              <span className="font-mono text-emerald-600 text-base sm:text-lg">{formatAmount(grandTotal)}</span>
             </div>
 
             {/* Quick Action Checkout Buttons */}
@@ -1002,8 +1158,34 @@ export default function POS({ products, categories, customers, settings, onAddIn
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 space-y-1">
                   <p className="font-bold">✓ سيتم قيد الفاتورة كبيع آجل لحساب العميل:</p>
                   <p className="font-extrabold text-slate-800">{selectedCustomer.name}</p>
-                  <p className="text-[11px]">رصيد المديونية الحالي للعميل: {selectedCustomer.balance.toFixed(2)} {settings.currency}</p>
+                  <div className="flex justify-between text-[11px] pt-1">
+                    <span>الرصيد الحالي: {selectedCustomer.balance.toFixed(2)}</span>
+                    <span>سقف الائتمان: {(selectedCustomer.creditLimit || 5000).toFixed(2)} {settings.currency}</span>
+                  </div>
                 </div>
+              )}
+
+              {/* Credit Limit Warning Alert */}
+              {selectedCustomer && (paymentMethod === 'credit' || (paymentMethod === 'split' && parseFloat(splitCreditAmount) > 0)) && (
+                (() => {
+                  const creditPart = paymentMethod === 'credit' ? grandTotal : (parseFloat(splitCreditAmount) || 0);
+                  const newBal = (selectedCustomer.balance || 0) + creditPart;
+                  const limit = selectedCustomer.creditLimit || 5000;
+                  if (newBal > limit) {
+                    return (
+                      <div className="p-3 bg-rose-50 border border-rose-300 text-rose-900 rounded-xl text-xs space-y-1">
+                        <div className="font-extrabold flex items-center gap-1.5 text-rose-800">
+                          <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                          <span>تحذير: تجاوز سقف الائتمان المسموح!</span>
+                        </div>
+                        <p className="text-[11px] text-rose-700">
+                          رصيد العميل بعد الفاتورة ({newBal.toFixed(2)}) سيصبح متجاوزاً سقف الائتمان ({limit.toFixed(2)} {settings.currency}).
+                        </p>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()
               )}
             </div>
 
@@ -1222,6 +1404,272 @@ export default function POS({ products, categories, customers, settings, onAddIn
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Sales Return / Refund Modal */}
+      {showReturnsModal && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border border-slate-200 overflow-hidden text-right flex flex-col max-h-[90vh]">
+            <div className="p-4 bg-rose-900 text-white flex justify-between items-center border-b border-rose-800">
+              <div className="flex items-center gap-2">
+                <RotateCcw className="w-5 h-5 text-rose-300" />
+                <h3 className="font-bold text-sm">مرتجع ومسترجعات المبيعات (Refund & Returns)</h3>
+              </div>
+              <button onClick={() => { setShowReturnsModal(false); setSelectedReturnInvoice(null); }} className="text-rose-200 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 overflow-y-auto flex-1">
+              {/* Search Invoice */}
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute right-3.5 top-3 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    value={returnSearchQuery}
+                    onChange={(e) => setReturnSearchQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSearchReturnInvoice()}
+                    placeholder="أدخل رقم الفاتورة للبحث (مثال: FT-1002)..."
+                    className="w-full pr-10 pl-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-rose-500 font-mono"
+                  />
+                </div>
+                <button
+                  onClick={handleSearchReturnInvoice}
+                  className="px-4 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition shadow-sm"
+                >
+                  بحث عن الفاتورة
+                </button>
+              </div>
+
+              {/* Selected Invoice Details */}
+              {selectedReturnInvoice ? (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                  <div className="flex justify-between items-center border-b border-slate-200 pb-2">
+                    <div>
+                      <span className="font-mono font-bold text-rose-700 text-sm">{selectedReturnInvoice.invoiceNumber}</span>
+                      <span className="text-xs text-slate-500 mr-2">({new Date(selectedReturnInvoice.date).toLocaleDateString('ar-SA')})</span>
+                    </div>
+                    <span className="text-xs font-bold bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full">
+                      العميل: {selectedReturnInvoice.customerName || 'عميل نقدي'}
+                    </span>
+                  </div>
+
+                  {/* Items List */}
+                  <div className="space-y-2">
+                    <h4 className="text-xs font-bold text-slate-700">الأصناف القابلة للإرجاع:</h4>
+                    {selectedReturnInvoice.items.map((item) => (
+                      <div key={item.id} className="bg-white p-3 border border-slate-200 rounded-xl flex items-center justify-between gap-3">
+                        <div>
+                          <div className="font-bold text-xs text-slate-800">{item.productName}</div>
+                          <div className="text-[11px] text-slate-500">
+                            السعر: {item.price.toFixed(2)} | الكمية الأصلية: {item.quantity}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-slate-600">كمية الإرجاع:</span>
+                          <input
+                            type="number"
+                            min="1"
+                            max={item.quantity}
+                            value={returnQuantities[item.productId] ?? item.quantity}
+                            onChange={(e) => {
+                              const val = Math.min(item.quantity, Math.max(1, parseFloat(e.target.value) || 1));
+                              setReturnQuantities(prev => ({ ...prev, [item.productId]: val }));
+                            }}
+                            className="w-16 text-center bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono font-bold p-1"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex justify-between items-center text-xs font-bold text-slate-700 pt-2 border-t border-slate-200">
+                    <span>إجمالي قيمة الفاتورة الأصلية:</span>
+                    <span className="text-rose-700 font-mono text-sm">{formatAmount(selectedReturnInvoice.grandTotal)}</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-8 text-center text-slate-400 bg-slate-50 border border-dashed border-slate-300 rounded-xl space-y-2">
+                  <RotateCcw className="w-10 h-10 mx-auto text-slate-300" />
+                  <p className="text-xs font-bold">يرجى البحث عن رقم الفاتورة لعرض محتوياتها وتنفيذ عملية المرتجع</p>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 bg-slate-100 border-t border-slate-200 flex justify-end gap-2">
+              <button
+                onClick={() => { setShowReturnsModal(false); setSelectedReturnInvoice(null); }}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-bold transition"
+              >
+                إلغاء
+              </button>
+              {selectedReturnInvoice && (
+                <button
+                  onClick={handleExecuteReturn}
+                  disabled={isProcessingReturn}
+                  className="px-5 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition shadow disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  <span>تأكيد الإرجاع واسترداد المبلغ</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Secondary Customer Dual Screen Display Modal */}
+      {showCustomerDisplay && (
+        <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 flex flex-col animate-fade-in text-white p-6">
+          <div className="flex justify-between items-center border-b border-slate-800 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-emerald-500/20 text-emerald-400 rounded-xl border border-emerald-500/30">
+                <Monitor className="w-6 h-6 animate-pulse" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold tracking-tight">{settings.name || 'مرحباً بكم في متجرنا'}</h2>
+                <p className="text-xs text-slate-400">شاشة العميل المزدوجة - المعاينة المباشرة</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowCustomerDisplay(false)}
+              className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-6 flex-1 my-6 overflow-hidden">
+            {/* Live Order Items */}
+            <div className="md:col-span-8 bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col">
+              <h3 className="text-sm font-bold text-slate-400 border-b border-slate-800 pb-3 mb-3 flex justify-between">
+                <span>قائمة المشتريات الحالية ({cart.length})</span>
+                <span>العملة: {posCurrency}</span>
+              </h3>
+
+              <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+                {cart.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-3">
+                    <ShoppingCart className="w-16 h-16 text-slate-700" />
+                    <p className="text-base font-bold">بانتظار إضافة المنتجات بالصندوق...</p>
+                  </div>
+                ) : (
+                  cart.map((item) => (
+                    <div key={item.id} className="p-4 bg-slate-800/80 border border-slate-700/60 rounded-xl flex justify-between items-center">
+                      <div>
+                        <h4 className="font-bold text-base text-white">{item.product.name}</h4>
+                        <div className="text-xs text-slate-400 font-mono mt-1">
+                          الكمية: {item.quantity} × {formatAmount(item.product.price)}
+                        </div>
+                      </div>
+                      <div className="text-lg font-mono font-extrabold text-emerald-400">
+                        {formatAmount(item.product.price * item.quantity)}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Total Display & QR Code */}
+            <div className="md:col-span-4 bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col justify-between">
+              <div className="space-y-4">
+                <div className="bg-emerald-950/60 border border-emerald-500/30 p-5 rounded-2xl text-center">
+                  <span className="text-xs font-bold text-emerald-400 uppercase tracking-widest block mb-1">المبلغ الإجمالي المستحق</span>
+                  <div className="text-3xl lg:text-4xl font-extrabold font-mono text-emerald-400">
+                    {formatAmount(grandTotal)}
+                  </div>
+                </div>
+
+                <div className="space-y-2 text-xs text-slate-300 bg-slate-800/60 p-4 rounded-xl border border-slate-700/50">
+                  <div className="flex justify-between">
+                    <span>المجموع الفرعي:</span>
+                    <span className="font-mono font-bold">{formatAmount(subtotal)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>ضريبة القيمة المضافة ({settings.taxRate || 15}%):</span>
+                    <span className="font-mono font-bold">{formatAmount(taxAmount)}</span>
+                  </div>
+                  {totalDiscount > 0 && (
+                    <div className="flex justify-between text-rose-400">
+                      <span>الخصم الخاطف:</span>
+                      <span className="font-mono font-bold">-{formatAmount(totalDiscount)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* ZATCA QR Code Simulation for Trust */}
+              <div className="text-center pt-4 border-t border-slate-800 flex flex-col items-center gap-2">
+                {zatcaQrImage ? (
+                  <img src={zatcaQrImage} alt="ZATCA QR" className="w-28 h-28 bg-white p-1.5 rounded-xl border border-slate-700" />
+                ) : (
+                  <QrCode className="w-20 h-20 text-slate-700" />
+                )}
+                <span className="text-[10px] text-slate-400 font-bold">فاتورة ضريبية مبسطة معتمدة زكاة ودخل (ZATCA)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cash Register Shift & Drawer Balance Modal */}
+      {showCashDrawerModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden text-right">
+            <div className="p-4 bg-slate-900 text-white flex justify-between items-center border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <DollarSign className="w-5 h-5 text-amber-400" />
+                <h3 className="font-bold text-sm">تقرير الصندوق والوردية الحالية</h3>
+              </div>
+              <button onClick={() => setShowCashDrawerModal(false)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 text-xs">
+              <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-xl space-y-2">
+                <div className="flex justify-between font-bold text-slate-700">
+                  <span>رصيد افتتاح الصندوق:</span>
+                  <span className="font-mono">{shiftStartBalance.toFixed(2)} SAR</span>
+                </div>
+                <div className="flex justify-between text-slate-600">
+                  <span>إجمالي المبيعات النقدية بالشيفت:</span>
+                  <span className="font-mono text-emerald-600 font-bold">+{shiftCurrentCash.toFixed(2)} SAR</span>
+                </div>
+                <div className="flex justify-between text-slate-600">
+                  <span>إجمالي مبيعات شبكة / مدى:</span>
+                  <span className="font-mono text-blue-600 font-bold">+0.00 SAR</span>
+                </div>
+                <div className="border-t border-slate-200 pt-2 flex justify-between font-extrabold text-sm text-slate-900">
+                  <span>النقدية المتوقعة بالصندوق:</span>
+                  <span className="font-mono text-emerald-700">{(shiftStartBalance + shiftCurrentCash).toFixed(2)} SAR</span>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={handleTriggerCashDrawer}
+                  className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold transition flex items-center justify-center gap-1.5 shadow"
+                >
+                  <Unlock className="w-4 h-4" />
+                  <span>فتح درج النقدية 🔓</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-100 border-t border-slate-200 flex justify-end">
+              <button
+                onClick={() => setShowCashDrawerModal(false)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition"
+              >
+                إغلاق
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

@@ -6,11 +6,15 @@ import Dashboard from './shared/components/Dashboard';
 import POS from './modules/sales/POS';
 import Inventory from './modules/inventory/Inventory';
 import Invoices from './modules/sales/Invoices';
-import Reports from './shared/components/Reports';
+import Reports from './modules/reports/Reports';
 import Settings from './shared/components/Settings';
 import Accounting from './modules/accounting/Accounting';
 import Purchases from './modules/purchases/Purchases';
+import Customers from './modules/customers/Customers';
+import Products from './modules/products/Products';
 import UsersAndPermissions from './shared/components/UsersAndPermissions';
+import Treasury from './modules/treasury/Treasury';
+import Expenses from './modules/expenses/Expenses';
 import Login from './core/auth/Login';
 import ProtectedRoute from './core/auth/ProtectedRoute';
 import { PermissionService } from './core/permissions/PermissionService';
@@ -28,6 +32,7 @@ import {
   Bell,
   AlertTriangle,
   Landmark,
+  Wallet,
   Truck,
   LogOut,
   Users,
@@ -107,10 +112,12 @@ export default function App() {
     if (perms.length > 0) {
       if (tab === 'dashboard') return perms.includes('view_dashboard');
       if (tab === 'pos') return perms.includes('pos_access');
+      if (tab === 'products') return perms.includes('manage_inventory') || perms.includes('view_dashboard');
       if (tab === 'inventory') return perms.includes('manage_inventory');
       if (tab === 'invoices') return perms.includes('view_invoices');
       if (tab === 'reports') return perms.includes('view_reports');
       if (tab === 'purchases') return perms.includes('view_purchases');
+      if (tab === 'customers') return perms.includes('view_invoices') || perms.includes('pos_access') || perms.includes('view_dashboard');
       if (tab === 'accounting') return perms.includes('view_accounting');
       if (tab === 'settings') return perms.includes('view_settings');
       if (tab === 'users_permissions') return perms.includes('manage_users');
@@ -120,7 +127,7 @@ export default function App() {
     const role = currentUser.role;
     if (role === 'manager') return true;
     if (role === 'accountant') {
-      return ['dashboard', 'pos', 'purchases', 'invoices', 'reports', 'accounting'].includes(tab);
+      return ['dashboard', 'pos', 'purchases', 'customers', 'invoices', 'reports', 'accounting'].includes(tab);
     }
     if (role === 'inventory') {
       return ['dashboard', 'inventory', 'purchases'].includes(tab);
@@ -592,6 +599,20 @@ export default function App() {
               </button>
             )}
 
+            {isTabAllowed('products') && (
+              <button
+                onClick={() => setActiveTab('products')}
+                className={`w-full py-3 px-4 rounded-l-md text-xs sm:text-sm font-bold flex items-center gap-3 transition-all ${
+                  activeTab === 'products' 
+                    ? 'bg-emerald-600/20 text-emerald-400 border-r-4 border-emerald-500' 
+                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                }`}
+              >
+                <Briefcase className="w-4 h-4" />
+                <span>المنتجات والخدمات (Catalog)</span>
+              </button>
+            )}
+
             {isTabAllowed('inventory') && (
               <button
                 onClick={() => setActiveTab('inventory')}
@@ -634,6 +655,20 @@ export default function App() {
               </button>
             )}
 
+            {isTabAllowed('customers') && (
+              <button
+                onClick={() => setActiveTab('customers')}
+                className={`w-full py-3 px-4 rounded-l-md text-xs sm:text-sm font-bold flex items-center gap-3 transition-all ${
+                  activeTab === 'customers' 
+                    ? 'bg-emerald-600/20 text-emerald-400 border-r-4 border-emerald-500' 
+                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                }`}
+              >
+                <Users className="w-4 h-4" />
+                <span>العملاء والـ CRM</span>
+              </button>
+            )}
+
             {isTabAllowed('reports') && (
               <button
                 onClick={() => setActiveTab('reports')}
@@ -659,6 +694,34 @@ export default function App() {
               >
                 <Landmark className="w-4 h-4" />
                 <span>القيود والحسابات المالية</span>
+              </button>
+            )}
+
+            {isTabAllowed('accounting') && (
+              <button
+                onClick={() => setActiveTab('treasury')}
+                className={`w-full py-3 px-4 rounded-l-md text-xs sm:text-sm font-bold flex items-center gap-3 transition-all ${
+                  activeTab === 'treasury' 
+                    ? 'bg-emerald-600/20 text-emerald-400 border-r-4 border-emerald-500' 
+                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                }`}
+              >
+                <Wallet className="w-4 h-4" />
+                <span>الخزينة والبنوك (Treasury)</span>
+              </button>
+            )}
+
+            {isTabAllowed('accounting') && (
+              <button
+                onClick={() => setActiveTab('expenses')}
+                className={`w-full py-3 px-4 rounded-l-md text-xs sm:text-sm font-bold flex items-center gap-3 transition-all ${
+                  activeTab === 'expenses' 
+                    ? 'bg-rose-600/20 text-rose-400 border-r-4 border-rose-500' 
+                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                }`}
+              >
+                <Receipt className="w-4 h-4" />
+                <span>إدارة المصروفات (Expenses)</span>
               </button>
             )}
 
@@ -750,6 +813,15 @@ export default function App() {
             </ProtectedRoute>
           )}
 
+          {activeTab === 'products' && (
+            <ProtectedRoute user={currentUser} module="inventory" onNavigateToAllowed={(m) => setActiveTab(m === 'sales' ? 'pos' : m)} onLogout={handleLogout}>
+              <Products
+                settings={settings}
+                onNavigateToInventory={() => setActiveTab('inventory')}
+              />
+            </ProtectedRoute>
+          )}
+
           {activeTab === 'inventory' && (
             <ProtectedRoute user={currentUser} module="inventory" onNavigateToAllowed={(m) => setActiveTab(m === 'sales' ? 'pos' : m)} onLogout={handleLogout}>
               <Inventory
@@ -771,6 +843,8 @@ export default function App() {
             <ProtectedRoute user={currentUser} module="sales" onNavigateToAllowed={(m) => setActiveTab(m === 'sales' ? 'pos' : m)} onLogout={handleLogout}>
               <Invoices
                 invoices={invoices}
+                customers={customers}
+                products={products}
                 settings={settings}
                 onRefresh={fetchAllData}
               />
@@ -780,9 +854,6 @@ export default function App() {
           {activeTab === 'reports' && (
             <ProtectedRoute user={currentUser} module="reports" onNavigateToAllowed={(m) => setActiveTab(m === 'sales' ? 'pos' : m)} onLogout={handleLogout}>
               <Reports
-                invoices={invoices}
-                products={products}
-                categories={categories}
                 settings={settings}
               />
             </ProtectedRoute>
@@ -799,9 +870,33 @@ export default function App() {
             </ProtectedRoute>
           )}
 
+          {activeTab === 'customers' && (
+            <ProtectedRoute user={currentUser} module="sales" onNavigateToAllowed={(m) => setActiveTab(m === 'sales' ? 'pos' : m)} onLogout={handleLogout}>
+              <Customers
+                settings={settings}
+              />
+            </ProtectedRoute>
+          )}
+
           {activeTab === 'accounting' && (
             <ProtectedRoute user={currentUser} module="accounting" onNavigateToAllowed={(m) => setActiveTab(m === 'sales' ? 'pos' : m)} onLogout={handleLogout}>
               <Accounting
+                settings={settings}
+              />
+            </ProtectedRoute>
+          )}
+
+          {activeTab === 'treasury' && (
+            <ProtectedRoute user={currentUser} module="accounting" onNavigateToAllowed={(m) => setActiveTab(m === 'sales' ? 'pos' : m)} onLogout={handleLogout}>
+              <Treasury
+                settings={settings}
+              />
+            </ProtectedRoute>
+          )}
+
+          {activeTab === 'expenses' && (
+            <ProtectedRoute user={currentUser} module="accounting" onNavigateToAllowed={(m) => setActiveTab(m === 'sales' ? 'pos' : m)} onLogout={handleLogout}>
+              <Expenses
                 settings={settings}
               />
             </ProtectedRoute>

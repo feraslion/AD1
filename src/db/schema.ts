@@ -132,6 +132,13 @@ export const customers = pgTable('customers', {
   email: text('email'),
   balance: numeric('balance').default('0'), // Positive means customer owes us
   creditLimit: numeric('credit_limit').default('5000'),
+  taxNumber: text('tax_number'),
+  crNumber: text('cr_number'),
+  address: text('address'),
+  type: text('type').default('retail'), // 'retail', 'wholesale', 'company', 'vip'
+  status: text('status').default('active'), // 'active', 'inactive', 'blocked'
+  notes: text('notes'),
+  openingBalance: numeric('opening_balance').default('0'),
   companyId: text('company_id').references(() => companies.id, { onDelete: 'cascade' }),
   branchId: text('branch_id').references(() => branches.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at').defaultNow(),
@@ -714,7 +721,200 @@ export const auditLogs = pgTable('audit_logs', {
   };
 });
 
+// 36. Quotations Table
+export const quotations = pgTable('quotations', {
+  id: text('id').primaryKey(),
+  quotationNumber: text('quotation_number').notNull().unique(),
+  customerId: text('customer_id').references(() => customers.id, { onDelete: 'set null' }),
+  customerName: text('customer_name'),
+  date: text('date').notNull(),
+  validUntil: text('valid_until'),
+  subtotal: numeric('subtotal').default('0'),
+  taxAmount: numeric('tax_amount').default('0'),
+  discountAmount: numeric('discount_amount').default('0'),
+  grandTotal: numeric('grand_total').default('0'),
+  currency: text('currency').default('SAR'),
+  exchangeRate: numeric('exchange_rate').default('1.0'),
+  status: text('status').default('draft'), // draft, sent, accepted, converted, rejected
+  notes: text('notes'),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+// 37. Quotation Items Table
+export const quotationItems = pgTable('quotation_items', {
+  id: text('id').primaryKey(),
+  quotationId: text('quotation_id').notNull().references(() => quotations.id, { onDelete: 'cascade' }),
+  productId: text('product_id').references(() => products.id, { onDelete: 'set null' }),
+  productName: text('product_name').notNull(),
+  price: numeric('price').notNull(),
+  quantity: numeric('quantity').notNull(),
+  discount: numeric('discount').default('0'),
+  taxAmount: numeric('tax_amount').default('0'),
+  total: numeric('total').notNull(),
+});
+
+// 38. Sales Orders Table
+export const salesOrders = pgTable('sales_orders', {
+  id: text('id').primaryKey(),
+  orderNumber: text('order_number').notNull().unique(),
+  quotationId: text('quotation_id').references(() => quotations.id, { onDelete: 'set null' }),
+  customerId: text('customer_id').references(() => customers.id, { onDelete: 'set null' }),
+  customerName: text('customer_name'),
+  date: text('date').notNull(),
+  deliveryDate: text('delivery_date'),
+  subtotal: numeric('subtotal').default('0'),
+  taxAmount: numeric('tax_amount').default('0'),
+  discountAmount: numeric('discount_amount').default('0'),
+  grandTotal: numeric('grand_total').default('0'),
+  currency: text('currency').default('SAR'),
+  exchangeRate: numeric('exchange_rate').default('1.0'),
+  status: text('status').default('confirmed'), // draft, confirmed, fulfilled, converted, cancelled
+  notes: text('notes'),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+// 39. Sales Order Items Table
+export const salesOrderItems = pgTable('sales_order_items', {
+  id: text('id').primaryKey(),
+  orderId: text('order_id').notNull().references(() => salesOrders.id, { onDelete: 'cascade' }),
+  productId: text('product_id').references(() => products.id, { onDelete: 'set null' }),
+  productName: text('product_name').notNull(),
+  price: numeric('price').notNull(),
+  quantity: numeric('quantity').notNull(),
+  discount: numeric('discount').default('0'),
+  taxAmount: numeric('tax_amount').default('0'),
+  total: numeric('total').notNull(),
+});
+
+// 40. Purchase Requests Table (طلب شراء)
+export const purchaseRequests = pgTable('purchase_requests', {
+  id: text('id').primaryKey(),
+  requestNumber: text('request_number').notNull().unique(),
+  requesterName: text('requester_name'),
+  department: text('department'),
+  date: text('date').notNull(),
+  requiredDate: text('required_date'),
+  subtotal: numeric('subtotal').default('0'),
+  taxAmount: numeric('tax_amount').default('0'),
+  grandTotal: numeric('grand_total').default('0'),
+  currency: text('currency').default('SAR'),
+  exchangeRate: numeric('exchange_rate').default('1.0'),
+  status: text('status').default('pending'), // draft, pending, approved, converted, rejected
+  notes: text('notes'),
+  supplierId: text('supplier_id').references(() => suppliers.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+// 41. Purchase Request Items Table
+export const purchaseRequestItems = pgTable('purchase_request_items', {
+  id: text('id').primaryKey(),
+  requestId: text('request_id').notNull().references(() => purchaseRequests.id, { onDelete: 'cascade' }),
+  productId: text('product_id').references(() => products.id, { onDelete: 'set null' }),
+  productName: text('product_name').notNull(),
+  estimatedPrice: numeric('estimated_price').notNull(),
+  quantity: numeric('quantity').notNull(),
+  total: numeric('total').notNull(),
+});
+
+// 42. Bank Accounts Table
+export const bankAccounts = pgTable('bank_accounts', {
+  id: text('id').primaryKey(),
+  bankName: text('bank_name').notNull(),
+  accountName: text('account_name').notNull(),
+  accountNumber: text('account_number').notNull(),
+  iban: text('iban'),
+  swift: text('swift'),
+  branch: text('branch'),
+  currency: text('currency').default('SAR'),
+  currentBalance: numeric('current_balance').default('0'),
+  accountId: text('account_id').references(() => accounts.id, { onDelete: 'set null' }),
+  status: text('status').default('active'),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+// 43. Treasury Transactions Table (Deposits, Withdrawals, Transfers)
+export const treasuryTransactions = pgTable('treasury_transactions', {
+  id: text('id').primaryKey(),
+  transactionType: text('transaction_type').notNull(), // 'deposit', 'withdrawal', 'transfer'
+  sourceType: text('source_type'), // 'cashbox', 'bank_account', 'customer', 'supplier', 'account', 'other'
+  sourceId: text('source_id'),
+  destinationType: text('destination_type'), // 'cashbox', 'bank_account', 'customer', 'supplier', 'account', 'other'
+  destinationId: text('destination_id'),
+  amount: numeric('amount').notNull(),
+  currency: text('currency').default('SAR'),
+  exchangeRate: numeric('exchange_rate').default('1.0'),
+  transferFee: numeric('transfer_fee').default('0'),
+  date: text('date').notNull(),
+  referenceNumber: text('reference_number'),
+  description: text('description'),
+  journalEntryId: text('journal_entry_id'),
+  reconciled: text('reconciled').default('false'),
+  reconciliationId: text('reconciliation_id'),
+  createdAt: timestamp('created_at').defaultNow(),
+});
+
+// 44. Bank Reconciliations Table
+export const bankReconciliations = pgTable('bank_reconciliations', {
+  id: text('id').primaryKey(),
+  bankAccountId: text('bank_account_id').notNull().references(() => bankAccounts.id, { onDelete: 'cascade' }),
+  statementDate: text('statement_date').notNull(),
+  statementEndingBalance: numeric('statement_ending_balance').notNull(),
+  ledgerEndingBalance: numeric('ledger_ending_balance').notNull(),
+  difference: numeric('difference').default('0'),
+  matchedCount: numeric('matched_count').default('0'),
+  status: text('status').default('completed'), // 'draft', 'completed'
+  notes: text('notes'),
+  createdAt: timestamp('created_at').defaultNow(),
+});
+
+// 45. Expense Categories Table
+export const expenseCategories = pgTable('expense_categories', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  code: text('code'),
+  description: text('description'),
+  accountId: text('account_id').references(() => accounts.id, { onDelete: 'set null' }),
+  budget: numeric('budget').default('0'),
+  createdAt: timestamp('created_at').defaultNow(),
+});
+
+// 46. Expense Requests Table (Expenses with Approval Workflow)
+export const expenseRequests = pgTable('expense_requests', {
+  id: text('id').primaryKey(),
+  requestNumber: text('request_number').notNull(),
+  categoryId: text('category_id').references(() => expenseCategories.id, { onDelete: 'set null' }),
+  accountId: text('account_id').references(() => accounts.id, { onDelete: 'set null' }),
+  title: text('title').notNull(),
+  description: text('description'),
+  amount: numeric('amount').notNull(),
+  taxAmount: numeric('tax_amount').default('0'),
+  totalAmount: numeric('total_amount').notNull(),
+  currency: text('currency').default('SAR'),
+  beneficiary: text('beneficiary'),
+  paymentMethod: text('payment_method').default('cash'), // 'cash', 'bank', 'payable'
+  paymentAccountId: text('payment_account_id'), // cashbox or bank account ID
+  requestedBy: text('requested_by'),
+  approvedBy: text('approved_by'),
+  approvalDate: text('approval_date'),
+  rejectionReason: text('rejection_reason'),
+  status: text('status').default('pending'), // 'pending', 'approved', 'rejected', 'paid'
+  journalEntryId: text('journal_entry_id'),
+  receiptRef: text('receipt_ref'),
+  date: text('date').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
 // Alias Exports for direct snake_case references
+export const expense_categories = expenseCategories;
+export const expense_requests = expenseRequests;
+export const bank_accounts = bankAccounts;
+export const treasury_transactions = treasuryTransactions;
+export const bank_reconciliations = bankReconciliations;
 export const exchange_rates = exchangeRates;
 export const sales_invoices = salesInvoices;
 export const purchase_invoices = purchaseInvoices;
@@ -722,6 +922,10 @@ export const audit_logs = auditLogs;
 export const journal_entries = journalEntries;
 export const journal_lines = journalLines;
 export const stock_moves = stockMoves;
+export const quotation_items = quotationItems;
+export const sales_order_items = salesOrderItems;
+export const purchase_requests = purchaseRequests;
+export const purchase_request_items = purchaseRequestItems;
 
 
 // ==================== Relationships ====================

@@ -9,3 +9,6 @@ export { AccountingRepository } from './AccountingRepository';
 export { AccountRepository } from './AccountRepository';
 export { CurrencyRepository } from './CurrencyRepository';
 export { InvoiceRepository } from './InvoiceRepository';
+export { TreasuryRepository } from './TreasuryRepository';
+export { ExpenseRepository } from './ExpenseRepository';
+export { ReportsRepository } from './ReportsRepository';
