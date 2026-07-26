@@ -7,8 +7,8 @@ on:
 
 jobs:
   jules-coder:
-    # سيتم التشغيل فقط إذا كان الوسم المضاف هو "bug" لحل المشكلة تلقائياً
-    if: github.event.label.name == 'bug'
+    # التعديل هنا: سيعمل Jules الآن إذا كان الوسم المضاف هو "bug" أو "feature"
+    if: github.event.label.name == 'bug' || github.event.label.name == 'feature'
     runs-on: ubuntu-latest
     
     permissions:
@@ -27,9 +27,9 @@ jobs:
         with:
           jules_api_key: ${{ secrets.JULES_API_KEY }}
           starting_branch: 'main'
-          # هنا نقوم بتوجيه Jules لقراءة عنوان وتفاصيل المشكلة المكتوبة من الموبايل
+          # توجيه Jules لقراءة القالب الهندسي المكتوب من الموبايل
           prompt: |
-            يرجى حل المشكلة البرمجية التالية المذكورة في الـ Issue بالكامل:
+            يرجى قراءة وحل طلب التطوير أو التصميم المذكور في الـ Issue التالية بدقة:
             العنوان: ${{ github.event.issue.title }}
-            التفاصيل الكلية: ${{ github.event.issue.body }}
+            التفاصيل والطلبات: ${{ github.event.issue.body }}
             تأكد من تشغيل الاختبارات وكتابة كود نظيف قبل فتح طلب السحب (PR).
