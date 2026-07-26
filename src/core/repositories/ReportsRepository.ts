@@ -361,21 +361,38 @@ export class ReportsRepository {
   static async getFinancialStatements(filter?: ReportFilter & { currency?: string }) {
     const allAccounts = await db.select().from(accounts).orderBy(asc(accounts.code));
     
-    // Get entries & lines with optional date and currency filters
-    let entries = await db.select().from(journalEntries);
+    // ⚡ Bolt Optimization: Filter and join at the database level!
+    // Instead of fetching all journal entries and all journal lines from the database
+    // and filtering them in-memory (which scales terribly as transaction volume grows),
+    // we query matching journal lines directly by joining on journal entries with SQL where clauses.
+    const whereConditions = [];
     if (filter?.startDate) {
-      entries = entries.filter(e => e.date >= filter.startDate!);
+      whereConditions.push(gte(journalEntries.date, filter.startDate));
     }
     if (filter?.endDate) {
-      entries = entries.filter(e => e.date <= filter.endDate!);
+      whereConditions.push(lte(journalEntries.date, filter.endDate));
     }
     if (filter?.currency && filter.currency !== 'ALL') {
-      entries = entries.filter(e => e.currency === filter.currency);
+      whereConditions.push(eq(journalEntries.currency, filter.currency));
     }
 
-    const validEntryIds = new Set(entries.map(e => e.id));
-    const allLines = await db.select().from(journalLines);
-    const lines = allLines.filter(l => validEntryIds.has(l.journalEntryId));
+    const lines = await db
+      .select({
+        id: journalLines.id,
+        journalEntryId: journalLines.journalEntryId,
+        accountId: journalLines.accountId,
+        currency: journalLines.currency,
+        exchangeRate: journalLines.exchangeRate,
+        foreignDebit: journalLines.foreignDebit,
+        foreignCredit: journalLines.foreignCredit,
+        debit: journalLines.debit,
+        credit: journalLines.credit,
+        description: journalLines.description,
+        createdAt: journalLines.createdAt,
+      })
+      .from(journalLines)
+      .innerJoin(journalEntries, eq(journalLines.journalEntryId, journalEntries.id))
+      .where(whereConditions.length > 0 ? and(...whereConditions) : undefined);
 
     const accountStats: Record<string, { debit: number; credit: number; foreignDebit: number; foreignCredit: number }> = {};
 
