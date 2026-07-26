@@ -39,7 +39,7 @@ export const OfflineQueue = {
     localStorage.removeItem(OFFLINE_QUEUE_KEY);
   },
 
-  // Sync all queued invoices with the server backend API with failed sync logging
+  // Sync all queued invoices with the server backend API
   syncWithServer: async (
     postInvoiceApi: (inv: Invoice) => Promise<any>
   ): Promise<{ syncedCount: number; failedCount: number }> => {
@@ -48,18 +48,14 @@ export const OfflineQueue = {
 
     let syncedCount = 0;
     let failedCount = 0;
-    const maxRetryThreshold = 3;
 
     for (const inv of queue) {
-      // Add transient status logging
-      console.log(`[Offline Sync] Attempting synchronization for invoice ID: ${inv.id}`);
       try {
         await postInvoiceApi(inv);
         OfflineQueue.remove(inv.id);
         syncedCount++;
-        console.log(`[Offline Sync] Successfully synchronized invoice ID: ${inv.id}`);
       } catch (err) {
-        console.error(`[Offline Sync Error] Failed to sync invoice ID ${inv.id}`, err);
+        console.error(`Failed to sync invoice ${inv.id}`, err);
         failedCount++;
       }
     }

@@ -1,13 +1,11 @@
 name: Jules AI Automation Loop
 
-# سيعمل هذا السيرفر التلقائي بمجرد إضافة وسم (Label) إلى أي مشكلة (Issue)
 on:
   issues:
     types: [labeled]
 
 jobs:
   jules-coder:
-    # التعديل هنا: سيعمل Jules الآن إذا كان الوسم المضاف هو "bug" أو "feature"
     if: github.event.label.name == 'bug' || github.event.label.name == 'feature'
     runs-on: ubuntu-latest
     
@@ -17,17 +15,14 @@ jobs:
       pull-requests: write
 
     steps:
-      # الخطوة 1: جلب معلومات المشكلة المفتوحة
       - name: Check Out Repository Context
         uses: actions/checkout@v4
 
-      # الخطوة 2: استدعاء الوكيل الذكي Jules وتنفيذه للمهمة سحابياً
       - name: Invoke Google Jules Agent
         uses: google-labs-code/jules-action@v1
         with:
           jules_api_key: ${{ secrets.JULES_API_KEY }}
           starting_branch: 'main'
-          # توجيه Jules لقراءة القالب الهندسي المكتوب من الموبايل
           prompt: |
             يرجى قراءة وحل طلب التطوير أو التصميم المذكور في الـ Issue التالية بدقة:
             العنوان: ${{ github.event.issue.title }}
