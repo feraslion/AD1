@@ -70,10 +70,33 @@ function sendResponse(res: express.Response, data: any, status = 200, pagination
 }
 
 function sendError(res: express.Response, message: string, details?: any, status = 500) {
+  // Prevent exposing stack traces or sensitive database/system error internals
+  let safeDetails: any = undefined;
+
+  if (details) {
+    if (details instanceof Error) {
+      // Avoid leaking system backtraces or sensitive driver details
+      safeDetails = {
+        message: details.message
+      };
+    } else if (typeof details === 'object') {
+      // Sanitize standard objects to remove internal/confidential database properties (e.g. SQL statements, backtraces, credentials)
+      const { stack, sql, query, password, client, ...rest } = details;
+      safeDetails = rest;
+    } else {
+      safeDetails = details;
+    }
+  }
+
+  // Log the actual internal error securely on the server console/logs for developer auditing
+  if (details) {
+    console.error(`[Security Audit - Internal Error Log]`, details);
+  }
+
   res.status(status).json({
     success: false,
     error: message,
-    ...(details && { details })
+    ...(safeDetails && { details: safeDetails })
   });
 }
 
