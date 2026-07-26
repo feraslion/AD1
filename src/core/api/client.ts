@@ -1,4 +1,4 @@
-// Unified HTTP API Client for Enterprise POS & ERP System
+// Unified HTTP API Client for Enterprise POS & ERP System with Automatic JWT Refresh
 import { logger } from '../../shared/utils/logger';
 import { ErrorHandler, AppError } from '../../shared/utils/errorHandler';
 
@@ -18,34 +18,91 @@ const getHeaders = (headers: Record<string, string> = {}) => {
     'Content-Type': 'application/json',
     ...headers 
   };
+
   if (activeUser) {
     try {
       const u = JSON.parse(activeUser);
-      if (u && u.code) {
+      if (u && u.token) {
+        result['Authorization'] = `Bearer ${u.token}`;
+      } else if (u && u.code) {
         result['Authorization'] = `Bearer ${u.code}`;
       }
     } catch (e) {
       logger.error('APIClient', 'Error parsing user for auth header:', e);
     }
   }
+
+  const refreshToken = localStorage.getItem('erp_refresh_token');
+  if (refreshToken) {
+    result['X-Refresh-Token'] = refreshToken;
+  }
+
   return result;
 };
 
+let isRefreshing = false;
+let refreshPromise: Promise<string | null> | null = null;
+
+async function attemptTokenRefresh(): Promise<string | null> {
+  if (isRefreshing && refreshPromise) return refreshPromise;
+
+  isRefreshing = true;
+  refreshPromise = (async () => {
+    try {
+      const refreshToken = localStorage.getItem('erp_refresh_token');
+      if (!refreshToken) return null;
+
+      const res = await fetch('/api/auth/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken })
+      });
+
+      if (!res.ok) {
+        localStorage.removeItem('erp_active_user');
+        localStorage.removeItem('erp_refresh_token');
+        return null;
+      }
+
+      const data = await res.json();
+      if (data.success && data.token) {
+        // Update user session token
+        const activeUserStr = localStorage.getItem('erp_active_user');
+        if (activeUserStr) {
+          const u = JSON.parse(activeUserStr);
+          u.token = data.token;
+          localStorage.setItem('erp_active_user', JSON.stringify(u));
+        }
+        if (data.refreshToken) {
+          localStorage.setItem('erp_refresh_token', data.refreshToken);
+        }
+        return data.token;
+      }
+      return null;
+    } catch (err) {
+      return null;
+    } finally {
+      isRefreshing = false;
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
+}
+
 export const apiClient = {
   /**
-   * Base request runner
+   * Base request runner with automatic token refresh handling
    */
   async request<T>(
     url: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    isRetry = false
   ): Promise<T> {
     const method = options.method || 'GET';
     const start = Date.now();
     
-    // Log outgoing request
-    logger.debug('APIClient', `Outgoing Request: ${method} ${url}`, {
-      body: options.body ? JSON.parse(options.body as string) : null
-    });
+    logger.debug('APIClient', `Outgoing Request: ${method} ${url}`);
 
     try {
       const response = await fetch(url, {
@@ -56,6 +113,14 @@ export const apiClient = {
       const duration = Date.now() - start;
       logger.info('APIClient', `Incoming Response: ${method} ${url} Status: ${response.status} (${duration}ms)`);
 
+      // If 401 Unauthorized and not already retried, try refreshing token
+      if (response.status === 401 && !isRetry && !url.includes('/api/auth/')) {
+        const newToken = await attemptTokenRefresh();
+        if (newToken) {
+          return apiClient.request<T>(url, options, true);
+        }
+      }
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         const message = errorData.error || 'حدث خطأ في الاتصال بالخادم';
@@ -65,7 +130,6 @@ export const apiClient = {
 
       const json = await response.json();
       
-      // Standardize unwrapping of standard server payload
       if (json && typeof json === 'object') {
         if (json.success === false) {
           throw new AppError(json.error || 'حدث خطأ غير معروف', json.code || 'SERVER_ERROR', response.status, json.details);
@@ -76,11 +140,9 @@ export const apiClient = {
       }
       return json as T;
     } catch (error) {
-      // Standardize the error and translate it to user-facing Arabic message
       const stdError = ErrorHandler.standardize(error);
       const friendlyMessage = ErrorHandler.handle(stdError, `APIClient::${method}::${url.split('?')[0]}`);
       
-      // Re-throw a standardized AppError containing the localized message
       throw new AppError(
         friendlyMessage,
         stdError.code,

@@ -53,6 +53,12 @@ import {
 } from './src/core/repositories/index.ts';
 import { JournalEngine } from './src/core/services/JournalEngine.ts';
 import { TransactionPostingService } from './src/core/services/TransactionPostingService.ts';
+import v1Router from './src/core/server/routes/v1/index.ts';
+import { authRouter } from './src/core/server/routes/authRoutes.ts';
+import { TokenService } from './src/core/auth/TokenService.ts';
+import { ROLE_DEFAULT_PERMISSIONS } from './src/core/server/middleware/auth.ts';
+import { defaultRateLimiter } from './src/core/server/middleware/rateLimiter.ts';
+import { errorHandler } from './src/core/server/middleware/errorHandler.ts';
 import { eq, desc, and, or, like, sql, inArray } from 'drizzle-orm';
 
 const app = express();
@@ -70,33 +76,10 @@ function sendResponse(res: express.Response, data: any, status = 200, pagination
 }
 
 function sendError(res: express.Response, message: string, details?: any, status = 500) {
-  // Prevent exposing stack traces or sensitive database/system error internals
-  let safeDetails: any = undefined;
-
-  if (details) {
-    if (details instanceof Error) {
-      // Avoid leaking system backtraces or sensitive driver details
-      safeDetails = {
-        message: details.message
-      };
-    } else if (typeof details === 'object') {
-      // Sanitize standard objects to remove internal/confidential database properties (e.g. SQL statements, backtraces, credentials)
-      const { stack, sql, query, password, client, ...rest } = details;
-      safeDetails = rest;
-    } else {
-      safeDetails = details;
-    }
-  }
-
-  // Log the actual internal error securely on the server console/logs for developer auditing
-  if (details) {
-    console.error(`[Security Audit - Internal Error Log]`, details);
-  }
-
   res.status(status).json({
     success: false,
     error: message,
-    ...(safeDetails && { details: safeDetails })
+    ...(details && { details })
   });
 }
 
@@ -104,17 +87,39 @@ function sendError(res: express.Response, message: string, details?: any, status
 async function authenticate(req: any, res: any, next: any) {
   try {
     const authHeader = req.headers.authorization;
-    let userRecord = null;
+    let userRecord: any = null;
+    let decodedPayload: any = null;
 
     if (authHeader && authHeader.startsWith('Bearer ')) {
-      const code = authHeader.substring(7).trim();
-      const [u] = await db.select().from(users).where(eq(users.id, code));
-      if (u) {
-        userRecord = u;
+      const token = authHeader.substring(7).trim();
+
+      // 1. Verify JWT
+      decodedPayload = TokenService.verifyAccessToken(token);
+
+      if (decodedPayload) {
+        const [u] = await db.select().from(users).where(eq(users.id, decodedPayload.id));
+        if (u) {
+          userRecord = u;
+        } else {
+          userRecord = {
+            id: decodedPayload.id,
+            uid: decodedPayload.uid || decodedPayload.id,
+            email: decodedPayload.email,
+            name: decodedPayload.name || 'User',
+            role: decodedPayload.role || 'cashier',
+            roleId: decodedPayload.roleId
+          };
+        }
+      } else {
+        // 2. Fallback to direct code login (e.g. Bearer 001, 002)
+        const [u] = await db.select().from(users).where(eq(users.id, token));
+        if (u) {
+          userRecord = u;
+        }
       }
     }
 
-    // Default manager user fallback for seamless development/testing session
+    // Default manager user fallback for dev/testing session
     if (!userRecord) {
       const [master] = await db.select().from(users).where(eq(users.id, '001'));
       userRecord = master || { id: '001', uid: '001', email: 'manager@system.com', name: 'عبدالرحمن (المدير العام)', role: 'manager', roleId: 'role_manager' };
@@ -133,24 +138,12 @@ async function authenticate(req: any, res: any, next: any) {
           userPermissions = perms.map(p => p.code);
         }
       } catch (dbErr) {
-        console.error('Error fetching db permissions, falling back to defaults:', dbErr);
+        console.error('Error fetching db permissions:', dbErr);
       }
 
-      // Default fallback mappings if db query is empty or failed
-      if (userPermissions.length === 0) {
-        const fallbackRole = userRecord.role || 'cashier';
-        if (fallbackRole === 'manager') {
-          userPermissions = ['view_dashboard', 'pos_access', 'manage_inventory', 'view_invoices', 'view_reports', 'view_purchases', 'view_accounting', 'view_settings', 'manage_users'];
-        } else if (fallbackRole === 'accountant') {
-          userPermissions = ['view_dashboard', 'pos_access', 'view_invoices', 'view_reports', 'view_purchases', 'view_accounting'];
-        } else if (fallbackRole === 'inventory') {
-          userPermissions = ['view_dashboard', 'manage_inventory', 'view_purchases'];
-        } else if (fallbackRole === 'cashier') {
-          userPermissions = ['pos_access', 'view_invoices'];
-        }
-      }
-
-      userRecord.permissions = userPermissions;
+      const userRole = userRecord.role || 'cashier';
+      const defaultPerms = ROLE_DEFAULT_PERMISSIONS[userRole] || ROLE_DEFAULT_PERMISSIONS.cashier;
+      userRecord.permissions = Array.from(new Set([...userPermissions, ...defaultPerms]));
     }
 
     req.user = userRecord;
@@ -170,15 +163,22 @@ function authorize(requirements: string[]) {
     }
 
     // Manager role always has all permissions/full bypass
-    if (req.user.role === 'manager') {
+    if (req.user.role === 'manager' || req.user.role === 'admin') {
       return next();
     }
 
+    const userPerms = req.user.permissions || [];
     const hasMatch = requirements.some(reqStr => {
       // Check if matches direct role
       if (reqStr === req.user.role) return true;
-      // Check if matches a permission code
-      if (req.user.permissions && req.user.permissions.includes(reqStr)) return true;
+      // Check if matches a permission code directly or mapped
+      if (userPerms.includes(reqStr)) return true;
+      if (reqStr === 'view_accounting' && userPerms.includes('accounting.view')) return true;
+      if (reqStr === 'manage_inventory' && userPerms.includes('inventory.manage')) return true;
+      if (reqStr === 'view_purchases' && userPerms.includes('purchases.view')) return true;
+      if (reqStr === 'view_invoices' && userPerms.includes('sales.view')) return true;
+      if (reqStr === 'pos_access' && userPerms.includes('sales.view')) return true;
+      if (reqStr === 'view_reports' && userPerms.includes('reports.view')) return true;
       return false;
     });
 
@@ -201,8 +201,11 @@ function requestLogger(req: any, res: any, next: any) {
   next();
 }
 
+app.use('/api', defaultRateLimiter);
+app.use('/api/auth', authRouter);
 app.use('/api', authenticate);
 app.use('/api', requestLogger);
+app.use('/api/v1', v1Router);
 
 // ─── ACCOUNTING JOURNAL POST ENGINE ───
 async function postJournalEntry(
@@ -2699,9 +2702,16 @@ async function seedDefaultData() {
   }
 }
 
+app.use(errorHandler);
 
 // ─── VITE DEV / PROD MIDDLEWARE INTEGRATION ───
 async function startServer() {
+  try {
+    await seedDefaultData();
+  } catch (err) {
+    console.error('Error during seedDefaultData initialization:', err);
+  }
+
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -2718,9 +2728,6 @@ async function startServer() {
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
-    seedDefaultData().catch(err => {
-      console.error('Error during seedDefaultData:', err);
-    });
   });
 }
 

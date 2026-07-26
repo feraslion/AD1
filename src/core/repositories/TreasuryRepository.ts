@@ -8,6 +8,7 @@ import {
 } from '../database/schema.ts';
 import { eq, desc, and } from 'drizzle-orm';
 import { AccountingRepository } from './AccountingRepository.ts';
+import { withAutoMigration, ensureDatabaseTables } from '../database/initSchema.ts';
 
 export interface CashboxInput {
   id?: string;
@@ -83,28 +84,30 @@ export interface BankReconciliationInput {
 export class TreasuryRepository {
   // ─── 1. CASHBOXES ───
   static async getCashboxes() {
-    try {
-      const list = await db.select().from(cashboxes);
-      if (list.length === 0) {
-        // Initialize default main cashbox if empty
-        const defaultBox = {
-          id: 'cashbox_main',
-          name: 'الخزينة الرئيسية (صندوق النقدية)',
-          status: 'open',
-          currentBalance: '5000.00',
-          lastOpenedAt: new Date().toISOString()
-        };
-        await db.insert(cashboxes).values(defaultBox);
-        return [{ ...defaultBox, currentBalance: 5000 }];
+    return await withAutoMigration(async () => {
+      try {
+        const list = await db.select().from(cashboxes);
+        if (list.length === 0) {
+          // Initialize default main cashbox if empty
+          const defaultBox = {
+            id: 'cashbox_main',
+            name: 'الخزينة الرئيسية (صندوق النقدية)',
+            status: 'open',
+            currentBalance: '5000.00',
+            lastOpenedAt: new Date().toISOString()
+          };
+          await db.insert(cashboxes).values(defaultBox);
+          return [{ ...defaultBox, currentBalance: 5000 }];
+        }
+        return list.map(b => ({
+          ...b,
+          currentBalance: parseFloat(b.currentBalance || '0')
+        }));
+      } catch (e) {
+        console.error('Error fetching cashboxes:', e);
+        throw e;
       }
-      return list.map(b => ({
-        ...b,
-        currentBalance: parseFloat(b.currentBalance || '0')
-      }));
-    } catch (e) {
-      console.error('Error fetching cashboxes:', e);
-      return [];
-    }
+    });
   }
 
   static async upsertCashbox(data: CashboxInput) {
@@ -134,34 +137,36 @@ export class TreasuryRepository {
 
   // ─── 2. BANK ACCOUNTS ───
   static async getBankAccounts() {
-    try {
-      const list = await db.select().from(bankAccounts);
-      if (list.length === 0) {
-        // Initialize default bank account if empty
-        const defaultBank = {
-          id: 'bank_main',
-          bankName: 'مصرف الراجحي',
-          accountName: 'الحساب الجاري الرئيسي',
-          accountNumber: 'SA98800001234567890001',
-          iban: 'SA98800001234567890001',
-          swift: 'RJHIFA22',
-          branch: 'الفرع الرئيسي - الرياض',
-          currency: 'SAR',
-          currentBalance: '25000.00',
-          accountId: 'acc_bank',
-          status: 'active'
-        };
-        await db.insert(bankAccounts).values(defaultBank);
-        return [{ ...defaultBank, currentBalance: 25000 }];
+    return await withAutoMigration(async () => {
+      try {
+        const list = await db.select().from(bankAccounts);
+        if (list.length === 0) {
+          // Initialize default bank account if empty
+          const defaultBank = {
+            id: 'bank_main',
+            bankName: 'مصرف الراجحي',
+            accountName: 'الحساب الجاري الرئيسي',
+            accountNumber: 'SA98800001234567890001',
+            iban: 'SA98800001234567890001',
+            swift: 'RJHIFA22',
+            branch: 'الفرع الرئيسي - الرياض',
+            currency: 'SAR',
+            currentBalance: '25000.00',
+            accountId: 'acc_bank',
+            status: 'active'
+          };
+          await db.insert(bankAccounts).values(defaultBank);
+          return [{ ...defaultBank, currentBalance: 25000 }];
+        }
+        return list.map(b => ({
+          ...b,
+          currentBalance: parseFloat(b.currentBalance || '0')
+        }));
+      } catch (e) {
+        console.error('Error fetching bank accounts:', e);
+        throw e;
       }
-      return list.map(b => ({
-        ...b,
-        currentBalance: parseFloat(b.currentBalance || '0')
-      }));
-    } catch (e) {
-      console.error('Error fetching bank accounts:', e);
-      return [];
-    }
+    });
   }
 
   static async upsertBankAccount(data: BankAccountInput) {
@@ -198,24 +203,26 @@ export class TreasuryRepository {
 
   // ─── 3. TRANSACTIONS LIST ───
   static async getTransactions(type?: string) {
-    try {
-      let query = db.select().from(treasuryTransactions).orderBy(desc(treasuryTransactions.createdAt));
-      const list = await query;
-      let filtered = list;
-      if (type) {
-        filtered = list.filter(t => t.transactionType === type);
+    return await withAutoMigration(async () => {
+      try {
+        let query = db.select().from(treasuryTransactions).orderBy(desc(treasuryTransactions.createdAt));
+        const list = await query;
+        let filtered = list;
+        if (type) {
+          filtered = list.filter(t => t.transactionType === type);
+        }
+        return filtered.map(t => ({
+          ...t,
+          amount: parseFloat(t.amount || '0'),
+          exchangeRate: parseFloat(t.exchangeRate || '1'),
+          transferFee: parseFloat(t.transferFee || '0'),
+          reconciled: t.reconciled === 'true'
+        }));
+      } catch (e) {
+        console.error('Error fetching treasury transactions:', e);
+        throw e;
       }
-      return filtered.map(t => ({
-        ...t,
-        amount: parseFloat(t.amount || '0'),
-        exchangeRate: parseFloat(t.exchangeRate || '1'),
-        transferFee: parseFloat(t.transferFee || '0'),
-        reconciled: t.reconciled === 'true'
-      }));
-    } catch (e) {
-      console.error('Error fetching treasury transactions:', e);
-      return [];
-    }
+    });
   }
 
   // ─── 4. CREATE DEPOSIT (إيداع) ───

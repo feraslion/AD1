@@ -2,6 +2,7 @@ import { db } from '../database/index.ts';
 import { accounts, journalLines, journalDetails } from '../database/schema.ts';
 import { eq, asc, inArray, and, sql } from 'drizzle-orm';
 import { CurrencyRepository } from '../repositories/CurrencyRepository.ts';
+import { withAutoMigration } from '../database/initSchema.ts';
 
 export interface AccountInput {
   id?: string;
@@ -45,34 +46,44 @@ export class AccountService {
     return t;
   }
 
+  // Calculate account hierarchy level based on parent chain
+  static async getAccountLevel(parentId?: string | null): Promise<number> {
+    if (!parentId) return 1;
+    const parent = await this.getAccountById(parentId);
+    if (!parent) return 1;
+    return (await this.getAccountLevel(parent.parentId)) + 1;
+  }
+
   // Get all accounts flat list
   static async getAccounts(filter?: { companyId?: string; type?: string; activeOnly?: boolean; search?: string }) {
-    let all = await db.select().from(accounts).orderBy(asc(accounts.code));
+    return await withAutoMigration(async () => {
+      let all = await db.select().from(accounts).orderBy(asc(accounts.code));
 
-    if (filter?.companyId) {
-      all = all.filter(a => a.companyId === filter.companyId || !a.companyId);
-    }
+      if (filter?.companyId) {
+        all = all.filter(a => a.companyId === filter.companyId || !a.companyId);
+      }
 
-    if (filter?.type) {
-      const targetType = this.normalizeType(filter.type);
-      all = all.filter(a => this.normalizeType(a.type) === targetType);
-    }
+      if (filter?.type && filter.type !== 'all') {
+        const targetType = this.normalizeType(filter.type);
+        all = all.filter(a => this.normalizeType(a.type) === targetType);
+      }
 
-    if (filter?.activeOnly) {
-      all = all.filter(a => a.isActive !== false);
-    }
+      if (filter?.activeOnly) {
+        all = all.filter(a => (a as any).isActive !== false);
+      }
 
-    if (filter?.search) {
-      const q = filter.search.toLowerCase().trim();
-      all = all.filter(a => a.name.toLowerCase().includes(q) || a.code.toLowerCase().includes(q));
-    }
+      if (filter?.search) {
+        const q = filter.search.toLowerCase().trim();
+        all = all.filter(a => a.name.toLowerCase().includes(q) || a.code.toLowerCase().includes(q));
+      }
 
-    return all.map(a => ({
-      ...a,
-      balance: parseFloat(a.balance || '0'),
-      foreignBalance: parseFloat(a.foreignBalance || '0'),
-      isActive: a.isActive !== false
-    }));
+      return all.map(a => ({
+        ...a,
+        balance: parseFloat(a.balance || '0'),
+        foreignBalance: parseFloat(a.foreignBalance || '0'),
+        isActive: (a as any).isActive !== false
+      }));
+    });
   }
 
   // Get hierarchical Chart of Accounts tree
@@ -116,7 +127,7 @@ export class AccountService {
       ...a,
       balance: parseFloat(a.balance || '0'),
       foreignBalance: parseFloat(a.foreignBalance || '0'),
-      isActive: a.isActive !== false
+      isActive: (a as any).isActive !== false
     };
   }
 
@@ -129,11 +140,11 @@ export class AccountService {
       ...a,
       balance: parseFloat(a.balance || '0'),
       foreignBalance: parseFloat(a.foreignBalance || '0'),
-      isActive: a.isActive !== false
+      isActive: (a as any).isActive !== false
     };
   }
 
-  // Suggest next code for sub-account
+  // Suggest next code for sub-account based on smart numbering scheme
   static async suggestChildCode(parentId: string): Promise<string> {
     const parent = await this.getAccountById(parentId);
     if (!parent) throw new Error('الحساب الرئيسي غير موجود');
@@ -148,10 +159,10 @@ export class AccountService {
     if (!isNaN(numPart)) {
       return (numPart + 1).toString();
     }
-    return `${parent.code}${children.length + 1}`;
+    return `${parent.code}${String(children.length + 1).padStart(2, '0')}`;
   }
 
-  // Create or Update Account with full validations
+  // Create or Update Account with full validations & hierarchy rules
   static async upsertAccount(data: AccountInput) {
     if (!data.code || !data.code.trim()) {
       throw new Error('رمز الحساب (code) مطلوب');
@@ -195,7 +206,7 @@ export class AccountService {
       let currentParentId: string | null = parent.parentId || null;
       while (currentParentId) {
         if (currentParentId === accountId) {
-          throw new Error('تم اكتشاف حلقة هرمية غير صحيحة بين الحسابات');
+          throw new Error('تم اكتشاف حلقة هرمية غير صحيحة بين الحسابات (Cyclic Parent)');
         }
         const ancestor = await this.getAccountById(currentParentId);
         currentParentId = ancestor?.parentId || null;
@@ -233,7 +244,7 @@ export class AccountService {
     const acc = await this.getAccountById(id);
     if (!acc) throw new Error('الحساب غير موجود');
 
-    await db.update(accounts).set({ isActive }).where(eq(accounts.id, id));
+    await db.update(accounts).set({ isActive } as any).where(eq(accounts.id, id));
     return await this.getAccountById(id);
   }
 
@@ -263,58 +274,87 @@ export class AccountService {
     return { success: true, message: `تم حذف الحساب (${acc.name}) بنجاح` };
   }
 
-  // Seed standard ERP Chart of Accounts
+  // Seed standard ERP Chart of Accounts with Multi-Currency (SAR, USD, SYP, TRY) and Multi-Company support
   static async seedDefaultChartOfAccounts(companyId?: string) {
-    const baseCurrency = await CurrencyRepository.getBaseCurrencyCode();
+    return await withAutoMigration(async () => {
+      const baseCurrency = await CurrencyRepository.getBaseCurrencyCode();
 
-    const defaultAccounts: { id: string; code: string; name: string; type: string; parentId?: string }[] = [
-      // 1. ASSETS
+      const defaultAccounts: { id: string; code: string; name: string; type: string; parentId?: string; currency?: string }[] = [
+      // 1. ASSETS (الأصول)
       { id: 'acc_1', code: '1', name: 'الأصول', type: 'asset' },
       { id: 'acc_11', code: '11', name: 'الأصول المتداولة', type: 'asset', parentId: 'acc_1' },
-      { id: 'acc_cash', code: '1101', name: 'الصندوق والنقدية', type: 'asset', parentId: 'acc_11' },
-      { id: 'acc_110101', code: '110101', name: 'الصندوق الرئيسي', type: 'asset', parentId: 'acc_cash' },
-      { id: 'acc_110102', code: '110102', name: 'عهدة النثريات والفرع', type: 'asset', parentId: 'acc_cash' },
-      { id: 'acc_bank', code: '1102', name: 'البنوك والتمويل', type: 'asset', parentId: 'acc_11' },
-      { id: 'acc_110201', code: '110201', name: 'حساب البنك الرئيسي', type: 'asset', parentId: 'acc_bank' },
-      { id: 'acc_receivable', code: '1103', name: 'العملاء والمدينون', type: 'asset', parentId: 'acc_11' },
-      { id: 'acc_110301', code: '110301', name: 'ذمم العملاء التجاريين', type: 'asset', parentId: 'acc_receivable' },
-      { id: 'acc_inventory', code: '1104', name: 'المخزون البضائعي', type: 'asset', parentId: 'acc_11' },
-      { id: 'acc_110401', code: '110401', name: 'مخزون البضائع المعدة للبيع', type: 'asset', parentId: 'acc_inventory' },
-      
-      { id: 'acc_12', code: '12', name: 'الأصول الثابتة', type: 'asset', parentId: 'acc_1' },
-      { id: 'acc_1201', code: '1201', name: 'العقارات والمباني', type: 'asset', parentId: 'acc_12' },
-      { id: 'acc_1202', code: '1202', name: 'الآلات والمعدات', type: 'asset', parentId: 'acc_12' },
-      { id: 'acc_1203', code: '1203', name: 'السيارات ووسائل النقل', type: 'asset', parentId: 'acc_12' },
 
-      // 2. LIABILITIES
+      // Cash Treasury Accounts
+      { id: 'acc_cash', code: '1101', name: 'الصناديق والخزائن النقدية', type: 'asset', parentId: 'acc_11' },
+      { id: 'acc_110101', code: '110101', name: 'الصندوق الرئيسي (محلي - SAR)', type: 'asset', parentId: 'acc_cash', currency: 'SAR' },
+      { id: 'acc_110102', code: '110102', name: 'صندوق الدولار الأمريكي (USD)', type: 'asset', parentId: 'acc_cash', currency: 'USD' },
+      { id: 'acc_110103', code: '110103', name: 'صندوق الليرة السورية (SYP)', type: 'asset', parentId: 'acc_cash', currency: 'SYP' },
+      { id: 'acc_110104', code: '110104', name: 'صندوق الليرة التركية (TRY)', type: 'asset', parentId: 'acc_cash', currency: 'TRY' },
+
+      // Bank Accounts
+      { id: 'acc_bank', code: '1102', name: 'البنوك والمصارف', type: 'asset', parentId: 'acc_11' },
+      { id: 'acc_110201', code: '110201', name: 'حساب البنك الرئيسي (SAR)', type: 'asset', parentId: 'acc_bank', currency: 'SAR' },
+      { id: 'acc_110202', code: '110202', name: 'حساب بنك التجارة الدولي (USD)', type: 'asset', parentId: 'acc_bank', currency: 'USD' },
+      { id: 'acc_110203', code: '110203', name: 'حساب البنك - ليرة تركية (TRY)', type: 'asset', parentId: 'acc_bank', currency: 'TRY' },
+
+      // Receivables & Customers
+      { id: 'acc_receivable', code: '1103', name: 'العملاء والمدينون', type: 'asset', parentId: 'acc_11' },
+      { id: 'acc_110301', code: '110301', name: 'ذمم العملاء التجاريين (محلي)', type: 'asset', parentId: 'acc_receivable', currency: 'SAR' },
+      { id: 'acc_110302', code: '110302', name: 'ذمم عملاء التصدير (USD)', type: 'asset', parentId: 'acc_receivable', currency: 'USD' },
+      { id: 'acc_110303', code: '110303', name: 'ذمم العملاء الإقليمية (SYP/TRY)', type: 'asset', parentId: 'acc_receivable', currency: 'TRY' },
+
+      // Inventory Accounts
+      { id: 'acc_inventory', code: '1104', name: 'المخزون البضائعي', type: 'asset', parentId: 'acc_11' },
+      { id: 'acc_110401', code: '110401', name: 'مخزون المنتجات الجاهزة للبيع', type: 'asset', parentId: 'acc_inventory', currency: 'SAR' },
+      { id: 'acc_110402', code: '110402', name: 'مخزون المواد الخام والمستلزمات', type: 'asset', parentId: 'acc_inventory', currency: 'SAR' },
+      
+      // Fixed Assets
+      { id: 'acc_12', code: '12', name: 'الأصول الثابتة', type: 'asset', parentId: 'acc_1' },
+      { id: 'acc_1201', code: '1201', name: 'العقارات والمباني', type: 'asset', parentId: 'acc_12', currency: 'SAR' },
+      { id: 'acc_1202', code: '1202', name: 'الآلات والمعدات التشغيلية', type: 'asset', parentId: 'acc_12', currency: 'SAR' },
+      { id: 'acc_1203', code: '1203', name: 'السيارات ووسائل النقل', type: 'asset', parentId: 'acc_12', currency: 'SAR' },
+      { id: 'acc_1204', code: '1204', name: 'الأثاث والديكورات والتجهيزات', type: 'asset', parentId: 'acc_12', currency: 'SAR' },
+
+      // 2. LIABILITIES (الخصوم والالتزامات)
       { id: 'acc_2', code: '2', name: 'الخصوم والالتزامات', type: 'liability' },
       { id: 'acc_21', code: '21', name: 'الالتزامات المتداولة', type: 'liability', parentId: 'acc_2' },
+
+      // Payables & Suppliers
       { id: 'acc_payable', code: '2101', name: 'الموردون والدائنون', type: 'liability', parentId: 'acc_21' },
-      { id: 'acc_210101', code: '210101', name: 'ذمم الموردين التجاريين', type: 'liability', parentId: 'acc_payable' },
-      { id: 'acc_tax', code: '2102', name: 'ضريبة القيمة المضافة', type: 'liability', parentId: 'acc_21' },
-      { id: 'acc_210201', code: '210201', name: 'الرواتب والأجور المستحقة', type: 'liability', parentId: 'acc_21' },
+      { id: 'acc_210101', code: '210101', name: 'ذمم الموردين المحليين (SAR)', type: 'liability', parentId: 'acc_payable', currency: 'SAR' },
+      { id: 'acc_210102', code: '210102', name: 'ذمم الموردين الخارجيين (USD)', type: 'liability', parentId: 'acc_payable', currency: 'USD' },
+      { id: 'acc_210103', code: '210103', name: 'ذمم الموردين الإقليميين (TRY)', type: 'liability', parentId: 'acc_payable', currency: 'TRY' },
 
-      // 3. EQUITY
+      // Taxes & Accruals
+      { id: 'acc_tax', code: '2102', name: 'الضرائب والمستحقات', type: 'liability', parentId: 'acc_21' },
+      { id: 'acc_210201', code: '210201', name: 'ضريبة القيمة المضافة المستحقة (VAT)', type: 'liability', parentId: 'acc_tax', currency: 'SAR' },
+      { id: 'acc_210202', code: '210202', name: 'مستحقات رواتب الموظفين', type: 'liability', parentId: 'acc_tax', currency: 'SAR' },
+
+      // 3. EQUITY (حقوق الملكية)
       { id: 'acc_3', code: '3', name: 'حقوق الملكية', type: 'equity' },
-      { id: 'acc_equity', code: '31', name: 'رأس المال', type: 'equity', parentId: 'acc_3' },
-      { id: 'acc_32', code: '32', name: 'الأرباح والخسائر المدورة', type: 'equity', parentId: 'acc_3' },
-      { id: 'acc_33', code: '33', name: 'مسحوبات الشركاء', type: 'equity', parentId: 'acc_3' },
+      { id: 'acc_equity', code: '31', name: 'رأس المال والاحتياطيات', type: 'equity', parentId: 'acc_3' },
+      { id: 'acc_3101', code: '3101', name: 'رأس المال المدفوع', type: 'equity', parentId: 'acc_equity', currency: 'SAR' },
+      { id: 'acc_32', code: '32', name: 'الأرباح والخسائر المدورة', type: 'equity', parentId: 'acc_3', currency: 'SAR' },
+      { id: 'acc_33', code: '33', name: 'مسحوبات الشركاء', type: 'equity', parentId: 'acc_3', currency: 'SAR' },
 
-      // 4. REVENUE
+      // 4. REVENUE (الإيرادات)
       { id: 'acc_4', code: '4', name: 'الإيرادات', type: 'revenue' },
-      { id: 'acc_41', code: '41', name: 'إيرادات المبيعات والخدمات', type: 'revenue', parentId: 'acc_4' },
-      { id: 'acc_sales', code: '4101', name: 'مبيعات البضائع والخدمات', type: 'revenue', parentId: 'acc_41' },
+      { id: 'acc_41', code: '41', name: 'إيرادات النشاط الرئيسي', type: 'revenue', parentId: 'acc_4' },
+      { id: 'acc_sales', code: '4101', name: 'مبيعات البضائع والخدمات', type: 'revenue', parentId: 'acc_41', currency: 'SAR' },
+      { id: 'acc_4102', code: '4102', name: 'إيرادات المبيعات الخارجية (USD)', type: 'revenue', parentId: 'acc_41', currency: 'USD' },
       { id: 'acc_42', code: '42', name: 'إيرادات أخرى وفروق عملات', type: 'revenue', parentId: 'acc_4' },
+      { id: 'acc_forex_gain', code: '4201', name: 'أرباح فروق أسعار الصرف (Forex Gain)', type: 'revenue', parentId: 'acc_42', currency: 'SAR' },
 
-      // 5. EXPENSES
+      // 5. EXPENSES (المصروفات)
       { id: 'acc_5', code: '5', name: 'المصروفات', type: 'expense' },
-      { id: 'acc_51', code: '51', name: 'تكلفة المبيعات COGS', type: 'expense', parentId: 'acc_5' },
-      { id: 'acc_cogs', code: '5101', name: 'تكلفة البضاعة المباعة', type: 'expense', parentId: 'acc_51' },
-      { id: 'acc_52', code: '52', name: 'المصروفات الإدارية والعمومية', type: 'expense', parentId: 'acc_5' },
-      { id: 'acc_expense', code: '5201', name: 'المصاريف التشغيلية العامة', type: 'expense', parentId: 'acc_52' },
-      { id: 'acc_5202', code: '5202', name: 'مصاريف الرواتب والأجور', type: 'expense', parentId: 'acc_52' },
-      { id: 'acc_5203', code: '5203', name: 'مصاريف الإيجارات', type: 'expense', parentId: 'acc_52' },
-      { id: 'acc_5204', code: '5204', name: 'خسائر فروق سعر الصرف', type: 'expense', parentId: 'acc_52' },
+      { id: 'acc_51', code: '51', name: 'تكلفة البضاعة المباعة COGS', type: 'expense', parentId: 'acc_5' },
+      { id: 'acc_cogs', code: '5101', name: 'تكلفة البضاعة المباعة الرئيسية', type: 'expense', parentId: 'acc_51', currency: 'SAR' },
+      { id: 'acc_52', code: '52', name: 'المصروفات الإدارية والتشغيلية', type: 'expense', parentId: 'acc_5' },
+      { id: 'acc_expense', code: '5201', name: 'المصاريف التشغيلية العامة', type: 'expense', parentId: 'acc_52', currency: 'SAR' },
+      { id: 'acc_5202', code: '5202', name: 'رواتب وأجور الموظفين', type: 'expense', parentId: 'acc_52', currency: 'SAR' },
+      { id: 'acc_5203', code: '5203', name: 'إيجار المقرات والمستودعات', type: 'expense', parentId: 'acc_52', currency: 'SAR' },
+      { id: 'acc_5204', code: '5204', name: 'الكهرباء والمياه والمرافق', type: 'expense', parentId: 'acc_52', currency: 'SAR' },
+      { id: 'acc_forex_loss', code: '5205', name: 'خسائر فروق أسعار الصرف (Forex Loss)', type: 'expense', parentId: 'acc_52', currency: 'SAR' },
     ];
 
     let createdCount = 0;
@@ -327,16 +367,16 @@ export class AccountService {
           name: acc.name,
           type: acc.type,
           balance: '0',
-          currency: baseCurrency,
+          currency: acc.currency || baseCurrency,
           foreignBalance: '0',
           parentId: acc.parentId || null,
-          companyId: companyId || null,
-          isActive: true
+          companyId: companyId || null
         });
         createdCount++;
       }
     }
 
     return { success: true, seededCount: createdCount };
+    });
   }
 }

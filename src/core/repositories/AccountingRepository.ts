@@ -15,6 +15,7 @@ import { eq, desc, inArray, and, gte, lte } from 'drizzle-orm';
 import { CurrencyRepository } from './CurrencyRepository.ts';
 import { AccountService } from '../services/AccountService.ts';
 import { JournalEngine } from '../services/JournalEngine.ts';
+import { withAutoMigration } from '../database/initSchema.ts';
 
 export interface JournalLineInput {
   accountId: string;
@@ -361,114 +362,118 @@ export class AccountingRepository {
 
   // 5. TRIAL BALANCE REPORT
   static async getTrialBalance(filterCurrency?: string) {
-    const baseCode = await CurrencyRepository.getBaseCurrencyCode();
-    const allAccounts = await db.select().from(accounts);
-    let allDetails = await db.select().from(journalDetails);
+    return await withAutoMigration(async () => {
+      const baseCode = await CurrencyRepository.getBaseCurrencyCode();
+      const allAccounts = await db.select().from(accounts);
+      let allDetails = await db.select().from(journalDetails);
 
-    if (filterCurrency && filterCurrency !== 'ALL') {
-      allDetails = allDetails.filter(d => d.currency === filterCurrency);
-    }
+      if (filterCurrency && filterCurrency !== 'ALL') {
+        allDetails = allDetails.filter(d => d.currency === filterCurrency);
+      }
 
-    const trialBalanceRows = allAccounts.map(acc => {
-      const accDetails = allDetails.filter(d => d.accountId === acc.id);
-      const totalDebit = accDetails.reduce((sum, d) => sum + parseFloat(d.debit || '0'), 0);
-      const totalCredit = accDetails.reduce((sum, d) => sum + parseFloat(d.credit || '0'), 0);
-      const totalForeignDebit = accDetails.reduce((sum, d) => sum + parseFloat(d.foreignDebit || '0'), 0);
-      const totalForeignCredit = accDetails.reduce((sum, d) => sum + parseFloat(d.foreignCredit || '0'), 0);
-      
-      const balance = parseFloat(acc.balance || '0');
-      const isDebitSide = acc.type === 'asset' || acc.type === 'expense';
+      const trialBalanceRows = allAccounts.map(acc => {
+        const accDetails = allDetails.filter(d => d.accountId === acc.id);
+        const totalDebit = accDetails.reduce((sum, d) => sum + parseFloat(d.debit || '0'), 0);
+        const totalCredit = accDetails.reduce((sum, d) => sum + parseFloat(d.credit || '0'), 0);
+        const totalForeignDebit = accDetails.reduce((sum, d) => sum + parseFloat(d.foreignDebit || '0'), 0);
+        const totalForeignCredit = accDetails.reduce((sum, d) => sum + parseFloat(d.foreignCredit || '0'), 0);
+
+        const balance = parseFloat(acc.balance || '0');
+        const isDebitSide = acc.type === 'asset' || acc.type === 'expense';
+
+        return {
+          id: acc.id,
+          code: acc.code,
+          name: acc.name,
+          type: acc.type,
+          currency: acc.currency || baseCode,
+          parentId: acc.parentId,
+          totalDebit,
+          totalCredit,
+          totalForeignDebit,
+          totalForeignCredit,
+          debitBalance: isDebitSide ? balance : 0,
+          creditBalance: !isDebitSide ? balance : 0,
+          netBalance: balance
+        };
+      });
+
+      const totalDebitSum = trialBalanceRows.reduce((sum, r) => sum + r.debitBalance, 0);
+      const totalCreditSum = trialBalanceRows.reduce((sum, r) => sum + r.creditBalance, 0);
+      const isBalanced = Math.abs(totalDebitSum - totalCreditSum) < 0.01;
 
       return {
-        id: acc.id,
-        code: acc.code,
-        name: acc.name,
-        type: acc.type,
-        currency: acc.currency || baseCode,
-        parentId: acc.parentId,
-        totalDebit,
-        totalCredit,
-        totalForeignDebit,
-        totalForeignCredit,
-        debitBalance: isDebitSide ? balance : 0,
-        creditBalance: !isDebitSide ? balance : 0,
-        netBalance: balance
+        rows: trialBalanceRows,
+        totalDebit: totalDebitSum,
+        totalCredit: totalCreditSum,
+        isBalanced
       };
     });
-
-    const totalDebitSum = trialBalanceRows.reduce((sum, r) => sum + r.debitBalance, 0);
-    const totalCreditSum = trialBalanceRows.reduce((sum, r) => sum + r.creditBalance, 0);
-    const isBalanced = Math.abs(totalDebitSum - totalCreditSum) < 0.01;
-
-    return {
-      rows: trialBalanceRows,
-      totalDebit: totalDebitSum,
-      totalCredit: totalCreditSum,
-      isBalanced
-    };
   }
 
   // 6. JOURNAL ENTRIES QUERY
   static async getJournalEntries(search?: string, date?: string, currencyFilter?: string, statusFilter?: string) {
-    const baseCode = await CurrencyRepository.getBaseCurrencyCode();
-    let entries = await db.select().from(journalEntries).orderBy(desc(journalEntries.date), desc(journalEntries.createdAt));
+    return await withAutoMigration(async () => {
+      const baseCode = await CurrencyRepository.getBaseCurrencyCode();
+      let entries = await db.select().from(journalEntries).orderBy(desc(journalEntries.date), desc(journalEntries.createdAt));
 
-    if (search) {
-      const term = search.toLowerCase();
-      entries = entries.filter(e => 
-        (e.description && e.description.toLowerCase().includes(term)) || 
-        e.entryNumber.toLowerCase().includes(term) ||
-        (e.reference && e.reference.toLowerCase().includes(term))
-      );
-    }
-    if (date) {
-      entries = entries.filter(e => e.date === date);
-    }
-    if (currencyFilter && currencyFilter !== 'ALL') {
-      entries = entries.filter(e => e.currency === currencyFilter);
-    }
-    if (statusFilter && statusFilter !== 'ALL') {
-      entries = entries.filter(e => e.status === statusFilter);
-    }
+      if (search) {
+        const term = search.toLowerCase();
+        entries = entries.filter(e =>
+          (e.description && e.description.toLowerCase().includes(term)) ||
+          e.entryNumber.toLowerCase().includes(term) ||
+          ((e as any).reference && (e as any).reference.toLowerCase().includes(term))
+        );
+      }
+      if (date) {
+        entries = entries.filter(e => e.date === date);
+      }
+      if (currencyFilter && currencyFilter !== 'ALL') {
+        entries = entries.filter(e => e.currency === currencyFilter);
+      }
+      if (statusFilter && statusFilter !== 'ALL') {
+        entries = entries.filter(e => e.status === statusFilter);
+      }
 
-    const entryIds = entries.map(e => e.id);
-    const allLines = entryIds.length > 0
-      ? await db.select().from(journalLines).where(inArray(journalLines.journalEntryId, entryIds))
-      : [];
+      const entryIds = entries.map(e => e.id);
+      const allLines = entryIds.length > 0
+        ? await db.select().from(journalLines).where(inArray(journalLines.journalEntryId, entryIds))
+        : [];
 
-    const accountIds = Array.from(new Set(allLines.map(l => l.accountId)));
-    const accountsList = accountIds.length > 0
-      ? await db.select().from(accounts).where(inArray(accounts.id, accountIds))
-      : [];
-    const accountsMap = new Map(accountsList.map(a => [a.id, a]));
+      const accountIds = Array.from(new Set(allLines.map(l => l.accountId)));
+      const accountsList = accountIds.length > 0
+        ? await db.select().from(accounts).where(inArray(accounts.id, accountIds))
+        : [];
+      const accountsMap = new Map(accountsList.map(a => [a.id, a]));
 
-    return entries.map(entry => {
-      const entryLines = allLines.filter(l => l.journalEntryId === entry.id).map(l => {
-        const acc = accountsMap.get(l.accountId);
+      return entries.map(entry => {
+        const entryLines = allLines.filter(l => l.journalEntryId === entry.id).map(l => {
+          const acc = accountsMap.get(l.accountId);
+          return {
+            id: l.id,
+            accountId: l.accountId,
+            accountCode: acc?.code || '',
+            accountName: acc?.name || '',
+            accountType: acc?.type || '',
+            currency: l.currency || entry.currency || baseCode,
+            exchangeRate: parseFloat(l.exchangeRate || entry.exchangeRate || '1.0'),
+            foreignDebit: parseFloat(l.foreignDebit || '0'),
+            foreignCredit: parseFloat(l.foreignCredit || '0'),
+            debit: parseFloat(l.debit || '0'),
+            credit: parseFloat(l.credit || '0'),
+            description: l.description || entry.description
+          };
+        });
+
         return {
-          id: l.id,
-          accountId: l.accountId,
-          accountCode: acc?.code || '',
-          accountName: acc?.name || '',
-          accountType: acc?.type || '',
-          currency: l.currency || entry.currency || baseCode,
-          exchangeRate: parseFloat(l.exchangeRate || entry.exchangeRate || '1.0'),
-          foreignDebit: parseFloat(l.foreignDebit || '0'),
-          foreignCredit: parseFloat(l.foreignCredit || '0'),
-          debit: parseFloat(l.debit || '0'),
-          credit: parseFloat(l.credit || '0'),
-          description: l.description || entry.description
+          ...entry,
+          foreignAmount: parseFloat(entry.foreignAmount || '0'),
+          baseAmount: parseFloat(entry.baseAmount || '0'),
+          exchangeRate: parseFloat(entry.exchangeRate || '1.0'),
+          lines: entryLines,
+          details: entryLines // backward compatibility
         };
       });
-
-      return {
-        ...entry,
-        foreignAmount: parseFloat(entry.foreignAmount || '0'),
-        baseAmount: parseFloat(entry.baseAmount || '0'),
-        exchangeRate: parseFloat(entry.exchangeRate || '1.0'),
-        lines: entryLines,
-        details: entryLines // backward compatibility
-      };
     });
   }
 

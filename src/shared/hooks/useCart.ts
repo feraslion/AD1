@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { Product, CartItem, StoreSettings } from '../../types';
+import { calculateCartTotals } from '../../modules/sales/domain/cartCalculations';
 
 export function useCart(settings: StoreSettings) {
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -63,36 +64,13 @@ export function useCart(settings: StoreSettings) {
     setInvoiceDiscount(0);
   }, []);
 
-  // Calculations
-  const subtotal = cart.reduce((acc, item) => {
-    const itemPrice = item.product.price * item.quantity;
-    let itemDiscount = 0;
-    if (item.discount > 0) {
-      if (item.discountType === 'percentage') {
-        itemDiscount = itemPrice * (item.discount / 100);
-      } else {
-        itemDiscount = item.discount * item.quantity;
-      }
-    }
-    return acc + (itemPrice - itemDiscount);
-  }, 0);
-
-  const totalDiscount = (() => {
-    let disc = 0;
-    if (invoiceDiscount > 0) {
-      if (invoiceDiscountType === 'percentage') {
-        disc = subtotal * (invoiceDiscount / 100);
-      } else {
-        disc = invoiceDiscount;
-      }
-    }
-    return parseFloat(disc.toFixed(2));
-  })();
-
-  const taxableAmount = Math.max(0, subtotal - totalDiscount);
-  const taxRate = settings.taxRate;
-  const taxAmount = parseFloat((taxableAmount * (taxRate / 100)).toFixed(2));
-  const grandTotal = parseFloat((taxableAmount + taxAmount).toFixed(2));
+  // Delegated domain calculations
+  const { subtotal, totalDiscount, taxableAmount, taxAmount, grandTotal } = calculateCartTotals(
+    cart,
+    invoiceDiscount,
+    invoiceDiscountType,
+    settings
+  );
 
   return {
     cart,
