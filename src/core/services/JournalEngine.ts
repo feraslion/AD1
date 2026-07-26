@@ -71,9 +71,11 @@ export class JournalEngine {
 
       const [acc] = await db.select().from(accounts).where(eq(accounts.id, line.accountId));
       if (!acc) {
+        console.error(`[JournalEngine Validation Error] Account not found: ID ${line.accountId}`);
         throw new Error(`الحساب المالي (ID: ${line.accountId}) غير موجود في شجرة الحسابات.`);
       }
       if (acc.isActive === false) {
+        console.warn(`[JournalEngine Validation Warning] Attempted post on deactivated account: ${acc.name} (Code: ${acc.code})`);
         throw new Error(`الحساب المالي (${acc.name} - ${acc.code}) معطل ولا يمكن التسجيل عليه.`);
       }
 
