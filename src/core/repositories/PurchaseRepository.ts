@@ -7,36 +7,41 @@ import { AccountingRepository } from './AccountingRepository.ts';
 
 export class PurchaseRepository {
   static async findAllPurchaseRequests() {
-    const reqList = await db.select().from(purchaseRequests).orderBy(desc(purchaseRequests.createdAt));
-    if (reqList.length === 0) return [];
+    try {
+      const reqList = await db.select().from(purchaseRequests).orderBy(desc(purchaseRequests.createdAt));
+      if (reqList.length === 0) return [];
 
-    const reqIds = reqList.map(r => r.id);
-    const itemsList = await db.select().from(purchaseRequestItems).where(inArray(purchaseRequestItems.requestId, reqIds));
-    const supplierList = await db.select().from(suppliers);
-    const suppliersMap = new Map(supplierList.map(s => [s.id, s]));
+      const reqIds = reqList.map(r => r.id);
+      const itemsList = await db.select().from(purchaseRequestItems).where(inArray(purchaseRequestItems.requestId, reqIds));
+      const supplierList = await db.select().from(suppliers);
+      const suppliersMap = new Map(supplierList.map(s => [s.id, s]));
 
-    return reqList.map(req => {
-      const rItems = itemsList
-        .filter(item => item.requestId === req.id)
-        .map(i => ({
-          ...i,
-          estimatedPrice: parseFloat(i.estimatedPrice || '0'),
-          quantity: parseFloat(i.quantity || '0'),
-          total: parseFloat(i.total || '0')
-        }));
+      return reqList.map(req => {
+        const rItems = itemsList
+          .filter(item => item.requestId === req.id)
+          .map(i => ({
+            ...i,
+            estimatedPrice: parseFloat(i.estimatedPrice || '0'),
+            quantity: parseFloat(i.quantity || '0'),
+            total: parseFloat(i.total || '0')
+          }));
 
-      const supp = req.supplierId ? suppliersMap.get(req.supplierId) : null;
+        const supp = req.supplierId ? suppliersMap.get(req.supplierId) : null;
 
-      return {
-        ...req,
-        subtotal: parseFloat(req.subtotal || '0'),
-        taxAmount: parseFloat(req.taxAmount || '0'),
-        grandTotal: parseFloat(req.grandTotal || '0'),
-        exchangeRate: parseFloat(req.exchangeRate || '1.0'),
-        supplierName: supp ? supp.name : 'غير محدد',
-        items: rItems
-      };
-    });
+        return {
+          ...req,
+          subtotal: parseFloat(req.subtotal || '0'),
+          taxAmount: parseFloat(req.taxAmount || '0'),
+          grandTotal: parseFloat(req.grandTotal || '0'),
+          exchangeRate: parseFloat(req.exchangeRate || '1.0'),
+          supplierName: supp ? supp.name : 'غير محدد',
+          items: rItems
+        };
+      });
+    } catch (error) {
+      console.warn('Purchase requests table unavailable, returning empty list:', error);
+      return [];
+    }
   }
 
   static async createPurchaseRequest(data: any) {

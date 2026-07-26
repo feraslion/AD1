@@ -1,4 +1,6 @@
-// Core ERP Domain Models
+// Core ERP Domain Models & Entities
+export * from './index';
+
 export interface CustomerModel {
   id: string;
   name: string;
@@ -70,9 +72,9 @@ export interface WarehouseModel {
 
 export interface CurrencyModel {
   id: string;
-  code: string; // e.g. 'SAR', 'USD'
-  name: string; // e.g. 'ريال سعودي'
-  symbol: string; // e.g. 'ر.س'
+  code: string;
+  name: string;
+  symbol: string;
   exchangeRate: number;
   isDefault: boolean;
   companyId?: string;
@@ -82,9 +84,9 @@ export interface CurrencyModel {
 
 export interface TaxModel {
   id: string;
-  name: string; // e.g. 'ضريبة القيمة المضافة 15%'
-  code: string; // e.g. 'VAT_15'
-  rate: number; // e.g. 15
+  name: string;
+  code: string;
+  rate: number;
   isInclusive: boolean;
   companyId?: string;
   createdAt?: string;
@@ -93,8 +95,8 @@ export interface TaxModel {
 
 export interface PaymentMethodModel {
   id: string;
-  code: string; // e.g. 'cash', 'card', 'bank_transfer'
-  name: string; // e.g. 'نقداً', 'بطاقة ائتمان'
+  code: string;
+  name: string;
   accountId?: string;
   companyId?: string;
   createdAt?: string;

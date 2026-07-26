@@ -99,6 +99,24 @@ export const users = pgTable('users', {
   };
 });
 
+// 6.1 User Sessions Table
+export const userSessions = pgTable('user_sessions', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  refreshToken: text('refresh_token').notNull(),
+  ipAddress: text('ip_address'),
+  userAgent: text('user_agent'),
+  isRevoked: boolean('is_revoked').default(false),
+  expiresAt: timestamp('expires_at').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => {
+  return {
+    sessionsUserIdx: index('user_sessions_user_idx').on(table.userId),
+    sessionsTokenIdx: index('user_sessions_token_idx').on(table.refreshToken),
+  };
+});
+
 // 7. Categories Table
 export const categories = pgTable('categories', {
   id: text('id').primaryKey(),
@@ -389,7 +407,6 @@ export const accounts = pgTable('accounts', {
   companyId: text('company_id').references(() => companies.id, { onDelete: 'cascade' }),
   branchId: text('branch_id').references(() => branches.id, { onDelete: 'cascade' }),
   parentId: text('parent_id'), // hierarchical structure
-  isActive: boolean('is_active').default(true),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 }, (table) => {
@@ -403,7 +420,6 @@ export const accounts = pgTable('accounts', {
 export const journalEntries = pgTable('journal_entries', {
   id: text('id').primaryKey(),
   entryNumber: text('entry_number').notNull().unique(),
-  reference: text('reference'), // e.g. "INV-1001", "POS-5001", "PAY-2002"
   description: text('description'),
   date: text('date').notNull(),
   status: text('status').default('posted'), // draft, posted, reversed
@@ -412,8 +428,6 @@ export const journalEntries = pgTable('journal_entries', {
   exchangeRate: numeric('exchange_rate').default('1.0'), // Rate to convert to base currency
   foreignAmount: numeric('foreign_amount').default('0'), // Total amount in transaction currency
   baseAmount: numeric('base_amount').default('0'), // Total amount in base currency
-  createdBy: text('created_by'),
-  reversedEntryId: text('reversed_entry_id'),
   companyId: text('company_id').references(() => companies.id, { onDelete: 'cascade' }),
   branchId: text('branch_id').references(() => branches.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at').defaultNow(),
@@ -821,11 +835,15 @@ export const purchaseRequestItems = pgTable('purchase_request_items', {
   estimatedPrice: numeric('estimated_price').notNull(),
   quantity: numeric('quantity').notNull(),
   total: numeric('total').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
 });
 
 // 42. Bank Accounts Table
 export const bankAccounts = pgTable('bank_accounts', {
   id: text('id').primaryKey(),
+  companyId: text('company_id').references(() => companies.id, { onDelete: 'cascade' }),
+  branchId: text('branch_id').references(() => branches.id, { onDelete: 'cascade' }),
   bankName: text('bank_name').notNull(),
   accountName: text('account_name').notNull(),
   accountNumber: text('account_number').notNull(),
@@ -836,13 +854,25 @@ export const bankAccounts = pgTable('bank_accounts', {
   currentBalance: numeric('current_balance').default('0'),
   accountId: text('account_id').references(() => accounts.id, { onDelete: 'set null' }),
   status: text('status').default('active'),
+  createdBy: text('created_by'),
+  updatedBy: text('updated_by'),
+  isDeleted: boolean('is_deleted').default(false),
+  deletedAt: timestamp('deleted_at'),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => {
+  return {
+    bankAccountsCompanyIdx: index('bank_accounts_company_idx').on(table.companyId),
+    bankAccountsBranchIdx: index('bank_accounts_branch_idx').on(table.branchId),
+    bankAccountsDeletedIdx: index('bank_accounts_deleted_idx').on(table.isDeleted),
+  };
 });
 
 // 43. Treasury Transactions Table (Deposits, Withdrawals, Transfers)
 export const treasuryTransactions = pgTable('treasury_transactions', {
   id: text('id').primaryKey(),
+  companyId: text('company_id').references(() => companies.id, { onDelete: 'cascade' }),
+  branchId: text('branch_id').references(() => branches.id, { onDelete: 'cascade' }),
   transactionType: text('transaction_type').notNull(), // 'deposit', 'withdrawal', 'transfer'
   sourceType: text('source_type'), // 'cashbox', 'bank_account', 'customer', 'supplier', 'account', 'other'
   sourceId: text('source_id'),
@@ -858,12 +888,25 @@ export const treasuryTransactions = pgTable('treasury_transactions', {
   journalEntryId: text('journal_entry_id'),
   reconciled: text('reconciled').default('false'),
   reconciliationId: text('reconciliation_id'),
+  createdBy: text('created_by'),
+  updatedBy: text('updated_by'),
+  isDeleted: boolean('is_deleted').default(false),
+  deletedAt: timestamp('deleted_at'),
   createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => {
+  return {
+    treasuryTransactionsCompanyIdx: index('treasury_transactions_company_idx').on(table.companyId),
+    treasuryTransactionsBranchIdx: index('treasury_transactions_branch_idx').on(table.branchId),
+    treasuryTransactionsDeletedIdx: index('treasury_transactions_deleted_idx').on(table.isDeleted),
+  };
 });
 
 // 44. Bank Reconciliations Table
 export const bankReconciliations = pgTable('bank_reconciliations', {
   id: text('id').primaryKey(),
+  companyId: text('company_id').references(() => companies.id, { onDelete: 'cascade' }),
+  branchId: text('branch_id').references(() => branches.id, { onDelete: 'cascade' }),
   bankAccountId: text('bank_account_id').notNull().references(() => bankAccounts.id, { onDelete: 'cascade' }),
   statementDate: text('statement_date').notNull(),
   statementEndingBalance: numeric('statement_ending_balance').notNull(),
@@ -872,24 +915,38 @@ export const bankReconciliations = pgTable('bank_reconciliations', {
   matchedCount: numeric('matched_count').default('0'),
   status: text('status').default('completed'), // 'draft', 'completed'
   notes: text('notes'),
+  createdBy: text('created_by'),
+  updatedBy: text('updated_by'),
+  isDeleted: boolean('is_deleted').default(false),
+  deletedAt: timestamp('deleted_at'),
   createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
 });
 
 // 45. Expense Categories Table
 export const expenseCategories = pgTable('expense_categories', {
   id: text('id').primaryKey(),
+  companyId: text('company_id').references(() => companies.id, { onDelete: 'cascade' }),
+  branchId: text('branch_id').references(() => branches.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   code: text('code'),
   description: text('description'),
   accountId: text('account_id').references(() => accounts.id, { onDelete: 'set null' }),
   budget: numeric('budget').default('0'),
+  createdBy: text('created_by'),
+  updatedBy: text('updated_by'),
+  isDeleted: boolean('is_deleted').default(false),
+  deletedAt: timestamp('deleted_at'),
   createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
 });
 
 // 46. Expense Requests Table (Expenses with Approval Workflow)
 export const expenseRequests = pgTable('expense_requests', {
   id: text('id').primaryKey(),
   requestNumber: text('request_number').notNull(),
+  companyId: text('company_id').references(() => companies.id, { onDelete: 'cascade' }),
+  branchId: text('branch_id').references(() => branches.id, { onDelete: 'cascade' }),
   categoryId: text('category_id').references(() => expenseCategories.id, { onDelete: 'set null' }),
   accountId: text('account_id').references(() => accounts.id, { onDelete: 'set null' }),
   title: text('title').notNull(),
@@ -909,8 +966,18 @@ export const expenseRequests = pgTable('expense_requests', {
   journalEntryId: text('journal_entry_id'),
   receiptRef: text('receipt_ref'),
   date: text('date').notNull(),
+  createdBy: text('created_by'),
+  updatedBy: text('updated_by'),
+  isDeleted: boolean('is_deleted').default(false),
+  deletedAt: timestamp('deleted_at'),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => {
+  return {
+    expenseRequestsCompanyIdx: index('expense_requests_company_idx').on(table.companyId),
+    expenseRequestsBranchIdx: index('expense_requests_branch_idx').on(table.branchId),
+    expenseRequestsDeletedIdx: index('expense_requests_deleted_idx').on(table.isDeleted),
+  };
 });
 
 // Alias Exports for direct snake_case references
