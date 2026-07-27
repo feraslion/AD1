@@ -89,8 +89,8 @@ export async function authenticate(req: AuthenticatedRequest, res: Response, nex
       }
     }
 
-    // 3. Fallback for unauthenticated requests or invalid/stale tokens in development
-    if (!userRecord) {
+    // 3. Fallback for unauthenticated requests or invalid/stale tokens in development (disabled in production)
+    if (!userRecord && process.env.NODE_ENV !== 'production') {
       const [master] = await db.select().from(users).where(eq(users.id, '001'));
       userRecord = master || {
         id: '001',
@@ -117,24 +117,26 @@ export async function authenticate(req: AuthenticatedRequest, res: Response, nex
       }
     }
 
-    const userRole = userRecord.role || 'cashier';
-    const defaultPerms = ROLE_DEFAULT_PERMISSIONS[userRole] || ROLE_DEFAULT_PERMISSIONS.cashier;
-    
-    // Combine assigned and default permissions
-    const mergedPermissions = Array.from(new Set([...userPermissions, ...defaultPerms]));
+    if (userRecord) {
+      const userRole = userRecord.role || 'cashier';
+      const defaultPerms = ROLE_DEFAULT_PERMISSIONS[userRole] || ROLE_DEFAULT_PERMISSIONS.cashier;
 
-    req.user = {
-      id: userRecord.id,
-      uid: userRecord.uid || userRecord.id,
-      email: userRecord.email,
-      name: userRecord.name || 'User',
-      role: userRole,
-      roleId: userRecord.roleId,
-      companyId: userRecord.companyId,
-      branchId: userRecord.branchId,
-      permissions: mergedPermissions,
-      isVerified: userRecord.isEmailVerified ?? true
-    };
+      // Combine assigned and default permissions
+      const mergedPermissions = Array.from(new Set([...userPermissions, ...defaultPerms]));
+
+      req.user = {
+        id: userRecord.id,
+        uid: userRecord.uid || userRecord.id,
+        email: userRecord.email,
+        name: userRecord.name || 'User',
+        role: userRole,
+        roleId: userRecord.roleId,
+        companyId: userRecord.companyId,
+        branchId: userRecord.branchId,
+        permissions: mergedPermissions,
+        isVerified: userRecord.isEmailVerified ?? true
+      };
+    }
 
     next();
   } catch (error) {
