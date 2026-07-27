@@ -109,14 +109,13 @@ export class CustomerRepository {
         invoiceNumber: '-',
         debit: openingBalance > 0 ? openingBalance : 0,
         credit: openingBalance < 0 ? Math.abs(openingBalance) : 0,
-        notes: 'الرصيد السايق / الافتتاحي للعميل'
+        notes: 'الرصيد السابق / الافتتاحي للعميل'
       });
     }
 
     // Process Sales Invoices
     for (const inv of invList) {
       const gTotal = parseFloat(inv.grandTotal || '0');
-      // Credit sale or invoice amount adds to customer debt (Debit)
       const pMethod = inv.paymentMethod;
       const creditPart = (inv as any).paymentDetails?.creditAmount || (pMethod === 'credit' ? gTotal : 0);
 
@@ -145,6 +144,18 @@ export class CustomerRepository {
           credit: gTotal,
           notes: `إشعار دائن - مرتجع فاتورة ${inv.invoiceNumber}`
         });
+      } else {
+        rawLines.push({
+          id: `inv-${inv.id}`,
+          date: inv.date ? inv.date.split('T')[0] : new Date().toISOString().split('T')[0],
+          type: 'sales_invoice',
+          typeLabel: 'فاتورة مبيعات',
+          reference: inv.invoiceNumber,
+          invoiceNumber: inv.invoiceNumber,
+          debit: gTotal,
+          credit: 0,
+          notes: `فاتورة مبيعات رقم ${inv.invoiceNumber}`
+        });
       }
     }
 
@@ -157,11 +168,11 @@ export class CustomerRepository {
           date: pmt.date || new Date().toISOString().split('T')[0],
           type: 'receipt_payment',
           typeLabel: 'سند قبض',
-          reference: pmt.paymentNumber,
+          reference: pmt.paymentNumber || pmt.voucherNumber || 'PMT',
           invoiceNumber: pmt.reference || '-',
           debit: 0,
           credit: amt,
-          notes: pmt.notes || `سند قبض رقم ${pmt.paymentNumber} (${pmt.method})`
+          notes: pmt.notes || `سند قبض رقم ${pmt.paymentNumber}`
         });
       }
     }
@@ -197,8 +208,13 @@ export class CustomerRepository {
       currentBalance: parseFloat(customer.balance || '0'),
       totalDebit: filteredLines.reduce((acc, curr) => acc + curr.debit, 0),
       totalCredit: filteredLines.reduce((acc, curr) => acc + curr.credit, 0),
-      ledgerLines: filteredLines
+      ledgerLines: filteredLines,
+      transactions: filteredLines
     };
+  }
+
+  static async getCustomerStatement(customerId: string, startDate?: string, endDate?: string) {
+    return await this.getCustomerLedger(customerId, startDate, endDate);
   }
 
   static async getDebtAging() {

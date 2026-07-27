@@ -282,7 +282,7 @@ export const invoices = pgTable('invoices', {
     invoicesDateIdx: index('invoices_date_idx').on(table.date),
     invoicesCustomerIdIdx: index('invoices_customer_id_idx').on(table.customerId),
     paymentMethodCheck: check('invoices_payment_method_check', sql`${table.paymentMethod} in ('cash', 'card', 'credit', 'split')`),
-    statusCheck: check('invoices_status_check', sql`${table.status} in ('paid', 'unpaid', 'partially_paid')`),
+    statusCheck: check('invoices_status_check', sql`${table.status} in ('paid', 'unpaid', 'partially_paid', 'returned')`),
   };
 });
 

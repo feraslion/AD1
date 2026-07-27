@@ -49,6 +49,56 @@ export class SupplierRepository {
     return await db.select().from(purchases).where(eq(purchases.supplierId, supplierId)).orderBy(desc(purchases.createdAt));
   }
 
+  static async getSupplierLedger(supplierId: string, startDate?: string, endDate?: string) {
+    const supplier = await this.findById(supplierId);
+    if (!supplier) throw new Error('المورد غير موجود');
+
+    const purList = await this.getSupplierPurchases(supplierId);
+    const openingBalance = parseFloat(supplier.openingBalance || '0');
+    let runningBalance = openingBalance;
+
+    const rawLines: any[] = [];
+
+    purList.forEach(pur => {
+      const gTotal = parseFloat(pur.grandTotal || '0');
+      rawLines.push({
+        id: `pur-${pur.id}`,
+        date: pur.date ? pur.date.split('T')[0] : new Date().toISOString().split('T')[0],
+        type: 'purchase_invoice',
+        typeLabel: 'فاتورة مشتريات',
+        reference: pur.supplierInvoiceNumber || pur.purchaseNumber,
+        credit: gTotal, // Purchase invoice increases payable to supplier (Credit)
+        debit: 0,
+        notes: `فاتورة مشتريات رقم ${pur.purchaseNumber}`
+      });
+    });
+
+    rawLines.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    const transactions = rawLines.map(line => {
+      runningBalance += (line.credit - line.debit);
+      return {
+        ...line,
+        runningBalance: parseFloat(runningBalance.toFixed(2))
+      };
+    });
+
+    return {
+      supplier: {
+        ...supplier,
+        balance: parseFloat(supplier.balance || '0')
+      },
+      openingBalance,
+      closingBalance: runningBalance,
+      transactions,
+      ledgerLines: transactions
+    };
+  }
+
+  static async getSupplierStatement(supplierId: string, startDate?: string, endDate?: string) {
+    return await this.getSupplierLedger(supplierId, startDate, endDate);
+  }
+
   static async delete(id: string) {
     await db.delete(suppliers).where(eq(suppliers.id, id));
     return { success: true };

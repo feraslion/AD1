@@ -40,8 +40,8 @@ authRouter.post('/login', async (req: Request, res: Response) => {
     }
 
     // Verify Password if provided
-    if (password && userRecord.passwordHash) {
-      const isPasswordValid = await TokenService.comparePassword(password, userRecord.passwordHash);
+    if (password && (userRecord as any).passwordHash) {
+      const isPasswordValid = await TokenService.comparePassword(password, (userRecord as any).passwordHash);
       if (!isPasswordValid) {
         return res.status(401).json({
           success: false,
@@ -50,7 +50,7 @@ authRouter.post('/login', async (req: Request, res: Response) => {
       }
     } else if (pin) {
       // PIN check (support DB user.pin or static default PINs)
-      let expectedPin = userRecord.pin;
+      let expectedPin = (userRecord as any).pin;
       if (!expectedPin) {
         if (userRecord.id === '001') expectedPin = '1111';
         else if (userRecord.id === '002') expectedPin = '2222';
@@ -191,7 +191,7 @@ authRouter.post('/register', async (req: Request, res: Response) => {
       emailVerificationExpires: verificationExpires,
       createdAt: new Date(),
       updatedAt: new Date()
-    });
+    } as any);
 
     return res.status(201).json({
       success: true,
@@ -448,7 +448,7 @@ authRouter.post('/forgot-password', async (req: Request, res: Response) => {
         resetPasswordToken: resetToken,
         resetPasswordExpires: resetExpires,
         updatedAt: new Date()
-      })
+      } as any)
       .where(eq(users.id, u.id));
 
     return res.json({
@@ -479,9 +479,9 @@ authRouter.post('/reset-password', async (req: Request, res: Response) => {
       });
     }
 
-    const [u] = await db.select().from(users).where(eq(users.resetPasswordToken, token));
+    const [u] = await db.select().from(users).where(eq((users as any).resetPasswordToken, token));
 
-    if (!u || !u.resetPasswordExpires || new Date(u.resetPasswordExpires) < new Date()) {
+    if (!u || !(u as any).resetPasswordExpires || new Date((u as any).resetPasswordExpires) < new Date()) {
       return res.status(400).json({
         success: false,
         error: 'رمز إعادة التعيين غير صالح أو انتهت صلاحيته'
@@ -497,7 +497,7 @@ authRouter.post('/reset-password', async (req: Request, res: Response) => {
         resetPasswordToken: null,
         resetPasswordExpires: null,
         updatedAt: new Date()
-      })
+      } as any)
       .where(eq(users.id, u.id));
 
     return res.json({
@@ -532,7 +532,7 @@ authRouter.post('/send-verification-email', async (req: AuthenticatedRequest, re
         emailVerificationToken: verificationToken,
         emailVerificationExpires: verificationExpires,
         updatedAt: new Date()
-      })
+      } as any)
       .where(eq(users.id, req.user.id));
 
     return res.json({
@@ -560,9 +560,9 @@ authRouter.post('/verify-email', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'رمز التأكيد مطلوب' });
     }
 
-    const [u] = await db.select().from(users).where(eq(users.emailVerificationToken, token));
+    const [u] = await db.select().from(users).where(eq((users as any).emailVerificationToken, token));
 
-    if (!u || !u.emailVerificationExpires || new Date(u.emailVerificationExpires) < new Date()) {
+    if (!u || !(u as any).emailVerificationExpires || new Date((u as any).emailVerificationExpires) < new Date()) {
       return res.status(400).json({
         success: false,
         error: 'رمز تأكيد البريد الإلكتروني غير صالح أو انتهت صلاحيته'
@@ -576,7 +576,7 @@ authRouter.post('/verify-email', async (req: Request, res: Response) => {
         emailVerificationToken: null,
         emailVerificationExpires: null,
         updatedAt: new Date()
-      })
+      } as any)
       .where(eq(users.id, u.id));
 
     return res.json({

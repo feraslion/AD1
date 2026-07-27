@@ -12,3 +12,7 @@ export { InvoiceRepository } from './InvoiceRepository';
 export { TreasuryRepository } from './TreasuryRepository';
 export { ExpenseRepository } from './ExpenseRepository';
 export { ReportsRepository } from './ReportsRepository';
+export { WorkflowRepository } from './WorkflowRepository';
+export { AuditRepository } from './AuditRepository';
+export { NotificationRepository } from './NotificationRepository';
+export { BackupRepository } from './BackupRepository';

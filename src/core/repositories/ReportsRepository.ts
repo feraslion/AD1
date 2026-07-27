@@ -1,4 +1,5 @@
 import { db } from '../database/index.ts';
+import { CurrencyRepository } from './CurrencyRepository.ts';
 import { 
   invoices, 
   invoiceItems, 
@@ -358,8 +359,11 @@ export class ReportsRepository {
   }
 
   // 7. FINANCIAL STATEMENTS (القوائم المالية المحاسبية الشاملة)
-  static async getFinancialStatements(filter?: ReportFilter & { currency?: string }) {
+  static async getFinancialStatements(filter?: ReportFilter & { currency?: string; targetCurrency?: string }) {
     const allAccounts = await db.select().from(accounts).orderBy(asc(accounts.code));
+    const baseCurrency = await CurrencyRepository.getBaseCurrencyCode();
+    const targetCurrency = filter?.targetCurrency || filter?.currency || baseCurrency;
+    const targetRate = await CurrencyRepository.getHistoricalRate(targetCurrency, filter?.endDate);
     
     // Get entries & lines with optional date and currency filters
     let entries = await db.select().from(journalEntries);
@@ -369,7 +373,7 @@ export class ReportsRepository {
     if (filter?.endDate) {
       entries = entries.filter(e => e.date <= filter.endDate!);
     }
-    if (filter?.currency && filter.currency !== 'ALL') {
+    if (filter?.currency && filter.currency !== 'ALL' && filter.currency !== 'SAR' && filter.currency !== baseCurrency) {
       entries = entries.filter(e => e.currency === filter.currency);
     }
 
@@ -486,7 +490,10 @@ export class ReportsRepository {
       filter: {
         startDate: filter?.startDate || null,
         endDate: filter?.endDate || null,
-        currency: filter?.currency || 'ALL'
+        currency: filter?.currency || 'ALL',
+        baseCurrency,
+        targetCurrency,
+        exchangeRateUsed: targetRate
       },
       trialBalance: {
         accounts: trialBalanceAccounts,
@@ -541,6 +548,25 @@ export class ReportsRepository {
         beginningCashBalance,
         endingCashBalance
       }
+    };
+  }
+
+  static async getTrialBalanceReport(filter?: ReportFilter) {
+    const res = await this.getFinancialStatements(filter);
+    return res.trialBalance;
+  }
+
+  static async getIncomeStatementReport(filter?: ReportFilter) {
+    const res = await this.getFinancialStatements(filter);
+    return res.incomeStatement;
+  }
+
+  static async getBalanceSheetReport(filter?: ReportFilter) {
+    const res = await this.getFinancialStatements(filter);
+    return {
+      totalAssets: res.balanceSheet.totalAssets,
+      totalLiabilitiesAndEquity: res.balanceSheet.totalLiabilities + res.balanceSheet.totalEquity,
+      details: res.balanceSheet
     };
   }
 }

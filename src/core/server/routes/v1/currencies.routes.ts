@@ -91,6 +91,43 @@ router.delete('/:id', authorize(['manager', 'accountant']), async (req, res, nex
   }
 });
 
+router.get('/historical-rate', async (req, res, next) => {
+  try {
+    const code = (req.query.code as string) || 'USD';
+    const date = (req.query.date as string) || new Date().toISOString().split('T')[0];
+    const rate = await CurrencyService.getHistoricalRate(code, date);
+    res.json({ success: true, data: { currencyCode: code, date, rate } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/revalue', authorize(['manager', 'accountant']), async (req: AuthenticatedRequest, res, next) => {
+  try {
+    const { date, currencyCode, newRate } = req.body;
+    const userName = req.user?.name || 'مدير النظام';
+    const result = await CurrencyService.revalueForeignBalances({
+      date,
+      currencyCode,
+      newRate: newRate ? Number(newRate) : undefined,
+      createdBy: userName
+    });
+    res.json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/convert-invoice', async (req, res, next) => {
+  try {
+    const { invoice, targetCurrency, rate } = req.body;
+    const result = CurrencyService.convertInvoice(invoice, targetCurrency, rate ? Number(rate) : undefined);
+    res.json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.post('/set-base', authorize(['manager', 'accountant']), async (req: AuthenticatedRequest, res, next) => {
   try {
     const { currencyId, currencyCode } = req.body;

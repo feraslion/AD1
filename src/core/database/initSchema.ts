@@ -289,6 +289,21 @@ export async function ensureDatabaseTables(force = false) {
     );
   `, 'invoices');
 
+  await execSql(sql`
+    DO $$ 
+    DECLARE r RECORD;
+    BEGIN
+      FOR r IN (
+        SELECT constraint_name 
+        FROM information_schema.constraint_column_usage 
+        WHERE table_name = 'invoices' AND column_name = 'status'
+      ) LOOP
+        EXECUTE 'ALTER TABLE invoices DROP CONSTRAINT IF EXISTS ' || quote_ident(r.constraint_name);
+      END LOOP;
+    END $$;
+    ALTER TABLE invoices ADD CONSTRAINT invoices_status_check CHECK (status in ('paid', 'unpaid', 'partially_paid', 'returned'));
+  `, 'invoices_status_check_update');
+
   // 15. Invoice Items
   await execSql(sql`
     CREATE TABLE IF NOT EXISTS invoice_items (
@@ -362,6 +377,21 @@ export async function ensureDatabaseTables(force = false) {
       updated_at TIMESTAMP DEFAULT NOW()
     );
   `, 'purchases');
+
+  await execSql(sql`
+    DO $$ 
+    DECLARE r RECORD;
+    BEGIN
+      FOR r IN (
+        SELECT constraint_name 
+        FROM information_schema.constraint_column_usage 
+        WHERE table_name = 'purchases' AND column_name = 'status'
+      ) LOOP
+        EXECUTE 'ALTER TABLE purchases DROP CONSTRAINT IF EXISTS ' || quote_ident(r.constraint_name);
+      END LOOP;
+    END $$;
+    ALTER TABLE purchases ADD CONSTRAINT purchases_status_check CHECK (status in ('draft', 'ordered', 'received', 'completed', 'cancelled'));
+  `, 'purchases_status_check_update');
 
   // 19. Purchase Items
   await execSql(sql`

@@ -20,6 +20,11 @@ export class ProductRepository {
     return result[0] || null;
   }
 
+  static async findByBarcode(barcode: string) {
+    const result = await db.select().from(products).where(eq(products.barcode, barcode));
+    return result[0] || null;
+  }
+
   static async getProductHistory(productId: string) {
     const moves = await db
       .select({
@@ -102,13 +107,15 @@ export class ProductRepository {
   }
 
   static async upsertCategory(data: any) {
-    const existing = await db.select().from(categories).where(eq(categories.id, data.id));
-    if (existing.length > 0) {
-      await db.update(categories).set(data).where(eq(categories.id, data.id));
+    const existing = await db.select().from(categories);
+    const match = existing.find(c => c.id === data.id || c.name === data.name);
+    if (match) {
+      await db.update(categories).set(data).where(eq(categories.id, match.id));
+      return { ...match, ...data };
     } else {
       await db.insert(categories).values(data);
+      return data;
     }
-    return data;
   }
 
   static async deleteCategory(id: string) {
@@ -121,13 +128,15 @@ export class ProductRepository {
   }
 
   static async upsertUnit(data: any) {
-    const existing = await db.select().from(units).where(eq(units.id, data.id));
-    if (existing.length > 0) {
-      await db.update(units).set(data).where(eq(units.id, data.id));
+    const existing = await db.select().from(units);
+    const match = existing.find(u => u.id === data.id || u.name === data.name);
+    if (match) {
+      await db.update(units).set(data).where(eq(units.id, match.id));
+      return { ...match, ...data };
     } else {
       await db.insert(units).values(data);
+      return data;
     }
-    return data;
   }
 
   static async deleteUnit(id: string) {

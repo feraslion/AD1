@@ -15,6 +15,14 @@ export class ProductService {
     return product;
   }
 
+  static async getProductByBarcode(barcode: string) {
+    const product = await ProductRepository.findByBarcode(barcode);
+    if (!product) {
+      throw new NotFoundError(`المنتج ذو الباركود '${barcode}' غير موجود`);
+    }
+    return product;
+  }
+
   static async saveProduct(data: any) {
     if (!data.name || data.name.trim().length < 2) {
       throw new ValidationError('اسم المنتج مطلوب ويجب أن يكون حرفين على الأقل');

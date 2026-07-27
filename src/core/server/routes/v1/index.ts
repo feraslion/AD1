@@ -12,6 +12,7 @@ import expensesRoutes from './expenses.routes.ts';
 import currenciesRoutes from './currencies.routes.ts';
 import usersRoutes from './users.routes.ts';
 import reportsRoutes from './reports.routes.ts';
+import systemRoutes from './system.routes.ts';
 
 const router = Router();
 
@@ -28,5 +29,6 @@ router.use('/expenses', expensesRoutes);
 router.use('/currencies', currenciesRoutes);
 router.use('/', usersRoutes);
 router.use('/reports', reportsRoutes);
+router.use('/system', systemRoutes);
 
 export default router;

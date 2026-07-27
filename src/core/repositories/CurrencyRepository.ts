@@ -1,6 +1,6 @@
 import { db } from '../database/index.ts';
 import { currencies, exchangeRatesHistory } from '../database/schema.ts';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, and, lte } from 'drizzle-orm';
 
 export class CurrencyRepository {
   static async getCurrencies() {
@@ -168,6 +168,32 @@ export class CurrencyRepository {
         .orderBy(desc(exchangeRatesHistory.createdAt));
     }
     return await db.select().from(exchangeRatesHistory).orderBy(desc(exchangeRatesHistory.createdAt));
+  }
+
+  static async getHistoricalRate(currencyCode: string, targetDate?: string): Promise<number> {
+    const code = (currencyCode || '').toUpperCase();
+    const baseCode = (await this.getBaseCurrencyCode()).toUpperCase();
+    if (!code || code === baseCode) return 1.0;
+
+    const dateStr = targetDate || new Date().toISOString().split('T')[0];
+
+    // Search exchangeRatesHistory
+    const history = await db.select().from(exchangeRatesHistory)
+      .where(and(eq(exchangeRatesHistory.currencyCode, code), lte(exchangeRatesHistory.effectiveDate, dateStr)))
+      .orderBy(desc(exchangeRatesHistory.effectiveDate), desc(exchangeRatesHistory.createdAt))
+      .limit(1);
+
+    if (history.length > 0 && history[0].rate) {
+      return parseFloat(history[0].rate) || 1.0;
+    }
+
+    // Fallback to currency record current rate
+    const curr = await this.findCurrencyByCode(code);
+    if (curr && curr.exchangeRate) {
+      return parseFloat(curr.exchangeRate) || 1.0;
+    }
+
+    return 1.0;
   }
 
   static async addExchangeRateHistory(data: {

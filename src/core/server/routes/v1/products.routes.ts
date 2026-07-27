@@ -25,6 +25,16 @@ router.get('/', async (req, res, next) => {
   }
 });
 
+// GET /api/v1/products/barcode/:barcode
+router.get('/barcode/:barcode', async (req, res, next) => {
+  try {
+    const product = await ProductService.getProductByBarcode(req.params.barcode);
+    res.json({ success: true, data: product });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/v1/products/:id
 router.get('/:id', async (req, res, next) => {
   try {

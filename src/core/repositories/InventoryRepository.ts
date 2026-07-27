@@ -62,7 +62,10 @@ export class InventoryRepository {
   }
 
   static async upsertWarehouse(data: any) {
-    const whId = data.id || 'wh_' + Math.random().toString(36).substr(2, 9);
+    const all = await db.select().from(warehouses);
+    const existing = all.find(w => (data.id && w.id === data.id) || (data.code && w.code === data.code));
+    const whId = existing ? existing.id : (data.id || 'wh_' + Math.random().toString(36).substr(2, 9));
+
     const dbValue = {
       id: whId,
       companyId: data.companyId || 'company-1',
@@ -72,7 +75,6 @@ export class InventoryRepository {
       location: data.location || ''
     };
 
-    const existing = await this.findWarehouseById(whId);
     if (existing) {
       await db.update(warehouses).set(dbValue).where(eq(warehouses.id, whId));
     } else {

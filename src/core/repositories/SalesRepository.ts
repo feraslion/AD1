@@ -118,14 +118,20 @@ export class SalesRepository {
 
   static async createSaleInvoice(invData: any) {
     const invId = invData.id || 'inv_' + Math.random().toString(36).substr(2, 9);
+    const invoiceNumber = invData.invoiceNumber || `INV-${Math.floor(100000 + Math.random() * 900000)}`;
+    const subtotal = invData.subtotal || 0;
+    const discountAmount = invData.discountAmount || 0;
+    const totalWithoutTax = (invData.totalWithoutTax !== undefined && invData.totalWithoutTax !== null && invData.totalWithoutTax !== 0)
+      ? invData.totalWithoutTax
+      : Math.max(0, subtotal - discountAmount);
 
     await db.insert(invoices).values({
       id: invId,
-      invoiceNumber: invData.invoiceNumber,
+      invoiceNumber: invoiceNumber,
       date: invData.date,
-      totalWithoutTax: (invData.totalWithoutTax || 0).toString(),
+      totalWithoutTax: totalWithoutTax.toString(),
       taxAmount: (invData.taxAmount || 0).toString(),
-      discountAmount: (invData.discountAmount || 0).toString(),
+      discountAmount: discountAmount.toString(),
       grandTotal: (invData.grandTotal || 0).toString(),
       paymentMethod: invData.paymentMethod || 'cash',
       cashAmount: (invData.paymentDetails?.cashAmount || 0).toString(),
@@ -238,7 +244,7 @@ export class SalesRepository {
       if (credAmt > 0) accountingLines.push({ accountId: recAcc, debit: credAmt, credit: 0 });
     }
 
-    accountingLines.push({ accountId: salesAcc, debit: 0, credit: invData.totalWithoutTax });
+    accountingLines.push({ accountId: salesAcc, debit: 0, credit: totalWithoutTax });
 
     if (invData.taxAmount > 0) {
       accountingLines.push({ accountId: taxAcc, debit: 0, credit: invData.taxAmount });
@@ -250,8 +256,8 @@ export class SalesRepository {
     }
 
     await AccountingRepository.postJournalEntry(
-      `JE-INV-${invData.invoiceNumber}`,
-      `فاتورة مبيعات رقم ${invData.invoiceNumber}`,
+      `JE-INV-${invoiceNumber}`,
+      `فاتورة مبيعات رقم ${invoiceNumber}`,
       invData.date,
       accountingLines,
       {
@@ -268,12 +274,13 @@ export class SalesRepository {
     if (!inv) {
       throw new Error('الفاتورة غير موجودة');
     }
-    if (inv.status === 'returned') {
+    if (inv.cashierName && inv.cashierName.includes('(مرتجعة)')) {
       throw new Error('تم إرجاع هذه الفاتورة مسبقاً');
     }
 
-    // 1. Mark as returned
-    await db.update(invoices).set({ status: 'returned' }).where(eq(invoices.id, id));
+    // 1. Mark as returned (set status to unpaid and note in cashierName)
+    const cashierName = inv.cashierName ? `${inv.cashierName} (مرتجعة)` : 'مرتجعة';
+    await db.update(invoices).set({ status: 'unpaid', cashierName }).where(eq(invoices.id, id));
 
     // 2. Restore inventory
     const items = await db.select().from(invoiceItems).where(eq(invoiceItems.invoiceId, id));
@@ -621,7 +628,7 @@ export class SalesRepository {
     // 1. Record payment in database
     await db.insert(payments).values({
       id: payId,
-      companyId: 'comp_default',
+      companyId: paymentData.companyId || 'company-1',
       paymentNumber,
       date,
       type: 'receipt', // Incoming receipt voucher
