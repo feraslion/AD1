@@ -80,13 +80,20 @@ export const rolePermissions = pgTable('role_permissions', {
 // 6. Users Table
 export const users = pgTable('users', {
   id: text('id').primaryKey(),
-  uid: text('uid').notNull().unique(), // Firebase Auth UID
+  uid: text('uid').notNull().unique(), // Firebase Auth UID or local user ID
   email: text('email').notNull(),
   name: text('name'),
   role: text('role').default('cashier'), // manager, accountant, cashier, inventory (backward compatible)
   companyId: text('company_id').references(() => companies.id, { onDelete: 'set null' }),
   branchId: text('branch_id').references(() => branches.id, { onDelete: 'set null' }),
   roleId: text('role_id').references(() => roles.id, { onDelete: 'set null' }),
+  passwordHash: text('password_hash'),
+  pin: text('pin').default('1234'),
+  resetPasswordToken: text('reset_password_token'),
+  resetPasswordExpires: timestamp('reset_password_expires'),
+  emailVerificationToken: text('email_verification_token'),
+  emailVerificationExpires: timestamp('email_verification_expires'),
+  isEmailVerified: boolean('is_email_verified').default(false),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 }, (table) => {
