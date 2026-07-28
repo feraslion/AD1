@@ -23,7 +23,14 @@ import {
   Printer, 
   CheckCircle2, 
   ArrowUpRight, 
-  ArrowDownLeft 
+  ArrowDownLeft,
+  Tv,
+  Eye,
+  EyeOff,
+  Maximize2,
+  Minimize2,
+  X,
+  Sparkles
 } from 'lucide-react';
 import StatCard from '../../shared/components/ui/StatCard';
 import Badge from '../../shared/components/ui/Badge';
@@ -37,11 +44,25 @@ export default function Reports({ settings }: ReportsProps) {
     'sales' | 'purchases' | 'inventory' | 'customers' | 'suppliers' | 'profit' | 'financials'
   >('sales');
 
+  // Presentation Mode Toggle
+  const [isPresentationMode, setIsPresentationMode] = useState(false);
+
   // Filters
   const [startDate, setStartDate] = useState<string>(
     new Date(new Date().setMonth(new Date().getMonth() - 1)).toISOString().slice(0, 10)
   );
   const [endDate, setEndDate] = useState<string>(new Date().toISOString().slice(0, 10));
+
+  // Handle ESC key to exit presentation mode
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isPresentationMode) {
+        setIsPresentationMode(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isPresentationMode]);
 
   // Data States
   const [salesReport, setSalesReport] = useState<any>(null);
@@ -197,9 +218,41 @@ export default function Reports({ settings }: ReportsProps) {
   };
 
   return (
-    <div className="p-4 sm:p-6 space-y-6 bg-slate-50 min-h-screen text-right" dir="rtl">
+    <div className={`p-4 sm:p-6 space-y-6 ${isPresentationMode ? 'bg-white' : 'bg-slate-50'} min-h-screen text-right`} dir="rtl">
+      {/* Presentation Mode Sticky Active Banner */}
+      {isPresentationMode && (
+        <div className="bg-slate-900 text-white p-4 rounded-2xl shadow-xl flex flex-wrap items-center justify-between gap-4 border border-slate-800 print:hidden sticky top-4 z-50 animate-fade-in">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-emerald-500/20 text-emerald-400 rounded-xl border border-emerald-500/30">
+              <Tv className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-black text-sm text-white">وضع العرض النظيف (Presentation Mode)</span>
+                <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 rounded-full text-[10px] font-bold border border-emerald-500/30">نشط</span>
+              </div>
+              <p className="text-xs text-slate-300 font-medium mt-0.5">تم إخفاء أزرار الإجراءات وفلاتر الادخار لعرض التقرير بوضوح وإتاحة طباعته بنقاء (اضغط Esc للخروج)</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => window.print()}
+              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow"
+            >
+              <Printer className="w-4 h-4" /> طباعة الصفحة
+            </button>
+            <button
+              onClick={() => setIsPresentationMode(false)}
+              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border border-slate-700"
+            >
+              <Minimize2 className="w-4 h-4" /> إنهاء وضع العرض (Esc)
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Top Banner Header */}
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm print:hidden">
         <div className="flex items-center gap-3">
           <div className="p-3 bg-blue-600 text-white rounded-2xl shadow-md shadow-blue-200">
             <BarChart3 className="w-7 h-7" />
@@ -210,34 +263,57 @@ export default function Reports({ settings }: ReportsProps) {
           </div>
         </div>
 
-        {/* Date Filters & Actions */}
+        {/* Date Filters & Presentation Actions */}
         <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
           {['sales', 'purchases', 'profit'].includes(activeTab) && (
-            <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
-              <Calendar className="w-4 h-4 text-slate-500 mr-1" />
-              <span>من:</span>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="bg-white border border-slate-300 rounded-lg px-2 py-1 text-slate-800"
-              />
-              <span>إلى:</span>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="bg-white border border-slate-300 rounded-lg px-2 py-1 text-slate-800"
-              />
-            </div>
+            isPresentationMode ? (
+              <div className="flex items-center gap-1.5 bg-slate-100 px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-700">
+                <Calendar className="w-4 h-4 text-slate-500 ml-1" />
+                <span>فترة التقرير: {startDate} إلى {endDate}</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
+                <Calendar className="w-4 h-4 text-slate-500 mr-1" />
+                <span>من:</span>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="bg-white border border-slate-300 rounded-lg px-2 py-1 text-slate-800"
+                />
+                <span>إلى:</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="bg-white border border-slate-300 rounded-lg px-2 py-1 text-slate-800"
+                />
+              </div>
+            )
           )}
 
+          {!isPresentationMode && (
+            <button
+              onClick={loadCurrentTabReport}
+              title="تحديث التقرير"
+              className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition border border-slate-300"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+          )}
+
+          {/* Presentation Mode Toggle Button */}
           <button
-            onClick={loadCurrentTabReport}
-            title="تحديث التقرير"
-            className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition border border-slate-300"
+            onClick={() => setIsPresentationMode(!isPresentationMode)}
+            title={isPresentationMode ? "إنهاء وضع العرض" : "تفعيل وضع العرض النظيف"}
+            className={`px-3.5 py-2.5 rounded-xl text-xs font-bold transition border flex items-center gap-2 ${
+              isPresentationMode
+                ? 'bg-emerald-600 text-white border-emerald-500 shadow-md shadow-emerald-200'
+                : 'bg-slate-900 hover:bg-slate-800 text-white border-slate-900 shadow-sm'
+            }`}
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            <Tv className="w-4 h-4" />
+            <span>{isPresentationMode ? 'إنهاء وضع العرض' : 'وضع العرض'}</span>
           </button>
         </div>
       </div>
@@ -307,20 +383,22 @@ export default function Reports({ settings }: ReportsProps) {
           <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h2 className="font-bold text-base text-slate-900">سجل فواتير المبيعات التفصيلي</h2>
-              <div className="flex gap-2">
-                <button
-                  onClick={handleExportSalesExcel}
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-sm"
-                >
-                  <FileSpreadsheet className="w-4 h-4" /> تصدير Excel
-                </button>
-                <button
-                  onClick={handleExportSalesPDF}
-                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-sm"
-                >
-                  <Printer className="w-4 h-4" /> طباعة PDF
-                </button>
-              </div>
+              {!isPresentationMode && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleExportSalesExcel}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-sm"
+                  >
+                    <FileSpreadsheet className="w-4 h-4" /> تصدير Excel
+                  </button>
+                  <button
+                    onClick={handleExportSalesPDF}
+                    className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-sm"
+                  >
+                    <Printer className="w-4 h-4" /> طباعة PDF
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="overflow-x-auto">
@@ -389,20 +467,22 @@ export default function Reports({ settings }: ReportsProps) {
           <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h2 className="font-bold text-base text-slate-900">أوامر الشراء والتوريدات التفصيلية</h2>
-              <div className="flex gap-2">
-                <button
-                  onClick={handleExportPurchasesExcel}
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-sm"
-                >
-                  <FileSpreadsheet className="w-4 h-4" /> تصدير Excel
-                </button>
-                <button
-                  onClick={handleExportPurchasesPDF}
-                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-sm"
-                >
-                  <Printer className="w-4 h-4" /> طباعة PDF
-                </button>
-              </div>
+              {!isPresentationMode && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleExportPurchasesExcel}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-sm"
+                  >
+                    <FileSpreadsheet className="w-4 h-4" /> تصدير Excel
+                  </button>
+                  <button
+                    onClick={handleExportPurchasesPDF}
+                    className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-sm"
+                  >
+                    <Printer className="w-4 h-4" /> طباعة PDF
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="overflow-x-auto">
@@ -476,20 +556,22 @@ export default function Reports({ settings }: ReportsProps) {
           <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h2 className="font-bold text-base text-slate-900">تقييم وحركة المخزون حسب التصنيف</h2>
-              <div className="flex gap-2">
-                <button
-                  onClick={handleExportInventoryExcel}
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-sm"
-                >
-                  <FileSpreadsheet className="w-4 h-4" /> تصدير Excel
-                </button>
-                <button
-                  onClick={handleExportInventoryPDF}
-                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-sm"
-                >
-                  <Printer className="w-4 h-4" /> طباعة PDF
-                </button>
-              </div>
+              {!isPresentationMode && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleExportInventoryExcel}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-sm"
+                  >
+                    <FileSpreadsheet className="w-4 h-4" /> تصدير Excel
+                  </button>
+                  <button
+                    onClick={handleExportInventoryPDF}
+                    className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-sm"
+                  >
+                    <Printer className="w-4 h-4" /> طباعة PDF
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="overflow-x-auto">
@@ -664,12 +746,14 @@ export default function Reports({ settings }: ReportsProps) {
                 <h2 className="font-bold text-base text-slate-900">ميزان المراجعة المحاسبي (Trial Balance)</h2>
                 <p className="text-xs text-slate-500 font-bold">التحقق من اتزان الأرصدة والعمليات بالحسابات العامة</p>
               </div>
-              <button
-                onClick={handleExportFinancialsPDF}
-                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow"
-              >
-                <Printer className="w-4 h-4" /> طباعة الميزان القوائم PDF
-              </button>
+              {!isPresentationMode && (
+                <button
+                  onClick={handleExportFinancialsPDF}
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow"
+                >
+                  <Printer className="w-4 h-4" /> طباعة الميزان القوائم PDF
+                </button>
+              )}
             </div>
 
             <div className="overflow-x-auto">
