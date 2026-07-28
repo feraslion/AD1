@@ -168,7 +168,7 @@ export class CustomerRepository {
           date: pmt.date || new Date().toISOString().split('T')[0],
           type: 'receipt_payment',
           typeLabel: 'سند قبض',
-          reference: pmt.paymentNumber || pmt.voucherNumber || 'PMT',
+          reference: (pmt as any).paymentNumber || (pmt as any).voucherNumber || 'PMT',
           invoiceNumber: pmt.reference || '-',
           debit: 0,
           credit: amt,

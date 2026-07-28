@@ -2707,9 +2707,10 @@ app.use(errorHandler);
 // ─── VITE DEV / PROD MIDDLEWARE INTEGRATION ───
 async function startServer() {
   try {
+    await ensureDatabaseTables();
     await seedDefaultData();
   } catch (err) {
-    console.error('Error during seedDefaultData initialization:', err);
+    console.error('Error during database table check / seedDefaultData initialization:', err);
   }
 
   if (process.env.NODE_ENV !== 'production') {

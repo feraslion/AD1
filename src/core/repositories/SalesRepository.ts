@@ -628,7 +628,7 @@ export class SalesRepository {
     // 1. Record payment in database
     await db.insert(payments).values({
       id: payId,
-      companyId: paymentData.companyId || 'company-1',
+      companyId: (paymentData as any).companyId || 'company-1',
       paymentNumber,
       date,
       type: 'receipt', // Incoming receipt voucher

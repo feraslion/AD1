@@ -54,7 +54,7 @@ export class SupplierRepository {
     if (!supplier) throw new Error('المورد غير موجود');
 
     const purList = await this.getSupplierPurchases(supplierId);
-    const openingBalance = parseFloat(supplier.openingBalance || '0');
+    const openingBalance = parseFloat((supplier as any).openingBalance || supplier.balance || '0');
     let runningBalance = openingBalance;
 
     const rawLines: any[] = [];

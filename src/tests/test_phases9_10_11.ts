@@ -146,7 +146,7 @@ async function runPhases9To11Tests() {
       receiptNumber: `RCPT-${Date.now().toString().slice(-5)}`,
       method: 'cash',
       customerName: 'عميل تجريبي مبيعات'
-    });
+    } as any);
     const custAfterPay = await CustomerRepository.findById(testCustId);
     console.log(`✓ Customer Balance after 500 SAR Payment: ${custAfterPay.balance} SAR (Expected: 1060 SAR)`);
 

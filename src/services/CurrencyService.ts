@@ -1,9 +1,3 @@
-import { db } from '../core/database/index.ts';
-import { accounts } from '../core/database/schema.ts';
-import { eq } from 'drizzle-orm';
-import { CurrencyRepository } from '../core/repositories/CurrencyRepository.ts';
-import { JournalEngine, JournalLineInput } from '../core/services/JournalEngine.ts';
-
 export interface Currency {
   id: string;
   code: string; // e.g. 'SAR', 'USD', 'SYP', 'TRY'
@@ -34,6 +28,14 @@ export interface ConversionResult {
   targetCurrency: string;
   effectiveRate: number; // rate used for target / source
   baseAmount: number; // converted value in base currency (SAR)
+}
+
+export interface JournalLineInput {
+  accountId: string;
+  debit: number;
+  credit: number;
+  currency?: string;
+  description?: string;
 }
 
 export interface RevalueOptions {
@@ -146,6 +148,7 @@ export class CurrencyService {
    * Get historical rate for a currency code at a specific date
    */
   static async getHistoricalRate(currencyCode: string, targetDate?: string): Promise<number> {
+    const { CurrencyRepository } = await import('../core/repositories/CurrencyRepository.ts');
     return await CurrencyRepository.getHistoricalRate(currencyCode, targetDate);
   }
 
@@ -223,6 +226,11 @@ export class CurrencyService {
    * Revaluation Engine: Revalue all foreign currency accounts or specified account
    */
   static async revalueForeignBalances(options?: RevalueOptions): Promise<RevaluationSummary> {
+    const { db } = await import('../core/database/index.ts');
+    const { accounts } = await import('../core/database/schema.ts');
+    const { CurrencyRepository } = await import('../core/repositories/CurrencyRepository.ts');
+    const { JournalEngine } = await import('../core/services/JournalEngine.ts');
+
     const today = options?.date || new Date().toISOString().split('T')[0];
     const baseCurrency = await CurrencyRepository.getBaseCurrencyCode();
     const createdBy = options?.createdBy || 'system';

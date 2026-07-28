@@ -51,7 +51,8 @@ export class AuditRepository {
         userId: data.userId,
         userName,
         action: data.action,
-        entity: data.entity,
+        module: data.entity,
+        recordId: data.entityId,
         details: data.details,
         ipAddress: data.ipAddress || '127.0.0.1',
         createdAt: new Date()

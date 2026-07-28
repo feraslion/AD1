@@ -97,8 +97,8 @@ async function runPhases12To15Tests() {
     console.log(`✓ POS Invoice created with Split Payment (Cash: 110.5, Card: 200): ID ${posInvRes.invoiceId}`);
 
     // 12.3 POS Return
-    const returnRes = await SalesRepository.returnSaleInvoice(posInvRes.invoiceId, { notes: 'إرجاع صنف واحد عبر الكاشير' });
-    console.log(`✓ POS Sale Invoice returned successfully: ${returnRes.message}`);
+    const returnRes = await SalesRepository.returnSaleInvoice(posInvRes.invoiceId);
+    console.log(`✓ POS Sale Invoice returned successfully: ${returnRes.journalEntry?.id || 'OK'}`);
 
     // -------------------------------------------------------------
     // PHASE 13: CUSTOMER & SUPPLIER MANAGEMENT
@@ -134,7 +134,7 @@ async function runPhases12To15Tests() {
 
     // 14.2 Income Statement
     const incomeStmt = await ReportsRepository.getIncomeStatementReport({});
-    console.log(`✓ Income Statement calculated: Total Revenue = ${incomeStmt.totalRevenue} SAR, Net Profit = ${incomeStmt.netProfit} SAR`);
+    console.log(`✓ Income Statement calculated: Total Revenue = ${incomeStmt.totalRevenues} SAR, Net Profit = ${incomeStmt.netProfit} SAR`);
 
     // 14.3 Balance Sheet
     const balSheet = await ReportsRepository.getBalanceSheetReport();

@@ -84,7 +84,7 @@ export class PurchaseRepository {
       // Fallback if purchase_requests table does not exist in DB
       await db.insert(purchases).values({
         id: reqId,
-        companyId: reqVal.companyId || 'company-1',
+        companyId: (reqVal as any).companyId || 'company-1',
         purchaseNumber: reqNum,
         supplierInvoiceNumber: reqNum,
         date: reqVal.date,

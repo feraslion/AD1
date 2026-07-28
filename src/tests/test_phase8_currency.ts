@@ -104,7 +104,6 @@ async function runPhase8CurrencyTests() {
         currency: 'USD',
         foreignBalance: '10000', // 10,000 USD
         balance: '37000',        // Originally recorded at rate 3.70 = 37,000 SAR
-        isActive: true
       });
     } else {
       await db.update(accounts).set({
