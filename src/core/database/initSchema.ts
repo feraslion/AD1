@@ -51,10 +51,13 @@ export async function ensureDatabaseTables(force = false) {
       client.release(true); // destroy client so no aborted state lingers
     }
   } catch (err: any) {
-    console.log('[Schema Migration] DDL test check failed, proceeding to attempt table DDLs directly:', err?.message || err);
-  } finally {
+    console.log('[Schema Migration] DDL check failed (no CREATE TABLE privilege). Skipping DDL execution:', err?.message || err);
+    ddlSupported = false;
+    isSchemaEnsured = true;
     await testPool.end().catch(() => {});
+    return;
   }
+  await testPool.end().catch(() => {});
 
   // 1. Companies
   await execSql(sql`

@@ -12,6 +12,29 @@ jobs:
   build-and-test-web:
     name: Build Web Application & Run ERP Engine Audits
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgrespassword
+          POSTGRES_DB: ad1_erp_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      SQL_HOST: localhost
+      SQL_PORT: 5432
+      SQL_USER: postgres
+      SQL_PASSWORD: postgrespassword
+      SQL_DB_NAME: ad1_erp_test
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4

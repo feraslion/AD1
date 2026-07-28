@@ -1,4 +1,5 @@
 import { db } from '../core/database/index.ts';
+import { ensureDatabaseTables } from '../core/database/initSchema.ts';
 import { 
   SalesRepository, 
   CustomerRepository, 
@@ -16,6 +17,9 @@ async function runPhases12To15Tests() {
   console.log('=== Starting Verification for Phase 12 (POS), Phase 13 (Customers/Suppliers), Phase 14 (Reports), Phase 15 (Enterprise ERP) ===\n');
 
   try {
+    // 0. ENSURE DATABASE SCHEMA IS CREATED
+    await ensureDatabaseTables(true);
+
     // -------------------------------------------------------------
     // SETUP TEST DATA
     // -------------------------------------------------------------

@@ -6,6 +6,7 @@ import { ProductRepository } from '../core/repositories/ProductRepository.ts';
 import { CustomerRepository } from '../core/repositories/CustomerRepository.ts';
 import { SupplierRepository } from '../core/repositories/SupplierRepository.ts';
 import { db } from '../core/database/index.ts';
+import { ensureDatabaseTables } from '../core/database/initSchema.ts';
 import { products, warehouses, customers, suppliers } from '../core/database/schema.ts';
 import { eq } from 'drizzle-orm';
 
@@ -13,6 +14,9 @@ async function runPhases9To11Tests() {
   console.log('=== Starting Verification for Phase 9 (Inventory), Phase 10 (Sales), Phase 11 (Purchases) ===\n');
 
   try {
+    // 0. ENSURE DATABASE SCHEMA IS CREATED
+    await ensureDatabaseTables(true);
+
     // SETUP TEST DATA
     console.log('[Setup] Creating test product, customer, supplier, and warehouse...');
     const testProdId = `prod_p91011_${Date.now()}`;

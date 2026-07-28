@@ -1,4 +1,5 @@
 import { db } from '../database/index.ts';
+import { withAutoMigration } from '../database/initSchema.ts';
 import { products, categories, units, stockMoves, warehouses } from '../database/schema.ts';
 import { eq, desc } from 'drizzle-orm';
 
@@ -103,44 +104,56 @@ export class ProductRepository {
   }
 
   static async getCategories() {
-    return await db.select().from(categories);
+    return await withAutoMigration(async () => {
+      return await db.select().from(categories);
+    });
   }
 
   static async upsertCategory(data: any) {
-    const existing = await db.select().from(categories);
-    const match = existing.find(c => c.id === data.id || c.name === data.name);
-    if (match) {
-      await db.update(categories).set(data).where(eq(categories.id, match.id));
-      return { ...match, ...data };
-    } else {
-      await db.insert(categories).values(data);
-      return data;
-    }
+    return await withAutoMigration(async () => {
+      const existing = await db.select().from(categories);
+      const match = existing.find(c => c.id === data.id || c.name === data.name);
+      if (match) {
+        await db.update(categories).set(data).where(eq(categories.id, match.id));
+        return { ...match, ...data };
+      } else {
+        await db.insert(categories).values(data);
+        return data;
+      }
+    });
   }
 
   static async deleteCategory(id: string) {
-    await db.delete(categories).where(eq(categories.id, id));
-    return { success: true };
+    return await withAutoMigration(async () => {
+      await db.delete(categories).where(eq(categories.id, id));
+      return { success: true };
+    });
   }
 
   static async getUnits() {
-    return await db.select().from(units);
+    return await withAutoMigration(async () => {
+      return await db.select().from(units);
+    });
   }
 
   static async upsertUnit(data: any) {
-    const existing = await db.select().from(units);
-    const match = existing.find(u => u.id === data.id || u.name === data.name);
-    if (match) {
-      await db.update(units).set(data).where(eq(units.id, match.id));
-      return { ...match, ...data };
-    } else {
-      await db.insert(units).values(data);
-      return data;
-    }
+    return await withAutoMigration(async () => {
+      const existing = await db.select().from(units);
+      const match = existing.find(u => u.id === data.id || u.name === data.name);
+      if (match) {
+        await db.update(units).set(data).where(eq(units.id, match.id));
+        return { ...match, ...data };
+      } else {
+        await db.insert(units).values(data);
+        return data;
+      }
+    });
   }
 
   static async deleteUnit(id: string) {
-    await db.delete(units).where(eq(units.id, id));
-    return { success: true };
+    return await withAutoMigration(async () => {
+      await db.delete(units).where(eq(units.id, id));
+      return { success: true };
+    });
   }
 }

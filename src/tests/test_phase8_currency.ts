@@ -3,6 +3,7 @@ import { CurrencyService, DEFAULT_CURRENCIES } from '../services/CurrencyService
 import { JournalEngine } from '../core/services/JournalEngine.ts';
 import { ReportsRepository } from '../core/repositories/ReportsRepository.ts';
 import { db } from '../core/database/index.ts';
+import { ensureDatabaseTables } from '../core/database/initSchema.ts';
 import { accounts } from '../core/database/schema.ts';
 import { eq } from 'drizzle-orm';
 
@@ -10,6 +11,8 @@ async function runPhase8CurrencyTests() {
   console.log('=== Starting Phase 8 Multi-Currency Engine Verification ===\n');
 
   try {
+    // 0. ENSURE DATABASE SCHEMA IS CREATED
+    await ensureDatabaseTables(true);
     // 1. Seed and verify Currencies (USD, SYP, TRY, SAR)
     console.log('[Test 1] Seeding and verifying default currencies (USD, SYP, TRY, SAR)...');
     for (const curr of DEFAULT_CURRENCIES) {
