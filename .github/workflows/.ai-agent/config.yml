@@ -1,0 +1,37 @@
+project:
+  name: AD1
+  type: ERP
+  stack:
+    frontend:
+      - React
+      - TypeScript
+
+    backend:
+      - Node.js
+
+    database:
+      - PostgreSQL
+      - Drizzle ORM
+
+targets:
+  - Windows EXE
+  - Android APK
+  - Web
+
+rules:
+
+  architecture:
+    - preserve modular ERP architecture
+    - do not remove accounting logic
+    - keep database migrations backward compatible
+
+  testing:
+    - run lint before changes
+    - run ERP tests
+    - verify migrations
+
+  commits:
+    format:
+      - fix:
+      - feat:
+      - refactor:
