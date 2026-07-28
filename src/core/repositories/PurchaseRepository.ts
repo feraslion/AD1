@@ -9,41 +9,46 @@ import { withAutoMigration } from '../database/initSchema.ts';
 export class PurchaseRepository {
   static async findAllPurchaseRequests() {
     return await withAutoMigration(async () => {
+      let reqList: any[] = [];
       try {
-        const reqList = await db.select().from(purchaseRequests).orderBy(desc(purchaseRequests.createdAt));
-        if (reqList.length === 0) return [];
-
-        const reqIds = reqList.map(r => r.id);
-        const itemsList = await db.select().from(purchaseRequestItems).where(inArray(purchaseRequestItems.requestId, reqIds));
-        const supplierList = await db.select().from(suppliers);
-        const suppliersMap = new Map(supplierList.map(s => [s.id, s]));
-
-        return reqList.map(req => {
-          const rItems = itemsList
-            .filter(item => item.requestId === req.id)
-            .map(i => ({
-              ...i,
-              estimatedPrice: parseFloat(i.estimatedPrice || '0'),
-              quantity: parseFloat(i.quantity || '0'),
-              total: parseFloat(i.total || '0')
-            }));
-
-          const supp = req.supplierId ? suppliersMap.get(req.supplierId) : null;
-
-          return {
-            ...req,
-            subtotal: parseFloat(req.subtotal || '0'),
-            taxAmount: parseFloat(req.taxAmount || '0'),
-            grandTotal: parseFloat(req.grandTotal || '0'),
-            exchangeRate: parseFloat(req.exchangeRate || '1.0'),
-            supplierName: supp ? supp.name : 'غير محدد',
-            items: rItems
-          };
-        });
-      } catch (error) {
-        console.warn('Purchase requests table unavailable, returning empty list:', error);
+        reqList = await db.select().from(purchaseRequests).orderBy(desc(purchaseRequests.createdAt));
+      } catch (error: any) {
+        if (error?.message?.includes('does not exist') || error?.code === '42P01') {
+          throw error;
+        }
+        console.warn('Purchase requests table query failed:', error);
         return [];
       }
+
+      if (reqList.length === 0) return [];
+
+      const reqIds = reqList.map(r => r.id);
+      const itemsList = await db.select().from(purchaseRequestItems).where(inArray(purchaseRequestItems.requestId, reqIds)).catch(() => []);
+      const supplierList = await db.select().from(suppliers).catch(() => []);
+      const suppliersMap = new Map((supplierList || []).map(s => [s.id, s]));
+
+      return reqList.map(req => {
+        const rItems = itemsList
+          .filter(item => item.requestId === req.id)
+          .map(i => ({
+            ...i,
+            estimatedPrice: parseFloat(i.estimatedPrice || '0'),
+            quantity: parseFloat(i.quantity || '0'),
+            total: parseFloat(i.total || '0')
+          }));
+
+        const supp = req.supplierId ? suppliersMap.get(req.supplierId) : null;
+
+        return {
+          ...req,
+          subtotal: parseFloat(req.subtotal || '0'),
+          taxAmount: parseFloat(req.taxAmount || '0'),
+          grandTotal: parseFloat(req.grandTotal || '0'),
+          exchangeRate: parseFloat(req.exchangeRate || '1.0'),
+          supplierName: supp ? supp.name : 'غير محدد',
+          items: rItems
+        };
+      });
     });
   }
 

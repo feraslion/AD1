@@ -31,16 +31,14 @@ let isSchemaEnsured = false;
 let ddlSupported: boolean | null = null;
 
 export async function ensureDatabaseTables(force = false) {
-  if (isSchemaEnsured && !force) {
+  if (force) {
+    isSchemaEnsured = false;
+    ddlSupported = null;
+  }
+  if (isSchemaEnsured) {
     return;
   }
   console.log('Ensuring all database tables and schema migrations exist...');
-  
-  if (ddlSupported === false) {
-    console.log('[Schema Migration] DDL operations not permitted for app user, relying on existing database schema.');
-    isSchemaEnsured = true;
-    return;
-  }
 
   const testPool = createPool();
   try {
@@ -53,13 +51,10 @@ export async function ensureDatabaseTables(force = false) {
       client.release(true); // destroy client so no aborted state lingers
     }
   } catch (err: any) {
-    console.log('[Schema Migration] DDL check failed (no CREATE TABLE privilege). Skipping DDL execution:', err?.message || err);
-    ddlSupported = false;
-    isSchemaEnsured = true;
+    console.log('[Schema Migration] DDL test check failed, proceeding to attempt table DDLs directly:', err?.message || err);
+  } finally {
     await testPool.end().catch(() => {});
-    return;
   }
-  await testPool.end().catch(() => {});
 
   // 1. Companies
   await execSql(sql`
