@@ -4,114 +4,119 @@ import { eq, desc, inArray } from 'drizzle-orm';
 import { InventoryRepository } from './InventoryRepository.ts';
 import { SupplierRepository } from './SupplierRepository.ts';
 import { AccountingRepository } from './AccountingRepository.ts';
+import { withAutoMigration } from '../database/initSchema.ts';
 
 export class PurchaseRepository {
   static async findAllPurchaseRequests() {
-    try {
-      const reqList = await db.select().from(purchaseRequests).orderBy(desc(purchaseRequests.createdAt));
-      if (reqList.length === 0) return [];
+    return await withAutoMigration(async () => {
+      try {
+        const reqList = await db.select().from(purchaseRequests).orderBy(desc(purchaseRequests.createdAt));
+        if (reqList.length === 0) return [];
 
-      const reqIds = reqList.map(r => r.id);
-      const itemsList = await db.select().from(purchaseRequestItems).where(inArray(purchaseRequestItems.requestId, reqIds));
-      const supplierList = await db.select().from(suppliers);
-      const suppliersMap = new Map(supplierList.map(s => [s.id, s]));
+        const reqIds = reqList.map(r => r.id);
+        const itemsList = await db.select().from(purchaseRequestItems).where(inArray(purchaseRequestItems.requestId, reqIds));
+        const supplierList = await db.select().from(suppliers);
+        const suppliersMap = new Map(supplierList.map(s => [s.id, s]));
 
-      return reqList.map(req => {
-        const rItems = itemsList
-          .filter(item => item.requestId === req.id)
-          .map(i => ({
-            ...i,
-            estimatedPrice: parseFloat(i.estimatedPrice || '0'),
-            quantity: parseFloat(i.quantity || '0'),
-            total: parseFloat(i.total || '0')
-          }));
+        return reqList.map(req => {
+          const rItems = itemsList
+            .filter(item => item.requestId === req.id)
+            .map(i => ({
+              ...i,
+              estimatedPrice: parseFloat(i.estimatedPrice || '0'),
+              quantity: parseFloat(i.quantity || '0'),
+              total: parseFloat(i.total || '0')
+            }));
 
-        const supp = req.supplierId ? suppliersMap.get(req.supplierId) : null;
+          const supp = req.supplierId ? suppliersMap.get(req.supplierId) : null;
 
-        return {
-          ...req,
-          subtotal: parseFloat(req.subtotal || '0'),
-          taxAmount: parseFloat(req.taxAmount || '0'),
-          grandTotal: parseFloat(req.grandTotal || '0'),
-          exchangeRate: parseFloat(req.exchangeRate || '1.0'),
-          supplierName: supp ? supp.name : 'غير محدد',
-          items: rItems
-        };
-      });
-    } catch (error) {
-      console.warn('Purchase requests table unavailable, returning empty list:', error);
-      return [];
-    }
+          return {
+            ...req,
+            subtotal: parseFloat(req.subtotal || '0'),
+            taxAmount: parseFloat(req.taxAmount || '0'),
+            grandTotal: parseFloat(req.grandTotal || '0'),
+            exchangeRate: parseFloat(req.exchangeRate || '1.0'),
+            supplierName: supp ? supp.name : 'غير محدد',
+            items: rItems
+          };
+        });
+      } catch (error) {
+        console.warn('Purchase requests table unavailable, returning empty list:', error);
+        return [];
+      }
+    });
   }
 
   static async createPurchaseRequest(data: any) {
-    const reqId = data.id || `pr_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-    const reqNum = data.requestNumber || `PR-${Math.floor(100000 + Math.random() * 900000)}`;
+    return await withAutoMigration(async () => {
+      const reqId = data.id || `pr_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+      const reqNum = data.requestNumber || `PR-${Math.floor(100000 + Math.random() * 900000)}`;
 
-    const reqVal = {
-      id: reqId,
-      requestNumber: reqNum,
-      requesterName: data.requesterName || 'إدارة المشتريات',
-      department: data.department || 'المستودع والمشتريات',
-      date: data.date || new Date().toISOString().split('T')[0],
-      requiredDate: data.requiredDate || data.date || new Date().toISOString().split('T')[0],
-      subtotal: (data.subtotal || 0).toString(),
-      taxAmount: (data.taxAmount || 0).toString(),
-      grandTotal: (data.grandTotal || 0).toString(),
-      currency: data.currency || 'SAR',
-      exchangeRate: (data.exchangeRate || 1.0).toString(),
-      status: data.status || 'pending', // 'draft' | 'pending' | 'approved' | 'converted' | 'rejected'
-      notes: data.notes || '',
-      supplierId: data.supplierId || null
-    };
-
-    const rItemsVal = (data.items || []).map((item: any) => ({
-      id: `pri_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-      requestId: reqId,
-      productId: item.productId || null,
-      productName: item.productName || 'صنف غير محدد',
-      estimatedPrice: (item.estimatedPrice || item.purchasePrice || 0).toString(),
-      quantity: (item.quantity || 1).toString(),
-      total: ((item.quantity || 1) * (item.estimatedPrice || item.purchasePrice || 0)).toString()
-    }));
-
-    try {
-      await db.insert(purchaseRequests).values(reqVal);
-      if (rItemsVal.length > 0) {
-        await db.insert(purchaseRequestItems).values(rItemsVal);
-      }
-    } catch (err) {
-      // Fallback if purchase_requests table does not exist in DB
-      await db.insert(purchases).values({
+      const reqVal = {
         id: reqId,
-        companyId: (reqVal as any).companyId || 'company-1',
-        purchaseNumber: reqNum,
-        supplierInvoiceNumber: reqNum,
-        date: reqVal.date,
-        subtotal: reqVal.subtotal,
-        taxAmount: reqVal.taxAmount,
-        grandTotal: reqVal.grandTotal,
-        status: 'draft',
-        paymentMethod: 'credit',
-        supplierId: reqVal.supplierId || null,
-        notes: reqVal.notes || 'طلب شراء'
-      });
-      if (rItemsVal.length > 0) {
-        const fallbackItems = rItemsVal.map(i => ({
-          id: i.id,
-          purchaseId: reqId,
-          productId: i.productId,
-          productName: i.productName,
-          purchasePrice: i.estimatedPrice,
-          quantity: i.quantity,
-          total: i.total,
-          taxAmount: '0'
-        }));
-        await db.insert(purchaseItems).values(fallbackItems);
-      }
-    }
+        requestNumber: reqNum,
+        requesterName: data.requesterName || 'إدارة المشتريات',
+        department: data.department || 'المستودع والمشتريات',
+        date: data.date || new Date().toISOString().split('T')[0],
+        requiredDate: data.requiredDate || data.date || new Date().toISOString().split('T')[0],
+        subtotal: (data.subtotal || 0).toString(),
+        taxAmount: (data.taxAmount || 0).toString(),
+        grandTotal: (data.grandTotal || 0).toString(),
+        currency: data.currency || 'SAR',
+        exchangeRate: (data.exchangeRate || 1.0).toString(),
+        status: data.status || 'pending', // 'draft' | 'pending' | 'approved' | 'converted' | 'rejected'
+        notes: data.notes || '',
+        supplierId: data.supplierId || null
+      };
 
-    return { success: true, requestId: reqId, requestNumber: reqNum };
+      const rItemsVal = (data.items || []).map((item: any) => ({
+        id: `pri_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+        requestId: reqId,
+        productId: item.productId || null,
+        productName: item.productName || 'صنف غير محدد',
+        estimatedPrice: (item.estimatedPrice || item.purchasePrice || 0).toString(),
+        quantity: (item.quantity || 1).toString(),
+        total: ((item.quantity || 1) * (item.estimatedPrice || item.purchasePrice || 0)).toString()
+      }));
+
+      try {
+        await db.insert(purchaseRequests).values(reqVal);
+        if (rItemsVal.length > 0) {
+          await db.insert(purchaseRequestItems).values(rItemsVal);
+        }
+      } catch (err) {
+        // Fallback if purchase_requests table does not exist in DB
+        await db.insert(purchases).values({
+          id: reqId,
+          companyId: (reqVal as any).companyId || 'company-1',
+          purchaseNumber: reqNum,
+          supplierInvoiceNumber: reqNum,
+          date: reqVal.date,
+          subtotal: reqVal.subtotal,
+          taxAmount: reqVal.taxAmount,
+          grandTotal: reqVal.grandTotal,
+          status: 'draft',
+          paymentMethod: 'credit',
+          supplierId: reqVal.supplierId || null,
+          notes: reqVal.notes || 'طلب شراء'
+        });
+        if (rItemsVal.length > 0) {
+          const fallbackItems = rItemsVal.map((i: any) => ({
+            id: i.id,
+            purchaseId: reqId,
+            productId: i.productId,
+            productName: i.productName,
+            purchasePrice: i.estimatedPrice,
+            quantity: i.quantity,
+            total: i.total,
+            taxAmount: '0'
+          }));
+          await db.insert(purchaseItems).values(fallbackItems);
+        }
+      }
+
+      return { success: true, requestId: reqId, requestNumber: reqNum };
+    });
   }
 
   static async convertRequestToOrder(requestId: string) {
