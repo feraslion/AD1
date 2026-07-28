@@ -1,0 +1,70 @@
+name: AD1 AI Development Agent
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+  workflow_dispatch:
+
+  workflow_run:
+    workflows:
+      - "Type Check, Lint & Automated ERP Tests"
+    types:
+      - completed
+
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+
+jobs:
+
+  ai-review:
+    name: AI Code Review Agent
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout AD1
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+
+      - name: Install dependencies
+        run: npm install
+
+
+      - name: Collect project information
+        run: |
+          echo "=== AD1 AI Agent Report ===" > ai-report.md
+          echo "" >> ai-report.md
+
+          echo "Commit:" >> ai-report.md
+          git log -1 --oneline >> ai-report.md
+
+          echo "" >> ai-report.md
+          echo "Changed files:" >> ai-report.md
+          git diff --name-only HEAD~1 HEAD >> ai-report.md
+
+
+      - name: Run Quality Checks
+        continue-on-error: true
+        run: |
+          npm run lint >> ai-report.md
+          npm run build >> ai-report.md
+
+
+      - name: Upload AI Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: AD1-ai-report
+          path: ai-report.md
