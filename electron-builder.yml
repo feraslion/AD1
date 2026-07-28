@@ -1,0 +1,14 @@
+appId: com.feraslion.ad1
+productName: AD1-ERP
+extraMetadata:
+  main: electron/main.js
+directories:
+  output: release/windows
+files:
+  - dist/**/*
+  - electron/**/*
+win:
+  target: nsis
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

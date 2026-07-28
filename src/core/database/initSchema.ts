@@ -439,13 +439,21 @@ export async function ensureDatabaseTables(force = false) {
       date TEXT NOT NULL,
       status TEXT DEFAULT 'posted',
       currency TEXT DEFAULT 'SAR',
+      base_currency TEXT DEFAULT 'SAR',
       exchange_rate NUMERIC DEFAULT '1.0',
+      foreign_amount NUMERIC DEFAULT '0',
+      base_amount NUMERIC DEFAULT '0',
       company_id TEXT,
       branch_id TEXT,
       created_at TIMESTAMP DEFAULT NOW(),
       updated_at TIMESTAMP DEFAULT NOW()
     );
   `, 'journal_entries');
+
+  await execSql(sql`ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS base_currency TEXT DEFAULT 'SAR';`, 'je_col_base_currency');
+  await execSql(sql`ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS exchange_rate NUMERIC DEFAULT '1.0';`, 'je_col_exchange_rate');
+  await execSql(sql`ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS foreign_amount NUMERIC DEFAULT '0';`, 'je_col_foreign_amount');
+  await execSql(sql`ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS base_amount NUMERIC DEFAULT '0';`, 'je_col_base_amount');
 
   // 22. Journal Details
   await execSql(sql`

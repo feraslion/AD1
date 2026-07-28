@@ -68,6 +68,11 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Setup Node.js 22 Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
       - name: Setup Bun Environment
         uses: oven-sh/setup-bun@v2
         with:
@@ -80,7 +85,7 @@ jobs:
         run: bun run build:web
 
       - name: Package Windows EXE Installer
-        run: bunx electron-builder --win --x64 -c.extraMetadata.main=electron/main.js -c.productName="AD1-ERP" -c.directories.output="release/windows"
+        run: bunx electron-builder --win --x64
 
       - name: Upload Windows EXE Artifact
         uses: actions/upload-artifact@v4
@@ -94,6 +99,11 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+
+      - name: Setup Node.js 22 Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
 
       - name: Setup Bun Environment
         uses: oven-sh/setup-bun@v2
@@ -117,8 +127,11 @@ jobs:
 
       - name: Sync Capacitor Android Project
         run: |
-          bunx cap init "AD1 ERP" "com.feraslion.ad1" --web-dir dist
-          bunx cap add android || true
+          if [ ! -f "android/gradlew" ]; then
+            rm -rf android
+            bunx cap init "AD1 ERP" "com.feraslion.ad1" --web-dir dist
+            bunx cap add android
+          fi
           bunx cap sync android
 
       - name: Build Android Debug APK
