@@ -8,7 +8,9 @@
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "electron:build": "electron-builder --win --x64",
+    "android:build": "npx cap sync android && cd android && ./gradlew assembleRelease"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -43,6 +45,26 @@
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
-    "vite": "^6.2.3"
+    "vite": "^6.2.3",
+    "electron": "^25.2.0",
+    "electron-builder": "^24.6.0",
+    "@capacitor/core": "^5.0.6",
+    "@capacitor/cli": "^5.0.6",
+    "@capacitor/android": "^5.0.6"
+  },
+  "build": {
+    "appId": "com.feraslion.ad1",
+    "productName": "AD1",
+    "files": [
+      "dist/**",
+      "server.cjs",
+      "package.json"
+    ],
+    "directories": {
+      "buildResources": "build"
+    },
+    "win": {
+      "target": ["nsis", "zip"]
+    }
   }
 }
