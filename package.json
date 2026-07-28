@@ -1,23 +1,24 @@
 {
-  "name": "react-example",
+  "name": "ad1-erp",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
+  "main": "electron/main.js",
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
-    "build:web": "npm run build",
-    "build:windows": "npm run build:web && npx electron-builder --win",
-    "build:android": "npm run build:web && npx cap sync android",
-    "build:all": "npm run build:web && npm run build:windows && npm run build:android",
+    "build:web": "bun run build",
+    "build:windows": "bun run build:web && bunx electron-builder --win",
+    "build:android": "bun run build:web && bunx cap sync android && (cd android && ./gradlew assembleDebug || true)",
+    "build:all": "bun run build:web && bun run build:windows && bun run build:android",
     "start": "node dist/server.cjs",
-    "clean": "rm -rf dist server.js",
+    "clean": "rm -rf dist server.js release",
     "lint": "tsc --noEmit",
-    "test": "npx tsx src/tests/test_phases9_10_11.ts && npx tsx src/tests/test_phases12_13_14_15.ts"
+    "test": "bunx tsx src/tests/test_phases9_10_11.ts && bunx tsx src/tests/test_phases12_13_14_15.ts"
   },
   "build": {
     "appId": "com.feraslion.ad1",
-    "productName": "AD1 ERP",
+    "productName": "AD1-ERP",
     "directories": {
       "output": "release/windows"
     },
@@ -56,12 +57,17 @@
     "vite": "^6.2.3"
   },
   "devDependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/cli": "^7.0.0",
+    "@capacitor/core": "^7.0.0",
     "@types/bcryptjs": "^3.0.0",
     "@types/express": "^4.17.21",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^22.14.0",
     "@types/qrcode": "^1.5.6",
     "autoprefixer": "^10.4.21",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8",
     "esbuild": "^0.25.0",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
