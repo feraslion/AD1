@@ -28,6 +28,8 @@ export default function POS({ products, categories, customers, settings, onAddIn
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+
+  const searchInputRef = useRef<HTMLInputElement>(null);
   
   // Discounts
   const [invoiceDiscount, setInvoiceDiscount] = useState<number>(0);
@@ -431,6 +433,54 @@ export default function POS({ products, categories, customers, settings, onAddIn
     }
   };
 
+  // Global Keyboard Shortcuts (F2: Search Focus, F8: Cash Checkout, F9: Card Checkout, Escape: Close Modals)
+  useEffect(() => {
+    const handlePOSKeyDown = (e: KeyboardEvent) => {
+      // 1. Escape key to close any open modal
+      if (e.key === 'Escape') {
+        if (showPaymentModal) { setShowPaymentModal(false); e.preventDefault(); }
+        else if (showReceiptModal) { setShowReceiptModal(false); e.preventDefault(); }
+        else if (showCustomerModal) { setShowCustomerModal(false); e.preventDefault(); }
+        else if (showReturnsModal) { setShowReturnsModal(false); setSelectedReturnInvoice(null); e.preventDefault(); }
+        else if (showCashDrawerModal) { setShowCashDrawerModal(false); e.preventDefault(); }
+        else if (showScannerModal) { setShowScannerModal(false); e.preventDefault(); }
+        else if (showCustomerDisplay) { setShowCustomerDisplay(false); e.preventDefault(); }
+      }
+
+      // 2. F2 to focus search input
+      if (e.key === 'F2') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      }
+
+      // 3. F8 to open payment/checkout modal with Cash pre-selected
+      if (e.key === 'F8') {
+        if (cart.length > 0 && !showPaymentModal && !showReceiptModal && !showCustomerModal && !showReturnsModal && !showCashDrawerModal && !showScannerModal && !showCustomerDisplay) {
+          e.preventDefault();
+          setPaymentMethod('cash');
+          handleCheckout();
+        }
+      }
+
+      // 4. F9 to open payment/checkout modal with Card/Payment Method pre-selected
+      if (e.key === 'F9') {
+        if (cart.length > 0 && !showPaymentModal && !showReceiptModal && !showCustomerModal && !showReturnsModal && !showCashDrawerModal && !showScannerModal && !showCustomerDisplay) {
+          e.preventDefault();
+          setPaymentMethod('card');
+          handleCheckout();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handlePOSKeyDown);
+    return () => window.removeEventListener('keydown', handlePOSKeyDown);
+  }, [
+    showPaymentModal, showReceiptModal, showCustomerModal, showReturnsModal,
+    showCashDrawerModal, showScannerModal, showCustomerDisplay, cart, handleCheckout,
+    setPaymentMethod, setSelectedReturnInvoice
+  ]);
+
   // Mock scan trigger
   const runMockScan = (product: Product) => {
     handleBarcodeScan(product.barcode);
@@ -571,14 +621,19 @@ export default function POS({ products, categories, customers, settings, onAddIn
             <div className="flex flex-col sm:flex-row gap-2.5">
               {/* Search Bar */}
               <div className="relative flex-1">
-                <Search className="absolute right-3.5 top-3 w-4 h-4 text-slate-400" />
+                <Search className="absolute right-3.5 top-3.5 w-4 h-4 text-slate-400" />
                 <input
+                  ref={searchInputRef}
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="ابحث بالاسم أو الباركود... (أو امسح بالليزر مباشرة)"
-                  className="w-full pr-10 pl-4 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800 placeholder-slate-400"
+                  className="w-full pr-10 pl-12 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800 placeholder-slate-400"
+                  aria-label="البحث عن صنف بالاسم أو الباركود"
                 />
+                <kbd className="absolute left-3 top-2.5 px-1.5 py-0.5 bg-slate-100 text-slate-500 text-[9px] font-mono font-bold rounded border border-slate-200 pointer-events-none">
+                  F2
+                </kbd>
               </div>
 
               {/* Laser Scanner & Touch Keypad Buttons */}
@@ -820,8 +875,9 @@ export default function POS({ products, categories, customers, settings, onAddIn
 
             <button 
               onClick={() => setShowCustomerModal(true)}
-              className="p-2 bg-emerald-50 border border-emerald-200 text-emerald-600 rounded-xl hover:bg-emerald-100 transition"
+              className="p-2 bg-emerald-50 border border-emerald-200 text-emerald-600 rounded-xl hover:bg-emerald-100 transition cursor-pointer"
               title="إضافة عميل جديد"
+              aria-label="إضافة عميل جديد"
             >
               <UserPlus className="w-4 h-4" />
             </button>
@@ -855,8 +911,9 @@ export default function POS({ products, categories, customers, settings, onAddIn
                         <h4 className="font-bold text-slate-800 text-xs line-clamp-2 leading-snug">{item.product.name}</h4>
                         <button 
                           onClick={() => removeFromCart(item.id)}
-                          className="text-slate-300 hover:text-rose-500 p-0.5 transition"
+                          className="text-slate-300 hover:text-rose-500 p-0.5 transition cursor-pointer"
                           title="حذف"
+                          aria-label={`حذف ${item.product.name} من السلة`}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -987,9 +1044,10 @@ export default function POS({ products, categories, customers, settings, onAddIn
                   setPaymentMethod('cash');
                   handleCheckout();
                 }}
-                className="py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow transition disabled:opacity-50 flex items-center justify-center gap-1.5"
+                className="py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow transition disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer"
+                aria-label="دفع كاش سريع [F8]"
               >
-                💵 كاش سريع
+                💵 كاش سريع <kbd className="text-[10px] bg-slate-700 px-1 py-0.5 rounded ml-1 font-mono">F8</kbd>
               </button>
 
               <button 
@@ -998,9 +1056,10 @@ export default function POS({ products, categories, customers, settings, onAddIn
                   setPaymentMethod('card');
                   handleCheckout();
                 }}
-                className="py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs sm:text-sm font-bold shadow transition disabled:opacity-50 flex items-center justify-center gap-1.5"
+                className="py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs sm:text-sm font-bold shadow transition disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer"
+                aria-label="اختيار طريقة الدفع والفوترة [F9]"
               >
-                💳 اختيار طريقة الدفع
+                💳 اختيار طريقة الدفع <kbd className="text-[10px] bg-emerald-700 px-1 py-0.5 rounded ml-1 font-mono">F9</kbd>
               </button>
             </div>
           </div>
@@ -1016,7 +1075,12 @@ export default function POS({ products, categories, customers, settings, onAddIn
                 <CreditCard className="w-5 h-5 text-emerald-400" />
                 <span>إتمام عملية الدفع والفوترة</span>
               </h3>
-              <button onClick={() => setShowPaymentModal(false)} className="text-slate-400 hover:text-white">
+              <button
+                onClick={() => setShowPaymentModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800/50 transition-colors cursor-pointer"
+                aria-label="إغلاق [Esc]"
+                title="إغلاق [Esc]"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1217,7 +1281,12 @@ export default function POS({ products, categories, customers, settings, onAddIn
                 <Printer className="w-4 h-4 text-emerald-400" />
                 <span>إيصال الطباعة الحرارية ({printerPaperWidth})</span>
               </h3>
-              <button onClick={() => setShowReceiptModal(false)} className="text-slate-400 hover:text-white">
+              <button
+                onClick={() => setShowReceiptModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800/50 transition-colors cursor-pointer"
+                aria-label="إغلاق [Esc]"
+                title="إغلاق [Esc]"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1358,7 +1427,13 @@ export default function POS({ products, categories, customers, settings, onAddIn
           <form onSubmit={handleCreateCustomer} className="bg-white rounded-2xl max-w-sm w-full shadow-2xl border border-slate-200 overflow-hidden text-right">
             <div className="p-4 bg-[#1e293b] text-white flex justify-between items-center border-b border-slate-700">
               <h3 className="font-bold text-sm">إضافة عميل جديد بسرعة</h3>
-              <button type="button" onClick={() => setShowCustomerModal(false)} className="text-slate-400 hover:text-white">
+              <button
+                type="button"
+                onClick={() => setShowCustomerModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800/50 transition-colors cursor-pointer"
+                aria-label="إغلاق [Esc]"
+                title="إغلاق [Esc]"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1416,7 +1491,12 @@ export default function POS({ products, categories, customers, settings, onAddIn
                 <RotateCcw className="w-5 h-5 text-rose-300" />
                 <h3 className="font-bold text-sm">مرتجع ومسترجعات المبيعات (Refund & Returns)</h3>
               </div>
-              <button onClick={() => { setShowReturnsModal(false); setSelectedReturnInvoice(null); }} className="text-rose-200 hover:text-white">
+              <button
+                onClick={() => { setShowReturnsModal(false); setSelectedReturnInvoice(null); }}
+                className="text-rose-200 hover:text-white p-1 rounded-lg hover:bg-rose-950 transition-colors cursor-pointer"
+                aria-label="إغلاق [Esc]"
+                title="إغلاق [Esc]"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1536,7 +1616,9 @@ export default function POS({ products, categories, customers, settings, onAddIn
             </div>
             <button
               onClick={() => setShowCustomerDisplay(false)}
-              className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition"
+              className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition cursor-pointer"
+              aria-label="إغلاق [Esc]"
+              title="إغلاق [Esc]"
             >
               <X className="w-6 h-6" />
             </button>
@@ -1625,7 +1707,12 @@ export default function POS({ products, categories, customers, settings, onAddIn
                 <DollarSign className="w-5 h-5 text-amber-400" />
                 <h3 className="font-bold text-sm">تقرير الصندوق والوردية الحالية</h3>
               </div>
-              <button onClick={() => setShowCashDrawerModal(false)} className="text-slate-400 hover:text-white">
+              <button
+                onClick={() => setShowCashDrawerModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                aria-label="إغلاق [Esc]"
+                title="إغلاق [Esc]"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
