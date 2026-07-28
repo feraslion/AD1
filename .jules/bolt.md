@@ -1,0 +1,3 @@
+## 2026-03-05 - [Database Query-Level Filtering vs In-Memory Array Filtering]
+**Learning:** In the repository layer (specifically `ProductRepository.findAll`), fetching all rows and filtering them in-memory via JavaScript array methods is an anti-pattern that leads to high memory overhead, high network utilization, and slow response times. Pushing conditions directly into Drizzle ORM query builders (`and`, `or`, `eq`, `like`, `ilike`) leverages SQL indexing and dramatically reduces Node.js heap consumption.
+**Action:** Always construct conditionally built database queries in Drizzle repositories instead of using `.filter()` on raw result arrays.
