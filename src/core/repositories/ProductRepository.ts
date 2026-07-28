@@ -1,18 +1,51 @@
 import { db } from '../database/index.ts';
 import { products, categories, units, stockMoves, warehouses } from '../database/schema.ts';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, and, or, like, ilike } from 'drizzle-orm';
 
 export class ProductRepository {
-  static async findAll(params?: { search?: string; category?: string }) {
-    let list = await db.select().from(products);
-    if (params?.category) {
-      list = list.filter(p => p.category === params.category);
+  /**
+   * Optimized findAll query using database-level filtering.
+   * This avoids pulling all products into Node.js server memory, reducing payload and CPU usage significantly.
+   */
+  static async findAll(params?: { search?: string; category?: string; companyId?: string; branchId?: string; page?: number; limit?: number }) {
+    let query = db.select().from(products);
+
+    const conditions = [];
+
+    if (params?.category && params.category !== 'all') {
+      conditions.push(eq(products.category, params.category));
     }
+
+    if (params?.companyId) {
+      conditions.push(eq(products.companyId, params.companyId));
+    }
+
+    if (params?.branchId) {
+      conditions.push(eq(products.branchId, params.branchId));
+    }
+
     if (params?.search) {
-      const term = params.search.toLowerCase();
-      list = list.filter(p => p.name.toLowerCase().includes(term) || p.barcode.includes(term));
+      const term = `%${params.search}%`;
+      conditions.push(
+        or(
+          ilike(products.name, term),
+          like(products.barcode, term)
+        )
+      );
     }
-    return list;
+
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions)) as any;
+    }
+
+    if (params?.page || params?.limit) {
+      const page = params.page || 1;
+      const limit = params.limit || 50;
+      const offset = (page - 1) * limit;
+      return await query.limit(limit).offset(offset);
+    }
+
+    return await query;
   }
 
   static async findById(id: string) {
