@@ -141,6 +141,61 @@ export default function POS({ products, categories, customers, settings, onAddIn
     };
   }, [triggerScanMessage]);
 
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const isAnyModalOpen = showScannerModal || showScanner || showPaymentModal || showReceiptModal || showCustomerModal || showReturnsModal || showCustomerDisplay || showCashDrawerModal;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setShowScannerModal(false);
+        setShowScanner(false);
+        setShowPaymentModal(false);
+        setShowReceiptModal(false);
+        setShowCustomerModal(false);
+        setShowReturnsModal(false);
+        setShowCustomerDisplay(false);
+        setShowCashDrawerModal(false);
+        return;
+      }
+
+      if (isAnyModalOpen) {
+        return;
+      }
+
+      if (e.key === 'F2') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      } else if (e.key === 'F8') {
+        if (cart.length > 0) {
+          e.preventDefault();
+          handleCheckout('cash');
+        }
+      } else if (e.key === 'F9') {
+        if (cart.length > 0) {
+          e.preventDefault();
+          handleCheckout('card');
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [
+    cart.length,
+    showScannerModal,
+    showScanner,
+    showPaymentModal,
+    showReceiptModal,
+    showCustomerModal,
+    showReturnsModal,
+    showCustomerDisplay,
+    showCashDrawerModal,
+  ]);
+
   // Sync offline queue with server
   const handleSyncOfflineQueue = async () => {
     const queue = OfflineQueue.getQueue();
@@ -315,9 +370,12 @@ export default function POS({ products, categories, customers, settings, onAddIn
   };
 
   // Payment checkout opening
-  const handleCheckout = () => {
+  const handleCheckout = (overrideMethod?: 'cash' | 'card' | 'credit' | 'split') => {
     if (cart.length === 0) return;
     
+    const targetMethod = overrideMethod || paymentMethod;
+    setPaymentMethod(targetMethod);
+
     // Auto populate default amounts for split and cash
     setReceivedCash(grandTotal.toFixed(2));
     const half = (grandTotal / 2).toFixed(2);
@@ -325,7 +383,7 @@ export default function POS({ products, categories, customers, settings, onAddIn
     setSplitCardAmount((grandTotal - parseFloat(half)).toFixed(2));
     setSplitCreditAmount('0.00');
     
-    if (paymentMethod === 'credit' && !selectedCustomer) {
+    if (targetMethod === 'credit' && !selectedCustomer) {
       setPaymentMethod('cash');
     }
     
@@ -573,12 +631,16 @@ export default function POS({ products, categories, customers, settings, onAddIn
               <div className="relative flex-1">
                 <Search className="absolute right-3.5 top-3 w-4 h-4 text-slate-400" />
                 <input
+                  ref={searchInputRef}
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="ابحث بالاسم أو الباركود... (أو امسح بالليزر مباشرة)"
-                  className="w-full pr-10 pl-4 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800 placeholder-slate-400"
+                  className="w-full pr-10 pl-14 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800 placeholder-slate-400"
                 />
+                <kbd className="absolute left-3 top-2.5 px-2 py-0.5 text-[10px] font-bold text-slate-400 bg-slate-100 border border-slate-200 rounded pointer-events-none select-none">
+                  F2
+                </kbd>
               </div>
 
               {/* Laser Scanner & Touch Keypad Buttons */}
@@ -983,24 +1045,24 @@ export default function POS({ products, categories, customers, settings, onAddIn
             <div className="grid grid-cols-2 gap-2 pt-2">
               <button 
                 disabled={cart.length === 0}
-                onClick={() => {
-                  setPaymentMethod('cash');
-                  handleCheckout();
-                }}
+                onClick={() => handleCheckout('cash')}
                 className="py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow transition disabled:opacity-50 flex items-center justify-center gap-1.5"
               >
-                💵 كاش سريع
+                <span>💵 كاش سريع</span>
+                <kbd className="px-1.5 py-0.5 text-[9px] font-bold text-slate-300 bg-slate-700 border border-slate-600 rounded mr-1 select-none pointer-events-none">
+                  F8
+                </kbd>
               </button>
 
               <button 
                 disabled={cart.length === 0}
-                onClick={() => {
-                  setPaymentMethod('card');
-                  handleCheckout();
-                }}
+                onClick={() => handleCheckout('card')}
                 className="py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs sm:text-sm font-bold shadow transition disabled:opacity-50 flex items-center justify-center gap-1.5"
               >
-                💳 اختيار طريقة الدفع
+                <span>💳 اختيار طريقة الدفع</span>
+                <kbd className="px-1.5 py-0.5 text-[9px] font-bold text-emerald-100 bg-emerald-700 border border-emerald-600 rounded mr-1 select-none pointer-events-none">
+                  F9
+                </kbd>
               </button>
             </div>
           </div>

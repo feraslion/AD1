@@ -257,7 +257,7 @@ export class TreasuryRepository {
     // Resolve Source Account ID
     let sourceAccId = input.sourceAccountId || 'acc_revenue';
     if (input.sourceType === 'customer') {
-      sourceAccId = 'acc_ar'; // Accounts Receivable
+      sourceAccId = 'acc_receivable'; // Accounts Receivable
     } else if (input.sourceType === 'capital') {
       sourceAccId = 'acc_capital';
     }
@@ -333,7 +333,7 @@ export class TreasuryRepository {
     // Resolve Destination Account ID
     let destAccId = input.destinationAccountId || 'acc_expense';
     if (input.destinationType === 'supplier') {
-      destAccId = 'acc_ap'; // Accounts Payable
+      destAccId = 'acc_payable'; // Accounts Payable
     } else if (input.destinationType === 'owner_draw') {
       destAccId = 'acc_drawings';
     }

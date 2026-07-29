@@ -227,7 +227,7 @@ export class ExpenseRepository {
         creditAccId = 'acc_bank';
       }
     } else if (method === 'payable') {
-      creditAccId = 'acc_ap'; // Accounts Payable
+      creditAccId = 'acc_payable'; // Accounts Payable
     }
 
     // Debit Account: Expense GL Account (e.g., acc_expense)
