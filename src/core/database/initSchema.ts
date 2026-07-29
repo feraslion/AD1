@@ -483,7 +483,8 @@ export async function ensureDatabaseTables(force = false) {
       exchange_rate NUMERIC,
       foreign_debit NUMERIC,
       foreign_credit NUMERIC,
-      notes TEXT
+      notes TEXT,
+      description TEXT
     );
   `, 'journal_lines');
 
@@ -1019,6 +1020,9 @@ export async function ensureDatabaseTables(force = false) {
     await execSql(sql.raw(`ALTER TABLE ${tbl} ADD COLUMN IF NOT EXISTS currency TEXT DEFAULT 'SAR';`), `${tbl}_currency`);
     await execSql(sql.raw(`ALTER TABLE ${tbl} ADD COLUMN IF NOT EXISTS exchange_rate NUMERIC DEFAULT '1.0';`), `${tbl}_exchange_rate`);
   }
+
+  // Ensure description column on journal_lines
+  await execSql(sql.raw(`ALTER TABLE journal_lines ADD COLUMN IF NOT EXISTS description TEXT;`), `journal_lines_description`);
 
   isSchemaEnsured = true;
   console.log('Database tables ensured successfully.');
