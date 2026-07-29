@@ -69,7 +69,34 @@ export class JournalEngine {
         throw new Error('يجب تحديد الحساب المالي لكافة سطور القيد المحاسبي.');
       }
 
-      const [acc] = await db.select().from(accounts).where(eq(accounts.id, line.accountId));
+      let [acc] = await db.select().from(accounts).where(eq(accounts.id, line.accountId));
+
+      // Bi-directional fallback compatibility mappings for standard account IDs
+      if (!acc) {
+        if (line.accountId === 'acc_receivable' || line.accountId === 'acc_ar') {
+          const altId = line.accountId === 'acc_receivable' ? 'acc_ar' : 'acc_receivable';
+          const [alt] = await db.select().from(accounts).where(eq(accounts.id, altId));
+          if (alt) {
+            acc = alt;
+            line.accountId = altId;
+          }
+        } else if (line.accountId === 'acc_payable' || line.accountId === 'acc_ap') {
+          const altId = line.accountId === 'acc_payable' ? 'acc_ap' : 'acc_payable';
+          const [alt] = await db.select().from(accounts).where(eq(accounts.id, altId));
+          if (alt) {
+            acc = alt;
+            line.accountId = altId;
+          }
+        } else if (line.accountId === 'acc_tax' || line.accountId === 'acc_vat_payable') {
+          const altId = line.accountId === 'acc_tax' ? 'acc_vat_payable' : 'acc_tax';
+          const [alt] = await db.select().from(accounts).where(eq(accounts.id, altId));
+          if (alt) {
+            acc = alt;
+            line.accountId = altId;
+          }
+        }
+      }
+
       if (!acc) {
         throw new Error(`الحساب المالي (ID: ${line.accountId}) غير موجود في شجرة الحسابات.`);
       }
