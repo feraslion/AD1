@@ -68,9 +68,9 @@ export async function seedEnterpriseData() {
   const defaultAccounts = [
     { id: 'acc_cash', code: '1101', name: 'النقدية والصندوق', type: 'asset', currency: 'SAR', companyId: 'company-1', balance: '0' },
     { id: 'acc_bank', code: '1102', name: 'البنك الرئيسي', type: 'asset', currency: 'SAR', companyId: 'company-1', balance: '0' },
-    { id: 'acc_ar', code: '1103', name: 'العملاء (مدينون)', type: 'asset', currency: 'SAR', companyId: 'company-1', balance: '0' },
+    { id: 'acc_receivable', code: '1103', name: 'العملاء (مدينون)', type: 'asset', currency: 'SAR', companyId: 'company-1', balance: '0' },
     { id: 'acc_inventory', code: '1104', name: 'المخزون السلعي', type: 'asset', currency: 'SAR', companyId: 'company-1', balance: '0' },
-    { id: 'acc_ap', code: '2101', name: 'الموردون (دائنون)', type: 'liability', currency: 'SAR', companyId: 'company-1', balance: '0' },
+    { id: 'acc_payable', code: '2101', name: 'الموردون (دائنون)', type: 'liability', currency: 'SAR', companyId: 'company-1', balance: '0' },
     { id: 'acc_vat_payable', code: '2102', name: 'ضريبة القيمة المضافة', type: 'liability', currency: 'SAR', companyId: 'company-1', balance: '0' },
     { id: 'acc_equity', code: '3101', name: 'رأس المال', type: 'equity', currency: 'SAR', companyId: 'company-1', balance: '0' },
     { id: 'acc_sales', code: '4101', name: 'إيرادات المبيعات', type: 'revenue', currency: 'SAR', companyId: 'company-1', balance: '0' },
