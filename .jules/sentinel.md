@@ -1,0 +1,4 @@
+## 2026-03-05 - [Development Auth Fallback Bypass]
+**Vulnerability:** The application's Express server and middleware authentication fell back to a master manager user (ID '001') with full permissions unconditionally. This allowed unauthenticated users to completely bypass authentication and execute privileged actions.
+**Learning:** Development helpers and mock fallbacks are often added to ease testing/prototyping, but if they are not explicitly bound to non-production environments (e.g. checking `process.env.NODE_ENV !== 'production'`), they leak into the production runtime, resulting in severe security holes.
+**Prevention:** Always restrict development fallbacks, bypasses, or testing credentials using environmental environment-specific flags such as `process.env.NODE_ENV !== 'production'`. Ensure a secure default rejection (e.g., returning 401 Unauthorized) is executed if authentication fails.
