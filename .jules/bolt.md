@@ -1,0 +1,3 @@
+## 2026-03-01 - [POS Component Optimization via Memoization]
+**Learning:** POS components have a large number of interactive states (active scan message timers, payment inputs, modal switches, secondary customer displays, network status hooks). Because React re-renders the component on every state change, un-memoized product catalog filtering and invoice totals recalculation run synchronously on the main UI thread during fast user/scanner interaction.
+**Action:** Always wrap catalog search, filtering, and aggregate invoice/cart totals calculations in `useMemo` hooks inside the POS module to ensure typing and fast laser scanning remain butter-smooth.
