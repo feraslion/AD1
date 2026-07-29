@@ -90,7 +90,7 @@ export async function authenticate(req: AuthenticatedRequest, res: Response, nex
     }
 
     // 3. Fallback for unauthenticated requests or invalid/stale tokens in development
-    if (!userRecord) {
+    if (!userRecord && process.env.NODE_ENV !== 'production') {
       const [master] = await db.select().from(users).where(eq(users.id, '001'));
       userRecord = master || {
         id: '001',
@@ -100,6 +100,14 @@ export async function authenticate(req: AuthenticatedRequest, res: Response, nex
         role: 'manager',
         roleId: 'role_manager'
       };
+    }
+
+    if (!userRecord) {
+      return res.status(401).json({
+        success: false,
+        error: 'غير مصرح به - فشل التحقق من الهوية',
+        statusCode: 401
+      });
     }
 
     // 4. Load permissions from DB RBAC or fallbacks
