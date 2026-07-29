@@ -496,11 +496,15 @@ export async function ensureDatabaseTables(force = false) {
       type TEXT NOT NULL,
       customer_id TEXT,
       supplier_id TEXT,
+      party_id TEXT,
+      party_type TEXT,
       amount NUMERIC NOT NULL,
       currency TEXT DEFAULT 'SAR',
       exchange_rate NUMERIC DEFAULT '1.0',
       foreign_amount NUMERIC DEFAULT '0',
       payment_method TEXT DEFAULT 'cash',
+      method TEXT,
+      reference TEXT,
       account_id TEXT,
       date TEXT NOT NULL,
       notes TEXT,
@@ -1023,6 +1027,12 @@ export async function ensureDatabaseTables(force = false) {
 
   // Ensure description column on journal_lines
   await execSql(sql.raw(`ALTER TABLE journal_lines ADD COLUMN IF NOT EXISTS description TEXT;`), `journal_lines_description`);
+
+  // Ensure payments table has party_id, party_type, method, reference
+  await execSql(sql.raw(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS party_id TEXT;`), `payments_party_id`);
+  await execSql(sql.raw(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS party_type TEXT;`), `payments_party_type`);
+  await execSql(sql.raw(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS method TEXT;`), `payments_method`);
+  await execSql(sql.raw(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS reference TEXT;`), `payments_reference`);
 
   isSchemaEnsured = true;
   console.log('Database tables ensured successfully.');
