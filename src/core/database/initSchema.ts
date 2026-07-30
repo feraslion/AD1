@@ -278,6 +278,7 @@ export async function ensureDatabaseTables(force = false) {
       payment_method TEXT DEFAULT 'cash',
       cash_amount NUMERIC DEFAULT '0',
       card_amount NUMERIC DEFAULT '0',
+      credit_amount NUMERIC DEFAULT '0',
       status TEXT DEFAULT 'paid',
       customer_id TEXT,
       customer_name TEXT,
@@ -1023,6 +1024,9 @@ export async function ensureDatabaseTables(force = false) {
 
   // Ensure description column on journal_lines matches drizzle schema mapping
   await execSql(sql`ALTER TABLE journal_lines ADD COLUMN IF NOT EXISTS description TEXT;`, 'journal_lines_col_description');
+
+  // Ensure credit_amount column on invoices matches drizzle schema mapping
+  await execSql(sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS credit_amount NUMERIC DEFAULT '0';`, 'invoices_col_credit_amount');
 
   isSchemaEnsured = true;
   console.log('Database tables ensured successfully.');
