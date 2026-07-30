@@ -8,18 +8,29 @@
 
 ---
 
-## 2. Engineering Gate (Pre-Implementation & Release Checklist)
+## 2. Lead Agent & Specialist Sub-Agent Workflow
+When executing complex updates or repository maintenance, coordinate work using specialized sub-roles:
+1. **Architect Agent**: Audits module boundaries, interfaces, and layer decoupling before any code edits.
+2. **Database & Schema Agent**: Ensures PostgreSQL schema alignment, auto-healing DDL migrations (`IF NOT EXISTS`), and seed data consistency.
+3. **Bugfix & Service Agent**: Fixes service/repository logic using minimal, targeted, surgical patches.
+4. **Test & Verification Agent**: Executes unit and integration test suites (`bun run test`) and verifies zero regressions.
+5. **UI & Accessibility Agent**: Ensures clean presentation, responsiveness, and zero domain logic inside React components.
+6. **CI/CD & Multi-Platform Agent**: Maintains cross-platform pipelines (`electron-builder.yml`, GitHub Workflows, Capacitor Android/Gradle Wrapper).
+
+---
+
+## 3. Engineering Gate (Pre-Implementation & Release Checklist)
 Before merging or executing code changes, the workspace must satisfy:
 1. **Build Verification**: `npm run build` completes with zero errors.
-2. **Type Safety**: TypeScript compiler check passes with no blocking type errors.
-3. **Linter Standard**: Code passes `npm run lint` cleanly.
-4. **Database & Schema Integrity**: Schema modifications are synced with migrations, auto-migration mechanisms, and types.
-5. **Test Coverage**: Unit and integration test suites pass successfully without regressions.
+2. **Type Safety**: TypeScript compiler check passes with no blocking type errors (`npm run lint`).
+3. **Database & Schema Integrity**: Schema modifications are synced with migrations, auto-migration mechanisms (`initSchema.ts`), and types.
+4. **Test Coverage**: Unit and integration test suites pass successfully without regressions.
+5. **Cross-Platform Compatibility**: Electron builder config (`electron-builder.yml`) and Android Gradle wrapper (`.gitignore` exceptions) are intact.
 6. **No Dead/Unused Code**: No orphan files, unused dependencies, or circular imports.
 
 ---
 
-## 3. Code Review Gate
+## 4. Code Review Gate
 Any change or Pull Request must satisfy:
 - **Redundancy & Architecture**: Eliminates duplication and strengthens modularity without introducing technical debt.
 - **API & Data Compatibility**: Does not break existing REST endpoints, database schemas, or client state contracts.
@@ -28,7 +39,7 @@ Any change or Pull Request must satisfy:
 
 ---
 
-## 4. Phase-Based Quality Workflow
+## 5. Phase-Based Quality Workflow
 1. Inspect workspace structure and identify architectural or code debt.
 2. Formulate targeted, prioritized adjustments.
 3. Apply changes cleanly in service/repository/UI layers.
