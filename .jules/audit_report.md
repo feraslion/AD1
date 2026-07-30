@@ -38,8 +38,23 @@ The AD1 project is a full-featured Enterprise POS & ERP system structured as a d
 
 ---
 
-## 3. Next Phases Recommendations
+## 3. Release Validation and Seeding Configurations
 
-- **Phase 2 (Database Migrations):** Run standard migrations as database requirements expand.
-- **Phase 3 (Unit Testing):** Integrate Vitest or Jest to continuously assert double-entry accounting invariants.
-- **Phase 4 (Nuyen/Odoo-like Feature Depth):** Continuously extend the modular design to include HR, Payroll, and CRM.
+### 🧪 Automated ERP Test Suites
+We have developed and added three core test modules under `src/tests/` to perform strict verification across all ERP logic modules:
+- **`src/tests/test_phase8_currency.ts`:** Verifies currency exchange rate settings, historic currency conversions, and rate tables.
+- **`src/tests/test_phases9_10_11.ts`:** Verifies inventory adjustments, stock movements, sales, POS checkouts, purchase orders, customer ledgers, and supplier transactions.
+- **`src/tests/test_phases12_13_14_15.ts`:** Verifies financial reporting engines (P&L, Trial Balance, Balance Sheet), double-entry accounting audits, automated workflows, and database backups.
+
+### 🌱 Seeding & Initial Database State
+We implemented and exported a global database seeder `seedEnterpriseData()` inside `src/core/database/initSchema.ts` that ensures the automatic creation of:
+1. **The default Company (`company-1`)**
+2. **The main Warehouse (`wh_main`)**
+3. **Default accounts** (Cash, Bank, Accounts Receivable, Inventory, etc.)
+4. **Default currencies** (SAR, USD, TRY) with conversion rates.
+
+### 👷 Platform Build Targets
+Configured the automated platform builder scripts in `package.json` to produce build artifacts:
+- **Web Build:** Generates single-page-app bundled resources in `dist/`.
+- **Windows Build:** Generates standalone deployment setup executables in `release/windows/AD1-ERP_Setup.exe`.
+- **Android Build:** Generates verified APK files in `android/app/build/outputs/apk/app-release.apk`.

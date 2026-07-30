@@ -1,0 +1,87 @@
+name: Release Validation & Build
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  validate_and_build:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: erp_test_db
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Check Out Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Install Dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Run Typecheck & Lint
+        run: pnpm run lint
+
+      - name: Run Release Validation Tests
+        env:
+          SQL_HOST: localhost
+          SQL_DB_NAME: erp_test_db
+          SQL_USER: postgres
+          SQL_PASSWORD: password
+          SQL_PORT: 5432
+        run: pnpm run test
+
+      - name: Build Web Client
+        run: pnpm run build:web
+
+      - name: Build Windows Executable
+        run: pnpm run build:windows
+
+      - name: Build Android APK
+        run: pnpm run build:android
+
+      - name: Upload Web Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: dist/
+
+      - name: Upload Windows Setup EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-release
+          path: release/windows/
+
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-release
+          path: android/app/build/outputs/apk/

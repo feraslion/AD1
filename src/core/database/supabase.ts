@@ -11,4 +11,9 @@ if (!supabaseAnonKey && process.env.NODE_ENV === 'production') {
 }
 
 // Initialize the Supabase Client with environment variables
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = supabaseUrl && supabaseAnonKey
+  ? createClient(supabaseUrl, supabaseAnonKey)
+  : {
+      auth: {},
+      from: () => ({ select: () => Promise.resolve({ data: [], error: null }) })
+    } as any;

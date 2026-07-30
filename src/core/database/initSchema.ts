@@ -987,3 +987,91 @@ export async function ensureDatabaseTables(force = false) {
   isSchemaEnsured = true;
   console.log('Database tables ensured successfully.');
 }
+
+/**
+ * seedEnterpriseData() - Seeds essential enterprise defaults (Company, Warehouse wh_main, base accounts, currencies)
+ */
+export async function seedEnterpriseData() {
+  console.log('[seedEnterpriseData] Starting Enterprise ERP database seeding...');
+
+  // 1. Seed default company
+  try {
+    const existingComp = await db.execute(sql`SELECT id FROM companies WHERE id = 'company-1'`);
+    if (existingComp.rows.length === 0) {
+      await db.execute(sql`
+        INSERT INTO companies (id, name, tax_number, email, phone, address)
+        VALUES ('company-1', 'المؤسسة الرئيسية', '300000000000003', 'info@company.com', '0110000000', 'الرياض')
+      `);
+      console.log('✓ Default Company seeded.');
+    }
+  } catch (err) {
+    console.error('Error seeding Company:', err);
+  }
+
+  // 2. Seed main warehouse wh_main
+  try {
+    const existingWh = await db.execute(sql`SELECT id FROM warehouses WHERE id = 'wh_main' OR code = 'wh_main'`);
+    if (existingWh.rows.length === 0) {
+      await db.execute(sql`
+        INSERT INTO warehouses (id, company_id, name, code, location)
+        VALUES ('wh_main', 'company-1', 'المستودع الرئيسي (Main)', 'wh_main', 'الرياض')
+      `);
+      console.log('✓ Main Warehouse wh_main seeded.');
+    }
+  } catch (err) {
+    console.error('Error seeding Warehouse:', err);
+  }
+
+  // 3. Seed default accounts
+  try {
+    const defaultAccounts = [
+      { id: 'acc_cash', code: '1101', name: 'النقدية بالصندوق (Cash)', type: 'asset' },
+      { id: 'acc_bank', code: '1102', name: 'الحساب البنكي (Bank)', type: 'asset' },
+      { id: 'acc_receivable', code: '1103', name: 'الذمم المدينة للعملاء (Receivables)', type: 'asset' },
+      { id: 'acc_inventory', code: '1201', name: 'مخزون البضائع (Inventory)', type: 'asset' },
+      { id: 'acc_payable', code: '2101', name: 'الذمم الدائنة للموردين (Payables)', type: 'liability' },
+      { id: 'acc_tax', code: '2201', name: 'ضريبة القيمة المضافة المستحقة (VAT)', type: 'liability' },
+      { id: 'acc_equity', code: '3101', name: 'رأس المال (Capital)', type: 'equity' },
+      { id: 'acc_sales', code: '4101', name: 'إيراد المبيعات (Sales Revenue)', type: 'revenue' },
+      { id: 'acc_cogs', code: '5101', name: 'تكلفة البضاعة المباعة (COGS)', type: 'expense' },
+      { id: 'acc_expense', code: '5201', name: 'المصاريف العمومية والتشغيلية (Expenses)', type: 'expense' },
+    ];
+
+    for (const acc of defaultAccounts) {
+      const existingAcc = await db.execute(sql`SELECT id FROM accounts WHERE id = ${acc.id} OR code = ${acc.code}`);
+      if (existingAcc.rows.length === 0) {
+        await db.execute(sql`
+          INSERT INTO accounts (id, code, name, type, balance, company_id)
+          VALUES (${acc.id}, ${acc.code}, ${acc.name}, ${acc.type}, '0', 'company-1')
+        `);
+      }
+    }
+    console.log('✓ Base Chart of Accounts seeded.');
+  } catch (err) {
+    console.error('Error seeding Accounts:', err);
+  }
+
+  // 4. Seed default currencies
+  try {
+    const defaultCurrencies = [
+      { id: 'curr_sar', code: 'SAR', name: 'الريال السعودي', symbol: 'ر.س', rate: '1.0', isDefault: 'true' },
+      { id: 'curr_usd', code: 'USD', name: 'الدولار الأمريكي', symbol: '$', rate: '3.75', isDefault: 'false' },
+      { id: 'curr_try', code: 'TRY', name: 'الليرة التركية', symbol: '₺', rate: '32.5', isDefault: 'false' }
+    ];
+
+    for (const curr of defaultCurrencies) {
+      const existingCurr = await db.execute(sql`SELECT id FROM currencies WHERE id = ${curr.id} OR code = ${curr.code}`);
+      if (existingCurr.rows.length === 0) {
+        await db.execute(sql`
+          INSERT INTO currencies (id, code, name, symbol, exchange_rate, is_default, company_id)
+          VALUES (${curr.id}, ${curr.code}, ${curr.name}, ${curr.symbol}, ${curr.rate}, ${curr.isDefault}, 'company-1')
+        `);
+      }
+    }
+    console.log('✓ Default Currencies seeded.');
+  } catch (err) {
+    console.error('Error seeding Currencies:', err);
+  }
+
+  console.log('✓ seedEnterpriseData() complete.');
+}
