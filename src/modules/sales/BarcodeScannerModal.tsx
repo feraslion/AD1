@@ -77,8 +77,6 @@ export default function BarcodeScannerModal({
           <button 
             onClick={onClose}
             className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-700/50 transition-colors"
-            aria-label="إغلاق النافذة"
-            title="إغلاق النافذة"
           >
             <X className="w-5 h-5" />
           </button>
