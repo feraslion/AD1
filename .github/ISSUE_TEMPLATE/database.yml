@@ -1,0 +1,27 @@
+name: Database & Schema Migration Issue
+description: Report a schema mismatch, missing table/column, or database migration issue.
+title: "[DATABASE]: "
+labels: ["database", "agent:database"]
+body:
+  - type: markdown
+    attributes:
+      value: "Report or request database schema updates, migrations, or DDL adjustments."
+  - type: textarea
+    id: description
+    attributes:
+      label: Schema Issue Description
+      description: Describe the table, column, migration, or query issue.
+      placeholder: e.g., missing description column in journal_lines...
+    validations:
+      required: true
+  - type: input
+    id: table-name
+    attributes:
+      label: Affected Database Tables
+      placeholder: e.g., journal_lines, expense_requests, bank_accounts
+  - type: textarea
+    id: sql-error
+    attributes:
+      label: Query / DDL Error Output
+      description: Paste any Drizzle or PostgreSQL query errors.
+      render: shell

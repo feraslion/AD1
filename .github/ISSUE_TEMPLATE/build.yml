@@ -1,0 +1,27 @@
+name: Build, CI/CD or Packaging Issue
+description: Report issues related to Web, Windows EXE, Android APK, or GitHub Actions.
+title: "[BUILD]: "
+labels: ["build", "agent:devops"]
+body:
+  - type: markdown
+    attributes:
+      value: "Report cross-platform compilation, CI workflow, or release packaging failures."
+  - type: dropdown
+    id: build-target
+    attributes:
+      label: Target Environment / Pipeline
+      options:
+        - Web Build (Vite / Node)
+        - Windows Installer (Electron / electron-builder)
+        - Android Package (Capacitor / Gradle)
+        - GitHub Actions CI/CD Pipeline
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Build Failure Output
+      description: Paste compiler, Gradle, or Electron log output.
+      render: shell
+    validations:
+      required: true

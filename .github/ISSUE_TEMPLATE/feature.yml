@@ -1,0 +1,33 @@
+name: Feature Request / Module Upgrade
+description: Propose a new ERP feature, workflow enhancement, or architectural improvement.
+title: "[FEATURE]: "
+labels: ["enhancement", "agent:frontend"]
+body:
+  - type: markdown
+    attributes:
+      value: "Propose a feature or enhancement for AD1-ERP."
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement / Context
+      description: Is your feature request related to a problem or business requirement?
+      placeholder: Explain the context...
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution & ERP Impact
+      description: Describe the solution you'd like and how it affects the ERP system.
+      placeholder: Describe the proposed solution...
+    validations:
+      required: true
+  - type: dropdown
+    id: target-layer
+    attributes:
+      label: Primary ERP Layer
+      options:
+        - Frontend / React UI
+        - Backend / API Service
+        - Database / Drizzle Schema
+        - Cross-Platform / Mobile / Desktop

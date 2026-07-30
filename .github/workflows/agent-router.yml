@@ -1,0 +1,57 @@
+name: AD1 Agent Issue Router
+
+on:
+  issues:
+    types: [opened, edited]
+
+jobs:
+  route-issue:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+    steps:
+      - name: Route Issue to Agent
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const text = `${issue.title} ${issue.body || ''}`.toLowerCase();
+            
+            const mappings = [
+              { keywords: ['database', 'migration', 'schema', 'sql', 'ddl', 'table', 'column'], label: 'agent:database' },
+              { keywords: ['react', 'ui', 'component', 'tailwind', 'layout', 'view', 'style', 'frontend'], label: 'agent:frontend' },
+              { keywords: ['api', 'backend', 'express', 'endpoint', 'service', 'repository', 'drizzle'], label: 'agent:backend' },
+              { keywords: ['test', 'failure', 'unit', 'integration', 'spec', 'qa', 'bug'], label: 'agent:qa' },
+              { keywords: ['apk', 'android', 'capacitor', 'gradle', 'mobile'], label: 'agent:mobile' },
+              { keywords: ['electron', 'exe', 'windows', 'desktop', 'installer'], label: 'agent:desktop' },
+              { keywords: ['ci', 'workflow', 'build', 'actions', 'pipeline', 'devops'], label: 'agent:devops' },
+              { keywords: ['security', 'auth', 'rbac', 'token', 'permission', 'secret', 'zatca'], label: 'agent:security' }
+            ];
+
+            const labelsToAdd = new Set();
+
+            for (const { keywords, label } of mappings) {
+              if (keywords.some(kw => text.includes(kw))) {
+                labelsToAdd.add(label);
+              }
+            }
+
+            if (labelsToAdd.size === 0) {
+              labelsToAdd.add('agent:qa');
+            }
+
+            const currentLabels = issue.labels.map(l => typeof l === 'string' ? l : l.name);
+            const newLabels = Array.from(labelsToAdd).filter(l => !currentLabels.includes(l));
+
+            if (newLabels.length > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: newLabels
+              });
+              console.log(`Added agent labels: ${newLabels.join(', ')}`);
+            } else {
+              console.log('No new agent labels needed.');
+            }

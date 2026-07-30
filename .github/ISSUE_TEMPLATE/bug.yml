@@ -1,0 +1,39 @@
+name: Bug Report / Report an Error
+description: Report a bug, crash, or unexpected behavior in AD1-ERP.
+title: "[BUG]: "
+labels: ["bug", "agent:qa"]
+body:
+  - type: markdown
+    attributes:
+      value: "Thank you for reporting an issue! Please fill out the details below."
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is.
+      placeholder: Describe the problem...
+    validations:
+      required: true
+  - type: input
+    id: affected-module
+    attributes:
+      label: Affected Module / Component
+      placeholder: e.g. Expenses, General Ledger, POS, Inventory, Sales
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Steps to reproduce the behavior.
+      placeholder: |
+        1. Go to '...'
+        2. Click on '...'
+        3. Scroll down to '...'
+        4. See error
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error Logs or Output
+      description: Copy and paste relevant logs or stack traces.
+      render: shell

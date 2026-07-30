@@ -1,0 +1,130 @@
+name: AD1 Pull Request Agent Review & Validation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  label-and-route:
+    name: Detect Changed Files & Assign Agent Labels
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+    steps:
+      - name: Label Pull Request by Changed File Paths
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const { data: files } = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+              per_page: 100
+            });
+
+            const filePaths = files.map(f => f.filename);
+            const labelsToAdd = new Set();
+
+            for (const path of filePaths) {
+              if (path.startsWith('src/db/') || path.startsWith('src/core/database/') || path.startsWith('drizzle/')) {
+                labelsToAdd.add('agent:database');
+              }
+              if (path.startsWith('src/shared/') || path.startsWith('src/modules/') || path.startsWith('src/components/') || path === 'index.html') {
+                labelsToAdd.add('agent:frontend');
+              }
+              if (path.startsWith('src/core/services/') || path.startsWith('src/core/repositories/') || path === 'server.ts') {
+                labelsToAdd.add('agent:backend');
+              }
+              if (path.startsWith('src/tests/')) {
+                labelsToAdd.add('agent:qa');
+              }
+              if (path.startsWith('android/') || path === 'capacitor.config.json') {
+                labelsToAdd.add('agent:mobile');
+              }
+              if (path.startsWith('electron/') || path === 'electron-builder.yml') {
+                labelsToAdd.add('agent:desktop');
+              }
+              if (path.startsWith('.github/') || path === 'package.json') {
+                labelsToAdd.add('agent:devops');
+              }
+              if (path.includes('auth') || path.includes('security') || path.includes('rbac') || path.includes('permission')) {
+                labelsToAdd.add('agent:security');
+              }
+            }
+
+            if (labelsToAdd.size === 0) {
+              labelsToAdd.add('agent:qa');
+            }
+
+            const currentLabels = pr.labels.map(l => typeof l === 'string' ? l : l.name);
+            const newLabels = Array.from(labelsToAdd).filter(l => !currentLabels.includes(l));
+
+            if (newLabels.length > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                labels: newLabels
+              });
+              console.log(`Added PR agent labels: ${newLabels.join(', ')}`);
+            }
+
+  validate-pr:
+    name: Execute Quality Gate (Lint, Test & Build Validation)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgrespassword
+          POSTGRES_DB: ad1_erp
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Setup Bun Runtime
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Dependencies
+        run: bun install
+
+      - name: Run Type Check & Linting
+        run: bun run lint
+
+      - name: Run Integration & ERP Test Suite
+        env:
+          DATABASE_URL: postgres://postgres:postgrespassword@localhost:5432/ad1_erp
+        run: bun run test
+
+      - name: Validate Web Build
+        run: bun run build:web
+
+      - name: Validate Windows Build
+        run: bunx electron-builder --win --x64 -c.publish=never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate Android Build
+        run: |
+          bunx cap sync android
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease || ./gradlew assembleDebug
