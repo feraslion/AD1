@@ -25,3 +25,6 @@ pool.on('error', (err) => {
 });
 
 export const db = drizzle(pool, { schema });
+
+// Cleanly export Supabase client from database infrastructure layer
+export * from './supabase.ts';
