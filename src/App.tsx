@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Product, Category, Customer, Unit, StoreSettings, Invoice } from './types';
 import { INITIAL_SETTINGS, INITIAL_UNITS, DEMO_DATASETS, GENERATE_INITIAL_INVOICES } from './data';
 import { ProductService, CustomerService, InvoiceService, CategoryService, UnitService, SettingsService, UserService } from './services/api';
-import { Dashboard, Settings, UsersAndPermissions } from './shared';
+import { Dashboard, Settings, UsersAndPermissions, CalculatorModal, VirtualKeyboardModal, SocialShareModal } from './shared';
 import { POS, Invoices } from './modules/sales';
 import { Inventory } from './modules/inventory';
 import { Reports } from './modules/reports';
@@ -34,7 +34,10 @@ import {
   LogOut,
   Users,
   ShieldCheck,
-  UserCheck
+  UserCheck,
+  Calculator,
+  Keyboard,
+  MessageCircle
 } from 'lucide-react';
 
 export default function App() {
@@ -59,6 +62,28 @@ export default function App() {
   });
   const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'offline'>('synced');
   const [showNotifications, setShowNotifications] = useState<boolean>(false);
+
+  // Quick Utility Tools Modals & Global Keyboard Shortcuts
+  const [showCalcModal, setShowCalcModal] = useState<boolean>(false);
+  const [showKeyboardModal, setShowKeyboardModal] = useState<boolean>(false);
+  const [showSocialModal, setShowSocialModal] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handleGlobalHotkeys = (e: KeyboardEvent) => {
+      if (e.altKey && (e.key === 'c' || e.key === 'C' || e.key === 'ؤ')) {
+        e.preventDefault();
+        setShowCalcModal(prev => !prev);
+      } else if (e.altKey && (e.key === 'k' || e.key === 'K' || e.key === 'ن')) {
+        e.preventDefault();
+        setShowKeyboardModal(prev => !prev);
+      } else if (e.altKey && (e.key === 'w' || e.key === 'W' || e.key === 'ص')) {
+        e.preventDefault();
+        setShowSocialModal(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleGlobalHotkeys);
+    return () => window.removeEventListener('keydown', handleGlobalHotkeys);
+  }, []);
 
   const handleLoginSuccess = async (user: { name: string; role: string; code: string; roleId?: string }) => {
     let fullUser: any = { ...user };
@@ -530,6 +555,39 @@ export default function App() {
             );
           })()}
 
+          {/* Quick Utility Shortcut Toolbar (Calculator, Virtual Keyboard, WhatsApp) */}
+          <div className="hidden lg:flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
+            <button
+              onClick={() => setShowCalcModal(true)}
+              className="px-2.5 py-1 bg-white hover:bg-slate-50 text-slate-700 hover:text-emerald-700 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-sm border border-slate-200"
+              title="آلة حاسبة سريعة مع الضريبة (Alt+C)"
+            >
+              <Calculator className="w-3.5 h-3.5 text-emerald-600" />
+              <span>حاسبة</span>
+              <kbd className="hidden xl:inline text-[9px] bg-slate-100 px-1 py-0.2 rounded font-mono text-slate-500">Alt+C</kbd>
+            </button>
+
+            <button
+              onClick={() => setShowKeyboardModal(true)}
+              className="px-2.5 py-1 bg-white hover:bg-slate-50 text-slate-700 hover:text-indigo-700 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-sm border border-slate-200"
+              title="لوحة مفاتيح شاشة لمسية (Alt+K)"
+            >
+              <Keyboard className="w-3.5 h-3.5 text-indigo-600" />
+              <span>كيبورد</span>
+              <kbd className="hidden xl:inline text-[9px] bg-slate-100 px-1 py-0.2 rounded font-mono text-slate-500">Alt+K</kbd>
+            </button>
+
+            <button
+              onClick={() => setShowSocialModal(true)}
+              className="px-2.5 py-1 bg-white hover:bg-slate-50 text-slate-700 hover:text-emerald-700 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-sm border border-slate-200"
+              title="واتساب ومشاركة شبكات التواصل (Alt+W)"
+            >
+              <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+              <span>واتساب</span>
+              <kbd className="hidden xl:inline text-[9px] bg-slate-100 px-1 py-0.2 rounded font-mono text-slate-500">Alt+W</kbd>
+            </button>
+          </div>
+
           <div className="hidden md:flex flex-col text-left items-end">
             <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">حالة الاتصال</span>
             <div className="flex items-center gap-1.5">
@@ -922,6 +980,23 @@ export default function App() {
           )}
         </main>
       </div>
+
+      {/* Global Quick Utility Modals */}
+      <CalculatorModal
+        isOpen={showCalcModal}
+        onClose={() => setShowCalcModal(false)}
+      />
+
+      <VirtualKeyboardModal
+        isOpen={showKeyboardModal}
+        onClose={() => setShowKeyboardModal(false)}
+      />
+
+      <SocialShareModal
+        isOpen={showSocialModal}
+        onClose={() => setShowSocialModal(false)}
+        customers={customers}
+      />
     </div>
   );
 }

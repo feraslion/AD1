@@ -1,6 +1,9 @@
 export { default as Dashboard } from './components/Dashboard';
 export { default as Settings } from './components/Settings';
 export { default as UsersAndPermissions } from './components/UsersAndPermissions';
+export { default as CalculatorModal } from './components/ui/CalculatorModal';
+export { default as VirtualKeyboardModal } from './components/ui/VirtualKeyboardModal';
+export { default as SocialShareModal } from './components/ui/SocialShareModal';
 export * from './hooks/useCart';
 export * from '../types';
 export * from '../data';
