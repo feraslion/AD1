@@ -72,8 +72,26 @@ export const CalculatorModal: React.FC<CalculatorModalProps> = ({ isOpen, onClos
       const fullExpression = equation + display;
       // Sanitize expression
       const sanitized = fullExpression.replace(/×/g, '*').replace(/÷/g, '/');
-      // eslint-disable-next-line no-eval
-      const result = eval(sanitized);
+      
+      // Safe math evaluator for basic operations
+      const safeEval = (expr: string): number => {
+        const tokens = expr.match(/(\d+\.?\d*|\+|\-|\*|\/)/g);
+        if (!tokens) throw new Error('Invalid expression');
+        
+        let currentVal = parseFloat(tokens[0]);
+        for (let i = 1; i < tokens.length; i += 2) {
+          const operator = tokens[i];
+          const nextNum = parseFloat(tokens[i + 1]);
+          if (isNaN(nextNum)) break;
+          if (operator === '+') currentVal += nextNum;
+          else if (operator === '-') currentVal -= nextNum;
+          else if (operator === '*') currentVal *= nextNum;
+          else if (operator === '/') currentVal /= nextNum;
+        }
+        return currentVal;
+      };
+
+      const result = safeEval(sanitized);
       if (isNaN(result) || !isFinite(result)) {
         setDisplay('خطأ');
       } else {

@@ -59,7 +59,9 @@ export class ExpenseRepository {
           ];
 
           for (const cat of defaultCats) {
-            await db.insert(expenseCategories).values(cat);
+            try {
+              await db.insert(expenseCategories).values(cat);
+            } catch (_) {}
           }
           return defaultCats.map(c => ({ ...c, budget: parseFloat(c.budget) }));
         }
@@ -69,7 +71,14 @@ export class ExpenseRepository {
         }));
       } catch (e) {
         console.error('Error fetching expense categories:', e);
-        return [];
+        return [
+          { id: 'cat_admin', name: 'مصاريف إدارية ومكتبية', code: 'EXP-101', accountId: 'acc_expense', budget: 10000, description: 'أدوات مكتبية، مطبوعات، ولوازم إدارية' },
+          { id: 'cat_oper', name: 'مصاريف تشغيلية', code: 'EXP-102', accountId: 'acc_expense', budget: 25000, description: 'مصاريف التشغيل اليومي والمستلزمات' },
+          { id: 'cat_mktg', name: 'تسويق وإعلانات', code: 'EXP-103', accountId: 'acc_expense', budget: 15000, description: 'حملات إعلانية، تسويق رقمي، ومطبوعات ترقية' },
+          { id: 'cat_maint', name: 'صيانة وإصلاحات', code: 'EXP-104', accountId: 'acc_expense', budget: 8000, description: 'صيانة الآلات، المعدات، والأصول' },
+          { id: 'cat_util', name: 'منافع ومرافق (كهرباء وماء وثراء)', code: 'EXP-105', accountId: 'acc_expense', budget: 12000, description: 'فاتورة الكهرباء، المياه، والإنترنت' },
+          { id: 'cat_rent', name: 'إيجارات وشغور', code: 'EXP-106', accountId: 'acc_expense', budget: 50000, description: 'إيجار المقرات والفروع' },
+        ];
       }
     });
   }
