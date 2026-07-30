@@ -14,7 +14,7 @@
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist server.js release",
     "lint": "tsc --noEmit",
-    "test": "bunx tsx src/tests/test_phases9_10_11.ts && bunx tsx src/tests/test_phases12_13_14_15.ts"
+    "test": "bun src/tests/test_phase8_currency.ts && bun src/tests/test_phases9_10_11.ts && bun src/tests/test_phases12_13_14_15.ts"
   },
   "build": {
     "appId": "com.feraslion.ad1",
