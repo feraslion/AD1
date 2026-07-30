@@ -69,14 +69,18 @@ export async function seedEnterpriseData() {
     { id: 'acc_cash', code: '1101', name: 'النقدية والصندوق', type: 'asset', currency: 'SAR', companyId: 'company-1', balance: '0' },
     { id: 'acc_bank', code: '1102', name: 'البنك الرئيسي', type: 'asset', currency: 'SAR', companyId: 'company-1', balance: '0' },
     { id: 'acc_ar', code: '1103', name: 'العملاء (مدينون)', type: 'asset', currency: 'SAR', companyId: 'company-1', balance: '0' },
+    { id: 'acc_receivable', code: '110300', name: 'العملاء والمدينون (الأساسي)', type: 'asset', currency: 'SAR', companyId: 'company-1', balance: '0' },
     { id: 'acc_inventory', code: '1104', name: 'المخزون السلعي', type: 'asset', currency: 'SAR', companyId: 'company-1', balance: '0' },
     { id: 'acc_ap', code: '2101', name: 'الموردون (دائنون)', type: 'liability', currency: 'SAR', companyId: 'company-1', balance: '0' },
+    { id: 'acc_payable', code: '210100', name: 'الموردون والدائنون (الأساسي)', type: 'liability', currency: 'SAR', companyId: 'company-1', balance: '0' },
     { id: 'acc_vat_payable', code: '2102', name: 'ضريبة القيمة المضافة', type: 'liability', currency: 'SAR', companyId: 'company-1', balance: '0' },
+    { id: 'acc_tax', code: '210200', name: 'ضريبة المبيعات والمشتريات', type: 'liability', currency: 'SAR', companyId: 'company-1', balance: '0' },
     { id: 'acc_equity', code: '3101', name: 'رأس المال', type: 'equity', currency: 'SAR', companyId: 'company-1', balance: '0' },
     { id: 'acc_sales', code: '4101', name: 'إيرادات المبيعات', type: 'revenue', currency: 'SAR', companyId: 'company-1', balance: '0' },
     { id: 'acc_fx_gain_loss', code: '4201', name: 'أرباح وخسائر عملات', type: 'revenue', currency: 'SAR', companyId: 'company-1', balance: '0' },
     { id: 'acc_cogs', code: '5101', name: 'تكلفة البضاعة المباعة', type: 'expense', currency: 'SAR', companyId: 'company-1', balance: '0' },
     { id: 'acc_expenses', code: '5201', name: 'مصروفات تشغيلية', type: 'expense', currency: 'SAR', companyId: 'company-1', balance: '0' },
+    { id: 'acc_expense', code: '520100', name: 'المصروفات العامة', type: 'expense', currency: 'SAR', companyId: 'company-1', balance: '0' },
   ];
 
   for (const acc of defaultAccounts) {
