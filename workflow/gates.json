@@ -1,0 +1,38 @@
+{
+  "version": "1.0.0",
+  "gates": [
+    {
+      "id": "gate-1-architect",
+      "name": "Architectural Compliance Gate",
+      "checker": "architect-agent",
+      "description": "Verifies multi-tier layer decoupling, repository patterns, and schema integrity."
+    },
+    {
+      "id": "gate-2-security",
+      "name": "Security & Permissions Gate",
+      "checker": "security-agent",
+      "description": "Verifies RBAC rules, token validation, secret handling, and ZATCA / financial privacy compliance."
+    },
+    {
+      "id": "gate-3-qa-tests",
+      "name": "Quality & Test Suite Gate",
+      "checker": "qa-agent",
+      "commands": [
+        "bun run lint",
+        "bun run test"
+      ],
+      "description": "Ensures zero TypeScript errors and 100% passing test suites across Phase 8 to Phase 15 ERP modules."
+    },
+    {
+      "id": "gate-4-build-verification",
+      "name": "Multi-Platform Build Gate",
+      "checker": "qa-agent",
+      "commands": [
+        "bun run build:web",
+        "bun run build:windows",
+        "bun run build:android"
+      ],
+      "description": "Ensures Vite Web, Electron Windows EXE, and Capacitor Android APK builds succeed without errors."
+    }
+  ]
+}

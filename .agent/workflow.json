@@ -1,0 +1,44 @@
+{
+  "version": "1.0.0",
+  "name": "AD1-ERP Multi-Agent Engineering Workflow",
+  "mandatory_checks": [
+    "1. Architect Review",
+    "2. QA Test Verification",
+    "3. Security Check",
+    "4. Build Verification"
+  ],
+  "pre_merge_requirements": {
+    "lint": "bun run lint",
+    "tests": "bun run test",
+    "web_build": "bun run build:web",
+    "windows_build": "bun run build:windows",
+    "android_build": "bun run build:android"
+  },
+  "pipeline_stages": [
+    {
+      "stage": "ArchitectureReview",
+      "agent": "architect-agent",
+      "gate": "Design and schema boundaries approved"
+    },
+    {
+      "stage": "Implementation",
+      "agents": ["backend-agent", "frontend-agent", "mobile-agent", "desktop-agent"],
+      "gate": "Code implemented adhering to layered architecture"
+    },
+    {
+      "stage": "SecurityAudit",
+      "agent": "security-agent",
+      "gate": "RBAC, auth, and environment checks passed"
+    },
+    {
+      "stage": "QualityVerification",
+      "agent": "qa-agent",
+      "gate": "All tests, lint checks, and multi-target builds pass green"
+    },
+    {
+      "stage": "ReleaseDeployment",
+      "agent": "devops-agent",
+      "gate": "Artifacts published and GitHub Actions pipeline clean"
+    }
+  ]
+}

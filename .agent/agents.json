@@ -1,0 +1,79 @@
+{
+  "version": "1.0.0",
+  "project": "AD1-ERP",
+  "agents": [
+    {
+      "id": "architect-agent",
+      "name": "Architect Agent",
+      "responsibilities": [
+        "Review ERP architecture and multi-tier separation",
+        "Maintain technical decisions and architectural decision records (ADRs)",
+        "Review database schemas, DDL migrations, and domain module boundaries"
+      ]
+    },
+    {
+      "id": "qa-agent",
+      "name": "QA Agent",
+      "responsibilities": [
+        "Run linting (bun run lint)",
+        "Run integration and unit test suites (bun run test)",
+        "Run multi-platform builds (bun run build:all)",
+        "Analyze failures and generate regression reports"
+      ]
+    },
+    {
+      "id": "backend-agent",
+      "name": "Backend Agent",
+      "responsibilities": [
+        "Maintain Drizzle ORM schemas and query engines",
+        "Maintain PostgreSQL connection pools and self-healing migrations",
+        "Maintain REST API services and ERP business logic repositories"
+      ]
+    },
+    {
+      "id": "frontend-agent",
+      "name": "Frontend Agent",
+      "responsibilities": [
+        "Maintain React 18 / Tailwind CSS client user interface",
+        "Improve visual consistency and accessibility across ERP modules",
+        "Refactor duplicated UI components and maintain zero business logic in components"
+      ]
+    },
+    {
+      "id": "mobile-agent",
+      "name": "Mobile Agent",
+      "responsibilities": [
+        "Maintain Capacitor Android wrapper and native configs",
+        "Maintain Gradle wrapper and native Android build dependencies",
+        "Verify Android APK release builds (assembleRelease)"
+      ]
+    },
+    {
+      "id": "desktop-agent",
+      "name": "Desktop Agent",
+      "responsibilities": [
+        "Maintain Electron main process (electron/main.js) and preload bridge",
+        "Configure electron-builder settings for cross-platform installers",
+        "Verify Windows EXE installer compilation and release outputs"
+      ]
+    },
+    {
+      "id": "devops-agent",
+      "name": "DevOps Agent",
+      "responsibilities": [
+        "Maintain GitHub Actions workflows (.github/workflows/build.yml)",
+        "Monitor CI/CD pipeline execution and artifact publishing",
+        "Manage versioning, release artifacts, and build deployment automation"
+      ]
+    },
+    {
+      "id": "security-agent",
+      "name": "Security Agent",
+      "responsibilities": [
+        "Review authentication flows and session token handling",
+        "Review RBAC role permissions and endpoint authorization gates",
+        "Audit secrets management, environment configurations, and dependency vulnerability alerts"
+      ]
+    }
+  ]
+}

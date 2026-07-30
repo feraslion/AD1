@@ -10,12 +10,19 @@
 
 ## 2. Lead Agent & Specialist Sub-Agent Workflow
 When executing complex updates or repository maintenance, coordinate work using specialized sub-roles:
-1. **Architect Agent**: Audits module boundaries, interfaces, and layer decoupling before any code edits.
-2. **Database & Schema Agent**: Ensures PostgreSQL schema alignment, auto-healing DDL migrations (`IF NOT EXISTS`), and seed data consistency.
-3. **Bugfix & Service Agent**: Fixes service/repository logic using minimal, targeted, surgical patches.
-4. **Test & Verification Agent**: Executes unit and integration test suites (`bun run test`) and verifies zero regressions.
-5. **UI & Accessibility Agent**: Ensures clean presentation, responsiveness, and zero domain logic inside React components.
-6. **CI/CD & Multi-Platform Agent**: Maintains cross-platform pipelines (`electron-builder.yml`, GitHub Workflows, Capacitor Android/Gradle Wrapper).
+1. **Architect Agent**: Audits module boundaries, interfaces, technical decisions, and layer decoupling before any code edits (`docs/agents/ARCHITECT_AGENT.md`).
+2. **QA Agent**: Executes lint checks (`bun run lint`), integration test suites (`bun run test`), multi-builds (`bun run build:all`), and regression analysis (`docs/agents/QA_AGENT.md`).
+3. **Backend Agent**: Maintains Drizzle ORM schemas, PostgreSQL connections, REST endpoints, and core ERP business logic (`docs/agents/BACKEND_AGENT.md`).
+4. **Frontend Agent**: Maintains React 18 UI components, Tailwind CSS styling, visual consistency, and accessibility with zero domain logic in views (`docs/agents/FRONTEND_AGENT.md`).
+5. **Mobile Agent**: Maintains Capacitor Android configurations, Gradle Wrapper integrity, and APK builds (`docs/agents/MOBILE_AGENT.md`).
+6. **Desktop Agent**: Maintains Electron main process, window management, and Windows EXE packaging (`docs/agents/DESKTOP_AGENT.md`).
+7. **DevOps Agent**: Maintains GitHub Actions workflows (`.github/workflows/build.yml`), CI/CD pipelines, and release management (`docs/agents/DEVOPS_AGENT.md`).
+8. **Security Agent**: Reviews authentication, RBAC role permissions, secret protection, and ZATCA / financial compliance (`docs/agents/SECURITY_AGENT.md`).
+
+For detailed workflow rules and communication protocols, see:
+- Configuration: `/.agent/agents.json` and `/.agent/workflow.json`
+- Workflow Guide: `/workflow/ENGINEERING_WORKFLOW.md` and `/workflow/gates.json`
+- Documentation Index: `/docs/agents/INDEX.md`
 
 ---
 
