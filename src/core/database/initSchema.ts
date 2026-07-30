@@ -483,9 +483,12 @@ export async function ensureDatabaseTables(force = false) {
       exchange_rate NUMERIC,
       foreign_debit NUMERIC,
       foreign_credit NUMERIC,
+      description TEXT,
       notes TEXT
     );
   `, 'journal_lines');
+
+  await execSql(sql`ALTER TABLE journal_lines ADD COLUMN IF NOT EXISTS description TEXT;`, 'jl_col_description');
 
   // 24. Payments
   await execSql(sql`
