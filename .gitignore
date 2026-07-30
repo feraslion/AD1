@@ -10,3 +10,5 @@ coverage/
 # Gradle wrapper inclusion
 !gradle-wrapper.jar
 !/android/gradle/wrapper/
+!/android/gradle/wrapper/gradle-wrapper.jar
+!/android/gradle/wrapper/*.jar

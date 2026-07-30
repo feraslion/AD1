@@ -1,5 +1,6 @@
 appId: com.feraslion.ad1
 productName: AD1-ERP
+publish: null
 extraMetadata:
   main: electron/main.js
 directories:
