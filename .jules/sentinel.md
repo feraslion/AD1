@@ -1,0 +1,4 @@
+## 2026-03-03 - Restricted Authentication Fallback to Non-Production
+**Vulnerability:** Unauthenticated/stale API requests fell back to a highly-privileged master manager account (ID '001') globally. This meant an attacker with no valid token or an invalid session could bypass authentication completely and execute administrator operations across the Point of Sale and general ledger.
+**Learning:** The fallback was initially added to simplify development and testing without needing full authentication setups in every request. However, leaving it active globally meant production servers would also inherit this authentication bypass mechanism.
+**Prevention:** Always scope master user fallbacks, development backdoors, or mock sessions to non-production environments (using checks like `process.env.NODE_ENV !== 'production'`) and fail securely with an explicit 401 Unauthorized response in production.
