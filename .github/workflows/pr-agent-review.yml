@@ -112,6 +112,11 @@ jobs:
       - name: Run Integration & ERP Test Suite
         env:
           DATABASE_URL: postgres://postgres:postgrespassword@localhost:5432/ad1_erp
+          SQL_HOST: localhost
+          SQL_PORT: 5432
+          SQL_USER: postgres
+          SQL_PASSWORD: postgrespassword
+          SQL_DB_NAME: ad1_erp
         run: bun run test
 
       - name: Validate Web Build
