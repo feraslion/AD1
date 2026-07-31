@@ -2,6 +2,12 @@ import { db, createPool } from './index.ts';
 import { sql } from 'drizzle-orm';
 
 async function execSql(query: ReturnType<typeof sql>, name: string) {
+  if (ddlSupported === false) {
+    const sqlStr = String((query as any).queryChunks?.[0] || '');
+    if (sqlStr.includes('CREATE TABLE')) {
+      return;
+    }
+  }
   try {
     await db.execute(query);
   } catch (err: any) {
@@ -40,24 +46,17 @@ export async function ensureDatabaseTables(force = false) {
   }
   console.log('Ensuring all database tables and schema migrations exist...');
 
-  const testPool = createPool();
   try {
-    const client = await testPool.connect();
-    try {
-      await client.query("CREATE TABLE IF NOT EXISTS _ddl_test (id INT)");
-      await client.query("DROP TABLE IF EXISTS _ddl_test");
-      ddlSupported = true;
-    } finally {
-      client.release(true); // destroy client so no aborted state lingers
-    }
+    await db.execute(sql`CREATE TABLE IF NOT EXISTS _ddl_test (id INT)`);
+    await db.execute(sql`DROP TABLE IF EXISTS _ddl_test`);
+    ddlSupported = true;
   } catch (err: any) {
-    console.log('[Schema Migration] DDL check notice (no CREATE TABLE privilege). Skipping DDL execution:', err?.message || err);
+    try {
+      await db.execute(sql`ROLLBACK`);
+    } catch (_) {}
+    console.log('[Schema Migration] DDL test notice:', err?.message || err);
     ddlSupported = false;
-    isSchemaEnsured = true;
-    await testPool.end().catch(() => {});
-    return;
   }
-  await testPool.end().catch(() => {});
 
   // 1. Companies
   await execSql(sql`

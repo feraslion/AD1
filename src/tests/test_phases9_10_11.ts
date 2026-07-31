@@ -8,7 +8,7 @@ import { SupplierRepository } from '../core/repositories/SupplierRepository.ts';
 import { db } from '../core/database/index.ts';
 import { ensureDatabaseTables } from '../core/database/initSchema.ts';
 import { seedEnterpriseData } from '../core/database/seedEnterpriseData.ts';
-import { products, warehouses, customers, suppliers } from '../core/database/schema.ts';
+import { products, warehouses, customers, suppliers, accounts } from '../core/database/schema.ts';
 import { eq } from 'drizzle-orm';
 
 async function runPhases9To11Tests() {
@@ -18,6 +18,33 @@ async function runPhases9To11Tests() {
     // 0. ENSURE DATABASE SCHEMA IS CREATED & ENTERPRISE SEEDED
     await ensureDatabaseTables(true);
     await seedEnterpriseData();
+
+    // Verify required accounts exist
+    const requiredAccounts = [
+      { id: 'acc_receivable', code: '1103', name: 'العملاء (مدينون)', type: 'asset' },
+      { id: 'acc_payable', code: '2101', name: 'الموردون (دائنون)', type: 'liability' },
+      { id: 'acc_tax', code: '2102', name: 'ضريبة القيمة المضافة', type: 'liability' },
+      { id: 'acc_sales', code: '4101', name: 'إيرادات المبيعات', type: 'revenue' },
+      { id: 'acc_cogs', code: '5101', name: 'تكلفة البضاعة المباعة', type: 'expense' },
+      { id: 'acc_inventory', code: '1104', name: 'المخزون السلعي', type: 'asset' },
+      { id: 'acc_cash', code: '1101', name: 'النقدية والصندوق', type: 'asset' },
+      { id: 'acc_bank', code: '1102', name: 'البنك الرئيسي', type: 'asset' }
+    ];
+
+    for (const acc of requiredAccounts) {
+      const existing = await db.select().from(accounts).where(eq(accounts.id, acc.id));
+      if (existing.length === 0) {
+        await db.insert(accounts).values({
+          id: acc.id,
+          code: acc.code,
+          name: acc.name,
+          type: acc.type,
+          currency: 'SAR',
+          companyId: 'company-1',
+          balance: '0'
+        }).catch(() => {});
+      }
+    }
 
     // SETUP TEST DATA
     console.log('[Setup] Creating test product, customer, supplier, and warehouse...');

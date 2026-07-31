@@ -450,7 +450,6 @@ export const journalDetails = pgTable('journal_details', {
   foreignCredit: numeric('foreign_credit').default('0'),
   debit: numeric('debit').default('0'), // Base currency debit
   credit: numeric('credit').default('0'), // Base currency credit
-  description: text('description'),
   createdAt: timestamp('created_at').defaultNow(),
 }, (table) => {
   return {
