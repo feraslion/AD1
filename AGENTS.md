@@ -28,11 +28,11 @@ For detailed workflow rules and communication protocols, see:
 
 ## 3. Engineering Gate (Pre-Implementation & Release Checklist)
 Before merging or executing code changes, the workspace must satisfy:
-1. **Build Verification**: `npm run build` completes with zero errors.
-2. **Type Safety**: TypeScript compiler check passes with no blocking type errors (`npm run lint`).
+1. **Build Verification**: `bun run build` completes with zero errors.
+2. **Type Safety**: TypeScript compiler check passes with no blocking type errors (`bun run lint` / `bun run typecheck`).
 3. **Database & Schema Integrity**: Schema modifications are synced with migrations, auto-migration mechanisms (`initSchema.ts`), and types.
-4. **Test Coverage**: Unit and integration test suites pass successfully without regressions.
-5. **Cross-Platform Compatibility**: Electron builder config (`electron-builder.yml`) and Android Gradle wrapper (`.gitignore` exceptions) are intact.
+4. **Test Coverage**: Integration test suites (`bun run test`) pass successfully without regressions.
+5. **Cross-Platform Compatibility**: Electron builder config (`electron-builder.yml`) and Android Gradle wrapper (`android/gradle/wrapper/gradle-wrapper.jar`) are intact (`bun run build:all`).
 6. **No Dead/Unused Code**: No orphan files, unused dependencies, or circular imports.
 
 ---
