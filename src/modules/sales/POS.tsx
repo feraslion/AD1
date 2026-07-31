@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Product, Category, Customer, CartItem, StoreSettings, Invoice } from '../../types';
 import { 
   ShoppingCart, Search, Plus, Minus, Trash2, UserPlus, CreditCard, 
@@ -236,13 +236,25 @@ export default function POS({ products, categories, customers, settings, onAddIn
     setInvoiceDiscount(0);
   };
 
-  // Calculations
-  const subtotal = SalesService.calculateSubtotal(cart);
-  const totalDiscount = SalesService.calculateTotalDiscount(subtotal, invoiceDiscount, invoiceDiscountType);
-  const taxableAmount = SalesService.calculateTaxableAmount(subtotal, totalDiscount);
+  // Calculations (Memoized to prevent UI lag on fast scanner and user interactions)
+  const subtotal = useMemo(() => SalesService.calculateSubtotal(cart), [cart]);
+  const totalDiscount = useMemo(() =>
+    SalesService.calculateTotalDiscount(subtotal, invoiceDiscount, invoiceDiscountType),
+    [subtotal, invoiceDiscount, invoiceDiscountType]
+  );
+  const taxableAmount = useMemo(() =>
+    SalesService.calculateTaxableAmount(subtotal, totalDiscount),
+    [subtotal, totalDiscount]
+  );
   const taxRate = settings.taxRate || 15;
-  const taxAmount = SalesService.calculateTaxAmount(taxableAmount, taxRate);
-  const grandTotal = SalesService.calculateGrandTotal(taxableAmount, taxAmount);
+  const taxAmount = useMemo(() =>
+    SalesService.calculateTaxAmount(taxableAmount, taxRate),
+    [taxableAmount, taxRate]
+  );
+  const grandTotal = useMemo(() =>
+    SalesService.calculateGrandTotal(taxableAmount, taxAmount),
+    [taxableAmount, taxAmount]
+  );
 
   // Handle quick customer creation
   const handleCreateCustomer = (e: React.FormEvent) => {
@@ -436,12 +448,14 @@ export default function POS({ products, categories, customers, settings, onAddIn
     handleBarcodeScan(product.barcode);
   };
 
-  // Filter products by category and search
-  const filteredProducts = products.filter(p => {
-    const matchesCategory = selectedCategory === 'all' || p.category === selectedCategory;
-    const matchesSearch = p.name.includes(searchQuery) || p.barcode.includes(searchQuery);
-    return matchesCategory && matchesSearch;
-  });
+  // Filter products by category and search (Memoized to prevent catalog rendering lag)
+  const filteredProducts = useMemo(() => {
+    return products.filter(p => {
+      const matchesCategory = selectedCategory === 'all' || p.category === selectedCategory;
+      const matchesSearch = p.name.includes(searchQuery) || p.barcode.includes(searchQuery);
+      return matchesCategory && matchesSearch;
+    });
+  }, [products, selectedCategory, searchQuery]);
 
   return (
     <div className="flex flex-col gap-4 h-[calc(100vh-120px)]">
