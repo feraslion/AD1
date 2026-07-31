@@ -89,6 +89,13 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+    env:
+      SQL_HOST: localhost
+      SQL_PORT: 5432
+      SQL_USER: postgres
+      SQL_PASSWORD: postgrespassword
+      SQL_DB_NAME: ad1_erp
+
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
