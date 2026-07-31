@@ -1,0 +1,4 @@
+## 2026-03-05 - [Restricting Master Manager Fallback to Development]
+**Vulnerability:** Insecure authentication fallback allowing unauthenticated bypass. The application had an unconditional fallback to the master manager user '001' with administrative permissions if no user record could be resolved, regardless of the environment setting.
+**Learning:** During initial development or testing phases, developer convenience fallbacks (such as master user auto-logins) can inadvertently persist into production, opening critical security gaps where unauthenticated actors could access sensitive APIs with elevated roles.
+**Prevention:** Always restrict developer-focused fallbacks and static accounts behind explicit environment checks (e.g., `process.env.NODE_ENV !== 'production'`) and fail securely with standardized 401 Unauthorized responses in production mode.
