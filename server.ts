@@ -139,8 +139,12 @@ async function authenticate(req: Request, res: Response, next: NextFunction) {
 
     // Default manager user fallback for dev/testing session
     if (!userRecord) {
-      const [master] = await db.select().from(users).where(eq(users.id, '001'));
-      userRecord = (master as AuthenticatedUser) || { id: '001', uid: '001', email: 'manager@system.com', name: 'عبدالرحمن (المدير العام)', role: 'manager', roleId: 'role_manager' };
+      if (process.env.NODE_ENV !== 'production') {
+        const [master] = await db.select().from(users).where(eq(users.id, '001'));
+        userRecord = (master as AuthenticatedUser) || { id: '001', uid: '001', email: 'manager@system.com', name: 'عبدالرحمن (المدير العام)', role: 'manager', roleId: 'role_manager' };
+      } else {
+        return sendError(res, 'غير مصرح به - الرجاء تقديم رمز تحقق صالح', undefined, 401);
+      }
     }
 
     // Load permissions for userRecord
