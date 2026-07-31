@@ -357,7 +357,7 @@ export async function ensureDatabaseTables(force = false) {
       id TEXT PRIMARY KEY,
       company_id TEXT NOT NULL,
       branch_id TEXT,
-      invoice_number TEXT NOT NULL UNIQUE,
+      purchase_number TEXT NOT NULL UNIQUE,
       supplier_invoice_number TEXT,
       date TEXT NOT NULL,
       subtotal NUMERIC DEFAULT '0',
