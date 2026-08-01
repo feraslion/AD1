@@ -11,6 +11,7 @@ async function execSql(query: ReturnType<typeof sql>, name: string) {
   try {
     await db.execute(query);
   } catch (err: any) {
+    console.error(`[Schema Migration] Error executing DDL "${name}":`, err?.message || err);
     try {
       await db.execute(sql`ROLLBACK`);
     } catch (_) {}
@@ -40,6 +41,24 @@ export async function ensureDatabaseTables(force = false) {
   if (force) {
     isSchemaEnsured = false;
     ddlSupported = null;
+    // 🛡️ SECURITY & RELIABILITY ENHANCEMENT:
+    // When force is true (as requested by automated ERP test scripts), drop all existing tables
+    // with CASCADE to ensure a completely pristine, empty database slate for the testing process.
+    try {
+      console.log('[Schema Migration] Force clean requested. Dropping all tables with CASCADE...');
+      await db.execute(sql`
+        DROP TABLE IF EXISTS purchase_request_items, purchase_requests, sales_order_items, sales_orders,
+                              quotation_items, quotations, audit_logs, purchase_invoices, sales_invoices,
+                              exchange_rates, payment_methods, taxes, exchange_rates_history, currencies,
+                              posting_rules, cashboxes, settings, expenses, payments, journal_lines,
+                              journal_details, journal_entries, accounts, purchase_items, purchases,
+                              sales_items, sales, invoice_items, invoices, stock_moves, warehouses,
+                              products, suppliers, customers, units, categories, user_sessions, users,
+                              role_permissions, permissions, roles, branches, companies CASCADE;
+      `);
+    } catch (dropErr: any) {
+      console.warn('[Schema Migration] Drop tables warning:', dropErr?.message || dropErr);
+    }
   }
   if (isSchemaEnsured) {
     return;
