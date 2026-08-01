@@ -90,7 +90,17 @@ export async function authenticate(req: AuthenticatedRequest, res: Response, nex
     }
 
     // 3. Fallback for unauthenticated requests or invalid/stale tokens in development
+    // 🛡️ SECURITY WARNING: Under no circumstances should unauthenticated requests bypass
+    // authentication to a master/admin account in production. This fallback is strictly
+    // restricted to non-production environments to prevent critical authentication bypass.
     if (!userRecord) {
+      if (process.env.NODE_ENV === 'production') {
+        return res.status(401).json({
+          success: false,
+          error: 'غير مصرح به - يرجى تسجيل الدخول أولاً',
+          statusCode: 401
+        });
+      }
       const [master] = await db.select().from(users).where(eq(users.id, '001'));
       userRecord = master || {
         id: '001',
