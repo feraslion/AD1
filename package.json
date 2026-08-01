@@ -8,7 +8,7 @@
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "build:web": "bun run build",
-    "build:windows": "bun run build:web && bunx electron-builder --win --publish never",
+    "build:windows": "bun run build:web && bunx electron-builder --win -c.publish=never",
     "build:android": "bun run build:web && bunx cap sync android && (cd android && ./gradlew assembleRelease)",
     "build:all": "bun run build:web && bun run build:windows && bun run build:android",
     "start": "node dist/server.cjs",
@@ -38,6 +38,7 @@
   "dependencies": {
     "@google/genai": "^2.4.0",
     "@tailwindcss/vite": "^4.1.14",
+    "@types/jsbarcode": "^3.11.4",
     "@vitejs/plugin-react": "^5.0.4",
     "bcryptjs": "^3.0.3",
     "buffer": "^6.0.3",
@@ -47,13 +48,18 @@
     "express": "^4.21.2",
     "firebase": "^12.16.0",
     "firebase-admin": "^14.2.0",
+    "html2canvas": "^1.4.1",
+    "html5-qrcode": "^2.3.8",
+    "jsbarcode": "^3.12.3",
     "jsonwebtoken": "^9.0.3",
+    "jspdf": "^4.2.1",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "pg": "^8.22.0",
     "qrcode": "^1.5.4",
     "react": "^19.0.1",
-    "react-dom": "^19.0.1"
+    "react-dom": "^19.0.1",
+    "recharts": "^3.10.1"
   },
   "devDependencies": {
     "@capacitor/android": "^7.0.0",

@@ -4,14 +4,16 @@ import {
   ShoppingCart, Search, Plus, Minus, Trash2, UserPlus, CreditCard, 
   DollarSign, Wallet, FileText, CheckCircle, X, Printer, QrCode, 
   Scan, AlertCircle, AlertTriangle, Wifi, WifiOff, RefreshCw, Settings, Calculator, 
-  Zap, Percent, Tag, Scale, Volume2, Check, Monitor, RotateCcw, Lock, Unlock, Coins
+  Zap, Percent, Tag, Scale, Volume2, Check, Monitor, RotateCcw, Lock, Unlock, Coins, Camera, Moon, Sun, Download
 } from 'lucide-react';
 import { SalesService } from '../../services/SalesService';
 import { playScannerSound } from '../../utils/audio';
 import { generateZatcaQrDataUrl } from '../../utils/zatca';
+import { downloadInvoicePDF } from '../../utils/pdfGenerator';
 import { OfflineQueue } from '../../utils/offlineQueue';
 import { useBarcodeScanner } from '../../utils/scannerUtility';
 import BarcodeScannerModal from './BarcodeScannerModal';
+import CameraBarcodeScanner from './CameraBarcodeScanner';
 
 interface POSProps {
   products: Product[];
@@ -33,7 +35,8 @@ export default function POS({ products, categories, customers, settings, onAddIn
   const [invoiceDiscount, setInvoiceDiscount] = useState<number>(0);
   const [invoiceDiscountType, setInvoiceDiscountType] = useState<'fixed' | 'percentage'>('fixed');
 
-  // Scanner Modal & Fast Laser Mode
+  // Scanner Modal & Fast Laser Mode & Camera Scanner
+  const [showCameraScanner, setShowCameraScanner] = useState<boolean>(false);
   const [showScannerModal, setShowScannerModal] = useState<boolean>(false);
   const [showScanner, setShowScanner] = useState<boolean>(false);
   const [scannerInput, setScannerInput] = useState<string>('');
@@ -93,10 +96,41 @@ export default function POS({ products, categories, customers, settings, onAddIn
   // Customer Display Modal State
   const [showCustomerDisplay, setShowCustomerDisplay] = useState<boolean>(false);
 
+  // Dark Mode Toggle for POS Shift
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    return document.documentElement.classList.contains('dark') || localStorage.getItem('erp_dark_mode') === 'true';
+  });
+
+  const toggleDarkMode = () => {
+    const next = !isDarkMode;
+    setIsDarkMode(next);
+    if (next) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    localStorage.setItem('erp_dark_mode', String(next));
+  };
+
   // Fast Touch Numpad / Calculator Drawer
   const [showNumpad, setShowNumpad] = useState<boolean>(false);
   const [numpadValue, setNumpadValue] = useState<string>('');
   const [activeCartItemId, setActiveCartItemId] = useState<string | null>(null);
+
+  // PDF Export state
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState<boolean>(false);
+
+  const handleDownloadPdf = async (format: 'a4' | 'thermal' = 'a4') => {
+    if (!lastInvoice) return;
+    setIsDownloadingPdf(true);
+    try {
+      await downloadInvoicePDF(lastInvoice, settings, { format });
+    } catch (err) {
+      alert('حدث خطأ أثناء تحميل ملف الفاتورة PDF.');
+    } finally {
+      setIsDownloadingPdf(false);
+    }
+  };
 
   const convertFromSAR = useCallback((amountInSAR: number, targetCurrency: string = posCurrency) => {
     const rate = currencyRates[targetCurrency] || 1;
@@ -491,8 +525,22 @@ export default function POS({ products, categories, customers, settings, onAddIn
           </div>
         </div>
 
-        {/* Professional Hardware Tools: Cash Drawer, Returns, Customer Display, Thermal Printer */}
+        {/* Professional Hardware Tools: Cash Drawer, Returns, Customer Display, Thermal Printer, Dark Mode */}
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Night Shift Dark Mode Button */}
+          <button
+            onClick={toggleDarkMode}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition border ${
+              isDarkMode
+                ? 'bg-amber-950/80 border-amber-600/60 text-amber-300 hover:bg-amber-900'
+                : 'bg-indigo-950/80 border-indigo-700/60 text-indigo-200 hover:bg-indigo-900'
+            }`}
+            title="تخفيف إجهاد العين بالوضع الليلي للكاشير (Alt+D)"
+          >
+            {isDarkMode ? <Sun className="w-3.5 h-3.5 text-amber-400" /> : <Moon className="w-3.5 h-3.5 text-indigo-400" />}
+            <span>{isDarkMode ? 'وضع نهار ☀️' : 'وضع ليل 🌙'}</span>
+          </button>
+
           {/* Cash Drawer Button */}
           <button
             onClick={handleTriggerCashDrawer}
@@ -565,9 +613,9 @@ export default function POS({ products, categories, customers, settings, onAddIn
       {/* Main Grid: Products Catalog vs Shopping Cart */}
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 flex-1 overflow-hidden">
         {/* Products Catalog - 7 cols */}
-        <div className="xl:col-span-7 flex flex-col bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden h-full">
+        <div className="xl:col-span-7 flex flex-col bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden h-full">
           {/* Search & Scanner Controls */}
-          <div className="p-4 bg-slate-50/80 border-b border-slate-200 space-y-3">
+          <div className="p-4 bg-slate-50/80 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 space-y-3">
             <div className="flex flex-col sm:flex-row gap-2.5">
               {/* Search Bar */}
               <div className="relative flex-1">
@@ -577,12 +625,22 @@ export default function POS({ products, categories, customers, settings, onAddIn
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="ابحث بالاسم أو الباركود... (أو امسح بالليزر مباشرة)"
-                  className="w-full pr-10 pl-4 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800 placeholder-slate-400"
+                  className="w-full pr-10 pl-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500"
                 />
               </div>
 
-              {/* Laser Scanner & Touch Keypad Buttons */}
-              <div className="flex gap-2">
+              {/* Camera Scanner & Laser Scanner & Touch Keypad Buttons */}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCameraScanner(true)}
+                  className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-sm border border-emerald-500/30"
+                  title="مسح الباركود باستخدام كاميرا الجهاز الجوال أو المحمول"
+                >
+                  <Camera className="w-4 h-4 text-emerald-200 animate-pulse" />
+                  <span>مسح بالكاميرا 📷</span>
+                </button>
+
                 <button 
                   onClick={() => setShowScannerModal(true)}
                   className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-sm"
@@ -605,7 +663,7 @@ export default function POS({ products, categories, customers, settings, onAddIn
 
                 <button
                   onClick={() => setShowNumpad(!showNumpad)}
-                  className="flex items-center justify-center gap-1 px-3 py-2.5 bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 rounded-xl text-xs font-bold transition"
+                  className="flex items-center justify-center gap-1 px-3 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition"
                   title="لوحة أرقام سريعة"
                 >
                   <Calculator className="w-4 h-4" />
@@ -687,17 +745,17 @@ export default function POS({ products, categories, customers, settings, onAddIn
             {/* Notification Toast Message */}
             {scanMessage && (
               <div className={`p-3 rounded-xl text-xs font-bold flex items-center justify-between gap-2 shadow-sm animate-fade-in ${
-                scanMessage.type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' :
-                scanMessage.type === 'error' ? 'bg-rose-50 text-rose-800 border border-rose-200' :
-                'bg-indigo-50 text-indigo-800 border border-indigo-200'
+                scanMessage.type === 'success' ? 'bg-emerald-50 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800' :
+                scanMessage.type === 'error' ? 'bg-rose-50 dark:bg-rose-950/80 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800' :
+                'bg-indigo-50 dark:bg-indigo-950/80 text-indigo-800 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800'
               }`}>
                 <div className="flex items-center gap-2">
-                  {scanMessage.type === 'success' ? <CheckCircle className="w-4 h-4 text-emerald-600" /> :
-                   scanMessage.type === 'error' ? <AlertCircle className="w-4 h-4 text-rose-600" /> :
-                   <Wifi className="w-4 h-4 text-indigo-600" />}
+                  {scanMessage.type === 'success' ? <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> :
+                   scanMessage.type === 'error' ? <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400" /> :
+                   <Wifi className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />}
                   <span>{scanMessage.text}</span>
                 </div>
-                <button onClick={() => setScanMessage(null)} className="text-slate-400 hover:text-slate-600">
+                <button onClick={() => setScanMessage(null)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
                   <X className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -710,7 +768,7 @@ export default function POS({ products, categories, customers, settings, onAddIn
                 className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition ${
                   selectedCategory === 'all' 
                     ? 'bg-emerald-600 text-white shadow-sm' 
-                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                    : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
                 }`}
               >
                 📂 الكل ({products.length})
@@ -724,7 +782,7 @@ export default function POS({ products, categories, customers, settings, onAddIn
                     className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition ${
                       selectedCategory === cat.id 
                         ? 'bg-emerald-600 text-white shadow-sm' 
-                        : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                        : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
                     }`}
                   >
                     {cat.icon} {cat.name} ({count})
@@ -735,10 +793,10 @@ export default function POS({ products, categories, customers, settings, onAddIn
           </div>
 
           {/* Catalog Grid */}
-          <div className="flex-1 overflow-y-auto p-4 bg-slate-50/50">
+          <div className="flex-1 overflow-y-auto p-4 bg-slate-50/50 dark:bg-slate-900/50">
             {filteredProducts.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-52 text-slate-400 space-y-2">
-                <Search className="w-12 h-12 text-slate-300" />
+              <div className="flex flex-col items-center justify-center h-52 text-slate-400 dark:text-slate-500 space-y-2">
+                <Search className="w-12 h-12 text-slate-300 dark:text-slate-600" />
                 <p className="font-bold text-sm">لا توجد منتجات مطابقة للبحث</p>
               </div>
             ) : (
@@ -751,8 +809,8 @@ export default function POS({ products, categories, customers, settings, onAddIn
                       key={p.id}
                       disabled={isOutOfStock}
                       onClick={() => addToCart(p)}
-                      className={`bg-white border rounded-xl p-3 text-right flex flex-col justify-between h-36 transition hover:shadow-md hover:border-emerald-400 relative group active:scale-[0.98] ${
-                        isOutOfStock ? 'opacity-50 cursor-not-allowed border-rose-200 bg-rose-50/20' : 'border-slate-200'
+                      className={`bg-white dark:bg-slate-800/90 border rounded-xl p-3 text-right flex flex-col justify-between h-36 transition hover:shadow-md hover:border-emerald-400 dark:hover:border-emerald-500 relative group active:scale-[0.98] ${
+                        isOutOfStock ? 'opacity-50 cursor-not-allowed border-rose-200 dark:border-rose-900 bg-rose-50/20 dark:bg-rose-950/20' : 'border-slate-200 dark:border-slate-700'
                       }`}
                     >
                       {/* Floating badges */}
@@ -764,14 +822,14 @@ export default function POS({ products, categories, customers, settings, onAddIn
                       )}
 
                       <div>
-                        <div className="text-[10px] text-slate-400 font-semibold mb-0.5 font-mono">{p.barcode}</div>
-                        <h4 className="font-bold text-slate-800 text-xs sm:text-sm line-clamp-2 leading-snug">{p.name}</h4>
+                        <div className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold mb-0.5 font-mono">{p.barcode}</div>
+                        <h4 className="font-bold text-slate-800 dark:text-slate-100 text-xs sm:text-sm line-clamp-2 leading-snug">{p.name}</h4>
                       </div>
 
-                      <div className="mt-2 flex justify-between items-end w-full border-t border-slate-100 pt-2">
-                        <span className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded font-bold text-slate-500">{p.unit}</span>
-                        <div className="font-extrabold text-emerald-600 text-xs sm:text-sm font-mono">
-                          {p.price.toFixed(2)} <span className="text-[10px] font-bold text-slate-400">{settings.currency}</span>
+                      <div className="mt-2 flex justify-between items-end w-full border-t border-slate-100 dark:border-slate-700/60 pt-2">
+                        <span className="text-[10px] bg-slate-100 dark:bg-slate-700/80 px-1.5 py-0.5 rounded font-bold text-slate-500 dark:text-slate-300">{p.unit}</span>
+                        <div className="font-extrabold text-emerald-600 dark:text-emerald-400 text-xs sm:text-sm font-mono">
+                          {p.price.toFixed(2)} <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">{settings.currency}</span>
                         </div>
                       </div>
                     </button>
@@ -783,7 +841,7 @@ export default function POS({ products, categories, customers, settings, onAddIn
         </div>
 
         {/* Shopping Cart Drawer - 5 cols */}
-        <div className="xl:col-span-5 flex flex-col bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden h-full">
+        <div className="xl:col-span-5 flex flex-col bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden h-full">
           {/* Cart Header */}
           <div className="p-3.5 bg-[#1e293b] text-white flex justify-between items-center border-b border-slate-700">
             <div className="flex items-center gap-2">
@@ -1333,20 +1391,44 @@ export default function POS({ products, categories, customers, settings, onAddIn
               </div>
             </div>
 
-            <div className="p-4 bg-slate-50 border-t border-slate-200 flex gap-2">
-              <button
-                onClick={() => setShowReceiptModal(false)}
-                className="flex-1 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-bold transition"
-              >
-                إغلاق
-              </button>
-              <button
-                onClick={() => window.print()}
-                className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow"
-              >
-                <Printer className="w-4 h-4" />
-                <span>طباعة إيصال thermal</span>
-              </button>
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-col gap-2">
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleDownloadPdf('a4')}
+                  disabled={isDownloadingPdf}
+                  className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-extrabold transition flex items-center justify-center gap-1.5 shadow"
+                  title="تحميل فاتورة ضريبية رسمية بتنسيق A4 للطباعة والحفظ"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>{isDownloadingPdf ? 'جاري التجهيز...' : 'تحميل PDF (A4)'}</span>
+                </button>
+
+                <button
+                  onClick={() => handleDownloadPdf('thermal')}
+                  disabled={isDownloadingPdf}
+                  className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-extrabold transition flex items-center justify-center gap-1.5 shadow"
+                  title="تحميل الإيصال بتنسيق Thermal PDF"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>تحميل إيصال (Thermal)</span>
+                </button>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => window.print()}
+                  className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>طباعة حرارية فورية</span>
+                </button>
+                <button
+                  onClick={() => setShowReceiptModal(false)}
+                  className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-bold transition"
+                >
+                  إغلاق
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1673,6 +1755,13 @@ export default function POS({ products, categories, customers, settings, onAddIn
         </div>
       )}
 
+      {/* Live Device Camera Barcode Scanner Modal */}
+      <CameraBarcodeScanner
+        isOpen={showCameraScanner}
+        onClose={() => setShowCameraScanner(false)}
+        onScanBarcode={handleBarcodeScan}
+      />
+
       {/* USB / Bluetooth Barcode Scanner Management Modal */}
       <BarcodeScannerModal
         isOpen={showScannerModal}
@@ -1683,6 +1772,7 @@ export default function POS({ products, categories, customers, settings, onAddIn
         onClearHistory={clearScanHistory}
         onScanBarcode={handleBarcodeScan}
         products={products}
+        onOpenCameraScanner={() => setShowCameraScanner(true)}
       />
     </div>
   );

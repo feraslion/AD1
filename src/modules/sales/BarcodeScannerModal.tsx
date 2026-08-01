@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Scan, Volume2, VolumeX, Settings, Zap, History, Scale, CheckCircle2, AlertTriangle, RefreshCw, X, Play } from 'lucide-react';
+import { Scan, Volume2, VolumeX, Settings, Zap, History, Scale, CheckCircle2, AlertTriangle, RefreshCw, X, Play, Camera } from 'lucide-react';
 import { ScannerConfig, ScanLogEntry } from '../../utils/scannerUtility';
 import { Product } from '../../types';
 
@@ -12,6 +12,7 @@ interface BarcodeScannerModalProps {
   onClearHistory: () => void;
   onScanBarcode: (barcode: string) => void;
   products: Product[];
+  onOpenCameraScanner?: () => void;
 }
 
 export default function BarcodeScannerModal({
@@ -22,7 +23,8 @@ export default function BarcodeScannerModal({
   scanHistory,
   onClearHistory,
   onScanBarcode,
-  products
+  products,
+  onOpenCameraScanner
 }: BarcodeScannerModalProps) {
   const [manualBarcode, setManualBarcode] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'scanner' | 'history' | 'settings'>('scanner');
@@ -126,6 +128,39 @@ export default function BarcodeScannerModal({
           {activeTab === 'scanner' && (
             <div className="space-y-6">
               
+              {/* Camera Scanner Launcher Banner */}
+              {onOpenCameraScanner && (
+                <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 rounded-2xl p-4 text-white shadow-lg flex items-center justify-between gap-3 border border-blue-700/50">
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 bg-blue-500/20 border border-blue-400/30 rounded-2xl text-blue-300">
+                      <Camera className="w-7 h-7 animate-pulse" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-sm text-white flex items-center gap-2">
+                        مسح الباركود عبر كاميرا الجهاز
+                        <span className="text-[10px] bg-emerald-500 text-slate-950 font-bold px-2 py-0.5 rounded-full">
+                          جديد 📷
+                        </span>
+                      </h4>
+                      <p className="text-xs text-slate-300 mt-0.5">
+                        استخدم كاميرا الهواتف أو الأجهزة المحمولة لقراءة الباركودات بسرعة فورية
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onOpenCameraScanner();
+                    }}
+                    className="px-4 py-2.5 bg-blue-500 hover:bg-blue-600 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center gap-1.5 shrink-0"
+                  >
+                    <Camera className="w-4 h-4" />
+                    تشغيل الكاميرا
+                  </button>
+                </div>
+              )}
+
               {/* Ready Indicator Card */}
               <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center justify-between">
                 <div className="flex items-center gap-3">

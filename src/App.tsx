@@ -37,7 +37,9 @@ import {
   UserCheck,
   Calculator,
   Keyboard,
-  MessageCircle
+  MessageCircle,
+  Moon,
+  Sun
 } from 'lucide-react';
 
 export default function App() {
@@ -63,6 +65,20 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'offline'>('synced');
   const [showNotifications, setShowNotifications] = useState<boolean>(false);
 
+  // Dark Mode State & Persistence
+  const [darkMode, setDarkMode] = useState<boolean>(() => {
+    return localStorage.getItem('erp_dark_mode') === 'true';
+  });
+
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    localStorage.setItem('erp_dark_mode', String(darkMode));
+  }, [darkMode]);
+
   // Quick Utility Tools Modals & Global Keyboard Shortcuts
   const [showCalcModal, setShowCalcModal] = useState<boolean>(false);
   const [showKeyboardModal, setShowKeyboardModal] = useState<boolean>(false);
@@ -79,6 +95,9 @@ export default function App() {
       } else if (e.altKey && (e.key === 'w' || e.key === 'W' || e.key === 'ص')) {
         e.preventDefault();
         setShowSocialModal(prev => !prev);
+      } else if (e.altKey && (e.key === 'd' || e.key === 'D' || e.key === 'ي')) {
+        e.preventDefault();
+        setDarkMode(prev => !prev);
       }
     };
     window.addEventListener('keydown', handleGlobalHotkeys);
@@ -452,11 +471,11 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col antialiased">
+    <div className={`min-h-screen transition-colors duration-200 ${darkMode ? 'dark bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-800'} flex flex-col antialiased`}>
       {/* Upper Navigation Header bar */}
-      <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 sm:px-8 shadow-sm text-slate-800">
+      <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-4 sm:px-8 shadow-sm text-slate-800 dark:text-slate-100 transition-colors">
         <div className="flex items-center gap-3">
-          <span className="text-2xl w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center border border-slate-200 shadow-sm overflow-hidden">
+          <span className="text-2xl w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-lg flex items-center justify-center border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
             {settings.logo && (settings.logo.startsWith('http') || settings.logo.startsWith('/') || settings.logo.startsWith('data:image')) ? (
               <img src={settings.logo} alt="Logo" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
             ) : (
@@ -464,42 +483,59 @@ export default function App() {
             )}
           </span>
           <div>
-            <h1 className="font-extrabold text-sm sm:text-base text-slate-800 leading-tight">{settings.name}</h1>
-            <span className="text-[10px] text-slate-500 font-bold block">نظام الكاشير والمحاسبة الذكي (VAT 15%)</span>
+            <h1 className="font-extrabold text-sm sm:text-base text-slate-800 dark:text-slate-100 leading-tight">{settings.name}</h1>
+            <span className="text-[10px] text-slate-500 dark:text-slate-400 font-bold block">نظام الكاشير والمحاسبة الذكي (VAT 15%)</span>
           </div>
         </div>
 
         {/* Sync / State indications */}
         <div className="flex items-center gap-4">
-          {/* Real-time alert bell */}
+          {/* Real-time smart alert bell */}
           {(() => {
+            const todayStr = new Date().toISOString().split('T')[0];
+            const nowTime = new Date().getTime();
+
+            const expiredProducts = products.filter(p => p.expiryDate && p.expiryDate < todayStr);
+            const expiringSoonProducts = products.filter(p => {
+              if (!p.expiryDate || p.expiryDate < todayStr) return false;
+              const expTime = new Date(p.expiryDate).getTime();
+              const diffDays = Math.ceil((expTime - nowTime) / (1000 * 60 * 60 * 24));
+              return diffDays <= 30;
+            });
             const lowStockProducts = products.filter(p => p.stock <= p.minStock && p.minStock > 0);
+
+            const totalAlertsCount = expiredProducts.length + expiringSoonProducts.length + lowStockProducts.length;
+
             return (
               <div className="relative">
                 <button 
                   onClick={() => setShowNotifications(!showNotifications)}
                   className={`p-2 rounded-full border transition relative flex items-center justify-center ${
-                    lowStockProducts.length > 0 
-                      ? 'bg-rose-50 border-rose-200 hover:bg-rose-100 text-rose-600 shadow-sm shadow-red-50' 
-                      : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-500'
+                    totalAlertsCount > 0 
+                      ? expiredProducts.length > 0
+                        ? 'bg-rose-50 dark:bg-rose-950/80 border-rose-300 text-rose-600 dark:text-rose-400 shadow-sm'
+                        : 'bg-amber-50 dark:bg-amber-950/80 border-amber-300 text-amber-600 dark:text-amber-400 shadow-sm' 
+                      : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400'
                   }`}
-                  title="تنبيهات المخزون الذكية"
+                  title="تنبيهات المخزون وانتهاء الصلاحية"
                 >
-                  <Bell className={`w-4 h-4 ${lowStockProducts.length > 0 ? 'animate-bounce' : ''}`} />
-                  {lowStockProducts.length > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-red-600 text-white font-extrabold text-[9px] w-4.5 h-4.5 rounded-full flex items-center justify-center border-2 border-white animate-pulse">
-                      {lowStockProducts.length}
+                  <Bell className={`w-4 h-4 ${totalAlertsCount > 0 ? 'animate-bounce' : ''}`} />
+                  {totalAlertsCount > 0 && (
+                    <span className={`absolute -top-1 -right-1 text-white font-extrabold text-[9px] min-w-4.5 h-4.5 px-1 rounded-full flex items-center justify-center border-2 border-white dark:border-slate-900 animate-pulse ${
+                      expiredProducts.length > 0 ? 'bg-rose-600' : 'bg-amber-500'
+                    }`}>
+                      {totalAlertsCount}
                     </span>
                   )}
                 </button>
 
                 {/* Notifications Dropdown Panel */}
                 {showNotifications && (
-                  <div className="absolute left-0 mt-2.5 w-80 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 text-right overflow-hidden">
-                    <div className="p-3 bg-slate-900 text-white flex justify-between items-center text-xs">
-                      <span className="font-bold flex items-center gap-1">
-                        <AlertTriangle className="w-3.5 h-3.5 text-red-400 animate-pulse" />
-                        تنبيهات إعادة الطلب ({lowStockProducts.length})
+                  <div className="absolute left-0 mt-2.5 w-80 sm:w-96 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl z-50 text-right overflow-hidden">
+                    <div className="p-3 bg-slate-900 text-white flex justify-between items-center text-xs border-b border-slate-800">
+                      <span className="font-extrabold flex items-center gap-1.5">
+                        <AlertTriangle className="w-4 h-4 text-amber-400 animate-pulse" />
+                        نظام التنبيهات الذكي ({totalAlertsCount})
                       </span>
                       <button 
                         onClick={() => setShowNotifications(false)}
@@ -509,44 +545,94 @@ export default function App() {
                       </button>
                     </div>
 
-                    <div className="max-h-64 overflow-y-auto divide-y divide-slate-100">
-                      {lowStockProducts.length === 0 ? (
+                    <div className="max-h-80 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/60">
+                      {totalAlertsCount === 0 ? (
                         <div className="p-6 text-center text-slate-400 text-xs">
-                          ✓ جميع مستويات المخزون آمنة وتحت السيطرة.
+                          ✓ جميع المنتجات وصلاحياتها ومخزونها في حالة آمنة.
                         </div>
                       ) : (
-                        lowStockProducts.map(p => (
-                          <div 
-                            key={p.id} 
-                            onClick={() => {
-                              setActiveTab('dashboard');
-                              setShowNotifications(false);
-                            }}
-                            className="p-3 hover:bg-slate-50 transition cursor-pointer flex justify-between items-center gap-2"
-                          >
-                            <div className="flex-1 min-w-0">
-                              <div className="text-xs font-bold text-slate-800 truncate">{p.name}</div>
-                              <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                                كمية المخزون: {p.stock} {p.unit} (الحد: {p.minStock})
+                        <>
+                          {/* Expired Products */}
+                          {expiredProducts.map(p => (
+                            <div 
+                              key={`exp_${p.id}`} 
+                              onClick={() => {
+                                setActiveTab('products');
+                                setShowNotifications(false);
+                              }}
+                              className="p-3 bg-rose-50/50 dark:bg-rose-950/30 hover:bg-rose-100/50 transition cursor-pointer flex justify-between items-center gap-2"
+                            >
+                              <div className="flex-1 min-w-0">
+                                <div className="text-xs font-bold text-rose-900 dark:text-rose-200 truncate">{p.name}</div>
+                                <div className="text-[10px] text-rose-700 dark:text-rose-400 font-mono mt-0.5">
+                                  منتهي الصلاحية بتاريخ: {p.expiryDate} {p.batchNumber ? `(تشغيلة: ${p.batchNumber})` : ''}
+                                </div>
                               </div>
+                              <span className="px-2 py-0.5 bg-rose-600 text-white rounded text-[9px] font-black shrink-0">
+                                🚫 منتهي
+                              </span>
                             </div>
-                            <span className="px-2 py-0.5 bg-red-50 text-red-600 rounded text-[9px] font-bold">
-                              منخفض
-                            </span>
-                          </div>
-                        ))
+                          ))}
+
+                          {/* Expiring Soon Products */}
+                          {expiringSoonProducts.map(p => {
+                            const expDays = Math.ceil((new Date(p.expiryDate!).getTime() - nowTime) / (1000 * 60 * 60 * 24));
+                            return (
+                              <div 
+                                key={`exp_soon_${p.id}`} 
+                                onClick={() => {
+                                  setActiveTab('products');
+                                  setShowNotifications(false);
+                                }}
+                                className="p-3 bg-amber-50/50 dark:bg-amber-950/30 hover:bg-amber-100/50 transition cursor-pointer flex justify-between items-center gap-2"
+                              >
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-xs font-bold text-amber-900 dark:text-amber-200 truncate">{p.name}</div>
+                                  <div className="text-[10px] text-amber-700 dark:text-amber-400 font-mono mt-0.5">
+                                    ينتهي في: {p.expiryDate} ({expDays <= 0 ? 'اليوم' : `باقي ${expDays} يوم`})
+                                  </div>
+                                </div>
+                                <span className="px-2 py-0.5 bg-amber-500 text-white rounded text-[9px] font-extrabold shrink-0">
+                                  ⏳ قريب الانتهاء
+                                </span>
+                              </div>
+                            );
+                          })}
+
+                          {/* Low Stock Products */}
+                          {lowStockProducts.map(p => (
+                            <div 
+                              key={`low_${p.id}`} 
+                              onClick={() => {
+                                setActiveTab('products');
+                                setShowNotifications(false);
+                              }}
+                              className="p-3 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition cursor-pointer flex justify-between items-center gap-2"
+                            >
+                              <div className="flex-1 min-w-0">
+                                <div className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">{p.name}</div>
+                                <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                                  كمية المخزون: {p.stock} {p.unit} (الحد الأدنى: {p.minStock})
+                                </div>
+                              </div>
+                              <span className="px-2 py-0.5 bg-red-100 text-red-700 dark:bg-red-900/60 dark:text-red-300 rounded text-[9px] font-bold shrink-0">
+                                ⚠️ مخزون منخفض
+                              </span>
+                            </div>
+                          ))}
+                        </>
                       )}
                     </div>
 
-                    <div className="p-2.5 bg-slate-50 border-t border-slate-100 text-center">
+                    <div className="p-2.5 bg-slate-50 dark:bg-slate-800 border-t border-slate-100 dark:border-slate-700 text-center">
                       <button 
                         onClick={() => {
-                          setActiveTab('dashboard');
+                          setActiveTab('products');
                           setShowNotifications(false);
                         }}
-                        className="text-[11px] text-slate-700 font-bold hover:text-emerald-600 transition"
+                        className="text-[11px] text-blue-600 dark:text-blue-400 font-extrabold hover:underline transition"
                       >
-                        عرض تفاصيل وإمداد المخزون ⚙️
+                        إدارة كتالوج المنتجات وتواريخ الصلاحية 📦
                       </button>
                     </div>
                   </div>
@@ -555,36 +641,50 @@ export default function App() {
             );
           })()}
 
-          {/* Quick Utility Shortcut Toolbar (Calculator, Virtual Keyboard, WhatsApp) */}
-          <div className="hidden lg:flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
+          {/* Quick Utility Shortcut Toolbar (Calculator, Virtual Keyboard, WhatsApp, Dark Mode) */}
+          <div className="hidden lg:flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+            <button
+              onClick={() => setDarkMode(prev => !prev)}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-sm border ${
+                darkMode 
+                  ? 'bg-slate-900 text-amber-300 border-slate-700 hover:bg-slate-800' 
+                  : 'bg-white text-slate-700 hover:bg-slate-50 border-slate-200'
+              }`}
+              title="تفعيل/إلغاء الوضع الليلي لتخفيف إجهاد العين (Alt+D)"
+            >
+              {darkMode ? <Sun className="w-3.5 h-3.5 text-amber-400" /> : <Moon className="w-3.5 h-3.5 text-indigo-600" />}
+              <span>{darkMode ? 'الوضع الفاتح' : 'الوضع الليلي'}</span>
+              <kbd className="hidden xl:inline text-[9px] bg-slate-100 dark:bg-slate-800 px-1 py-0.2 rounded font-mono text-slate-500 dark:text-slate-400">Alt+D</kbd>
+            </button>
+
             <button
               onClick={() => setShowCalcModal(true)}
-              className="px-2.5 py-1 bg-white hover:bg-slate-50 text-slate-700 hover:text-emerald-700 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-sm border border-slate-200"
+              className="px-2.5 py-1 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 hover:text-emerald-700 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-sm border border-slate-200 dark:border-slate-700"
               title="آلة حاسبة سريعة مع الضريبة (Alt+C)"
             >
-              <Calculator className="w-3.5 h-3.5 text-emerald-600" />
+              <Calculator className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
               <span>حاسبة</span>
-              <kbd className="hidden xl:inline text-[9px] bg-slate-100 px-1 py-0.2 rounded font-mono text-slate-500">Alt+C</kbd>
+              <kbd className="hidden xl:inline text-[9px] bg-slate-100 dark:bg-slate-800 px-1 py-0.2 rounded font-mono text-slate-500 dark:text-slate-400">Alt+C</kbd>
             </button>
 
             <button
               onClick={() => setShowKeyboardModal(true)}
-              className="px-2.5 py-1 bg-white hover:bg-slate-50 text-slate-700 hover:text-indigo-700 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-sm border border-slate-200"
+              className="px-2.5 py-1 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 hover:text-indigo-700 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-sm border border-slate-200 dark:border-slate-700"
               title="لوحة مفاتيح شاشة لمسية (Alt+K)"
             >
-              <Keyboard className="w-3.5 h-3.5 text-indigo-600" />
+              <Keyboard className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
               <span>كيبورد</span>
-              <kbd className="hidden xl:inline text-[9px] bg-slate-100 px-1 py-0.2 rounded font-mono text-slate-500">Alt+K</kbd>
+              <kbd className="hidden xl:inline text-[9px] bg-slate-100 dark:bg-slate-800 px-1 py-0.2 rounded font-mono text-slate-500 dark:text-slate-400">Alt+K</kbd>
             </button>
 
             <button
               onClick={() => setShowSocialModal(true)}
-              className="px-2.5 py-1 bg-white hover:bg-slate-50 text-slate-700 hover:text-emerald-700 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-sm border border-slate-200"
+              className="px-2.5 py-1 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 hover:text-emerald-700 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-sm border border-slate-200 dark:border-slate-700"
               title="واتساب ومشاركة شبكات التواصل (Alt+W)"
             >
-              <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+              <MessageCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
               <span>واتساب</span>
-              <kbd className="hidden xl:inline text-[9px] bg-slate-100 px-1 py-0.2 rounded font-mono text-slate-500">Alt+W</kbd>
+              <kbd className="hidden xl:inline text-[9px] bg-slate-100 dark:bg-slate-800 px-1 py-0.2 rounded font-mono text-slate-500 dark:text-slate-400">Alt+W</kbd>
             </button>
           </div>
 

@@ -34,12 +34,12 @@ export const DEMO_DATASETS: Record<string, {
       { id: 'cat-5', name: 'الخضروات والفواكه', icon: '🍎' }
     ],
     products: [
-      { id: 'p-1', name: 'أرز بسمتي الشعلان 5 كجم', barcode: '6281001123456', price: 45.00, purchasePrice: 32.50, stock: 45, minStock: 10, category: 'cat-1', unit: 'حبة', taxRate: 15 },
-      { id: 'p-2', name: 'زيت طبخ صني 1.5 لتر', barcode: '6281001123457', price: 16.50, purchasePrice: 11.20, stock: 28, minStock: 8, category: 'cat-1', unit: 'حبة', taxRate: 15 },
-      { id: 'p-3', name: 'حليب كامل الدسم المراعي 1 لتر', barcode: '6281005120102', price: 7.00, purchasePrice: 4.80, stock: 120, minStock: 20, category: 'cat-4', unit: 'حبة', taxRate: 15 },
-      { id: 'p-4', name: 'خبز توست أبيض لوزين', barcode: '6281002234012', price: 5.50, purchasePrice: 3.50, stock: 50, minStock: 15, category: 'cat-2', unit: 'حبة', taxRate: 15 },
-      { id: 'p-5', name: 'مياه نوفا صحية 24×330مل', barcode: '6281003112233', price: 18.00, purchasePrice: 12.00, stock: 5, minStock: 10, category: 'cat-3', unit: 'شدة', taxRate: 15 }, // Low stock!
-      { id: 'p-6', name: 'جبنة موزاريلا المراعي 500 جرام', barcode: '6281005121406', price: 22.00, purchasePrice: 15.00, stock: 35, minStock: 5, category: 'cat-4', unit: 'حبة', taxRate: 15 },
+      { id: 'p-1', name: 'أرز بسمتي الشعلان 5 كجم', barcode: '6281001123456', price: 45.00, purchasePrice: 32.50, stock: 45, minStock: 10, category: 'cat-1', unit: 'حبة', taxRate: 15, expiryDate: '2027-05-15', batchNumber: 'LOT-2024-01' },
+      { id: 'p-2', name: 'زيت طبخ صني 1.5 لتر', barcode: '6281001123457', price: 16.50, purchasePrice: 11.20, stock: 28, minStock: 8, category: 'cat-1', unit: 'حبة', taxRate: 15, expiryDate: '2026-11-30', batchNumber: 'LOT-2024-02' },
+      { id: 'p-3', name: 'حليب كامل الدسم المراعي 1 لتر', barcode: '6281005120102', price: 7.00, purchasePrice: 4.80, stock: 120, minStock: 20, category: 'cat-4', unit: 'حبة', taxRate: 15, expiryDate: '2026-08-10', batchNumber: 'MILK-881' }, // Expiring in ~9 days!
+      { id: 'p-4', name: 'خبز توست أبيض لوزين', barcode: '6281002234012', price: 5.50, purchasePrice: 3.50, stock: 50, minStock: 15, category: 'cat-2', unit: 'حبة', taxRate: 15, expiryDate: '2026-07-28', batchNumber: 'BRD-004' }, // Expired!
+      { id: 'p-5', name: 'مياه نوفا صحية 24×330مل', barcode: '6281003112233', price: 18.00, purchasePrice: 12.00, stock: 5, minStock: 10, category: 'cat-3', unit: 'شدة', taxRate: 15, expiryDate: '2027-01-01' }, // Low stock!
+      { id: 'p-6', name: 'جبنة موزاريلا المراعي 500 جرام', barcode: '6281005121406', price: 22.00, purchasePrice: 15.00, stock: 35, minStock: 5, category: 'cat-4', unit: 'حبة', taxRate: 15, expiryDate: '2026-08-20', batchNumber: 'CHZ-991' }, // Expiring in ~19 days!
       { id: 'p-7', name: 'تفاح أحمر سكري (كجم)', barcode: '000000001007', price: 9.50, purchasePrice: 6.00, stock: 25, minStock: 8, category: 'cat-5', unit: 'كيلو', taxRate: 15 }
     ],
     customers: [

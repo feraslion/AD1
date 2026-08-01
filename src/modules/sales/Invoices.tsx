@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 import { SalesService } from '../../services/SalesService';
 import { CurrencyService } from '../../core/api/api';
+import { downloadInvoicePDF } from '../../utils/pdfGenerator';
+import SocialShareModal from '../../shared/components/ui/SocialShareModal';
 
 interface InvoicesProps {
   invoices: Invoice[];
@@ -24,6 +26,19 @@ export default function Invoices({ invoices, settings, customers = [], products 
   const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'unpaid' | 'returned'>('all');
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [isReturning, setIsReturning] = useState<boolean>(false);
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState<boolean>(false);
+  const [showShareModal, setShowShareModal] = useState<boolean>(false);
+
+  const handleDownloadPdf = async (inv: Invoice, format: 'a4' | 'thermal' = 'a4') => {
+    setIsDownloadingPdf(true);
+    try {
+      await downloadInvoicePDF(inv, settings, { format });
+    } catch (err) {
+      alert('حدث خطأ أثناء تحميل ملف الفاتورة PDF.');
+    } finally {
+      setIsDownloadingPdf(false);
+    }
+  };
 
   // Quotations Tab State
   const [quotationsList, setQuotationsList] = useState<Quotation[]>([]);
@@ -463,7 +478,7 @@ export default function Invoices({ invoices, settings, customers = [], products 
                     <p className="text-xs text-slate-400">{new Date(selectedInvoice.date).toLocaleString('ar-SA')}</p>
                   </div>
 
-                  <div className="flex gap-1.5 items-center">
+                  <div className="flex gap-1.5 items-center flex-wrap">
                     {selectedInvoice.status !== 'returned' && (
                       <button
                         onClick={() => handleReturnInvoice(selectedInvoice)}
@@ -475,12 +490,43 @@ export default function Invoices({ invoices, settings, customers = [], products 
                         <span>مرتجع</span>
                       </button>
                     )}
+
+                    <button
+                      onClick={() => handleDownloadPdf(selectedInvoice, 'a4')}
+                      disabled={isDownloadingPdf}
+                      className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs rounded-lg transition flex items-center gap-1 shadow-xs"
+                      title="تحميل فاتورة ضريبية رسمية PDF (A4)"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>{isDownloadingPdf ? 'جاري التحميل...' : 'تحميل PDF (A4)'}</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleDownloadPdf(selectedInvoice, 'thermal')}
+                      disabled={isDownloadingPdf}
+                      className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-lg transition flex items-center gap-1 shadow-xs"
+                      title="تحميل إيصال حراري PDF"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>إيصال PDF</span>
+                    </button>
+
+                    <button
+                      onClick={() => setShowShareModal(true)}
+                      className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-lg transition flex items-center gap-1 shadow-xs"
+                      title="مشاركة الفاتورة عبر واتساب، تلجرام، جيميل، جوجل درايف"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />
+                      <span>مشاركة / إرسال</span>
+                    </button>
+
                     <button
                       onClick={() => window.print()}
-                      className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition"
+                      className="p-1.5 px-2 text-slate-600 dark:text-slate-300 hover:text-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition flex items-center gap-1"
                       title="طباعة حرارية فورية"
                     >
                       <Printer className="w-4 h-4" />
+                      <span className="text-xs font-bold">طباعة</span>
                     </button>
                   </div>
                 </div>
@@ -1120,6 +1166,14 @@ export default function Invoices({ invoices, settings, customers = [], products 
           </div>
         </div>
       )}
+
+      {/* Social & Document Share Modal */}
+      <SocialShareModal
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        invoice={selectedInvoice}
+        customers={customers}
+      />
     </div>
   );
 }

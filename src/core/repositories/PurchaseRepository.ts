@@ -13,7 +13,9 @@ export class PurchaseRepository {
       try {
         reqList = await db.select().from(purchaseRequests).orderBy(desc(purchaseRequests.createdAt));
       } catch (error: any) {
-        if (error?.message?.includes('does not exist') || error?.code === '42P01') {
+        const errMsg = `${error?.message || ''} ${error?.cause?.message || ''} ${String(error || '')}`;
+        const errCode = error?.code || error?.cause?.code;
+        if (errMsg.includes('does not exist') || errCode === '42P01' || errMsg.includes('purchase_requests')) {
           throw error;
         }
         console.warn('Purchase requests table query failed:', error);

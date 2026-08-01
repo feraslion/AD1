@@ -3,10 +3,11 @@ import {
   Package, Plus, Search, Filter, Grid, List, Edit2, Trash2, History, 
   Barcode, Layers, Tag, DollarSign, Percent, AlertTriangle, CheckCircle, 
   RefreshCw, Printer, ArrowUpDown, Eye, Sliders, FileText, ChevronRight, 
-  Scale, Globe, Check, X, Building, ArrowUpRight, ArrowDownRight, Box, AlertCircle
+  Scale, Globe, Check, X, Building, ArrowUpRight, ArrowDownRight, Box, AlertCircle, Clock, Calendar
 } from 'lucide-react';
 import { Product, Category, Unit, StoreSettings, ProductBarcode, ProductVariant, ProductHistoryEntry } from '../../types';
 import { ProductService, CategoryService, UnitService, CurrencyService } from '../../services/api';
+import BarcodeLabelModal from '../../components/BarcodeLabelModal';
 
 interface ProductsProps {
   settings: StoreSettings;
@@ -25,9 +26,9 @@ export default function Products({ settings, onNavigateToInventory }: ProductsPr
   // Filters & Views
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [selectedStockFilter, setSelectedStockFilter] = useState<'all' | 'in_stock' | 'low_stock' | 'out_of_stock'>('all');
+  const [selectedStockFilter, setSelectedStockFilter] = useState<'all' | 'in_stock' | 'low_stock' | 'out_of_stock' | 'expiring_soon' | 'expired'>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('table');
-  const [sortBy, setSortBy] = useState<'name' | 'price' | 'stock' | 'margin'>('name');
+  const [sortBy, setSortBy] = useState<'name' | 'price' | 'stock' | 'margin' | 'expiry'>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
   // Modals state
@@ -82,6 +83,9 @@ export default function Products({ settings, onNavigateToInventory }: ProductsPr
 
   // Filtered & Sorted Products
   const filteredProducts = useMemo(() => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const nowTime = new Date().getTime();
+
     return products.filter(p => {
       // Search
       const searchLower = searchTerm.toLowerCase().trim();
@@ -89,13 +93,14 @@ export default function Products({ settings, onNavigateToInventory }: ProductsPr
         p.name.toLowerCase().includes(searchLower) ||
         p.barcode.toLowerCase().includes(searchLower) ||
         (p.sku && p.sku.toLowerCase().includes(searchLower)) ||
+        (p.batchNumber && p.batchNumber.toLowerCase().includes(searchLower)) ||
         (p.barcodes && p.barcodes.some(b => b.barcode.toLowerCase().includes(searchLower)))
       );
 
       // Category
       const matchCategory = selectedCategory === 'all' || p.category === selectedCategory;
 
-      // Stock status
+      // Stock & Expiry status
       const stockVal = p.stock || 0;
       const minStockVal = p.minStock || 0;
       let matchStock = true;
@@ -105,6 +110,16 @@ export default function Products({ settings, onNavigateToInventory }: ProductsPr
         matchStock = stockVal > 0 && stockVal <= minStockVal;
       } else if (selectedStockFilter === 'out_of_stock') {
         matchStock = stockVal <= 0;
+      } else if (selectedStockFilter === 'expired') {
+        matchStock = !!p.expiryDate && p.expiryDate < todayStr;
+      } else if (selectedStockFilter === 'expiring_soon') {
+        if (!p.expiryDate) {
+          matchStock = false;
+        } else {
+          const expTime = new Date(p.expiryDate).getTime();
+          const diffDays = Math.ceil((expTime - nowTime) / (1000 * 60 * 60 * 24));
+          matchStock = p.expiryDate >= todayStr && diffDays <= 30;
+        }
       }
 
       return matchSearch && matchCategory && matchStock;
@@ -121,6 +136,9 @@ export default function Products({ settings, onNavigateToInventory }: ProductsPr
       } else if (sortBy === 'margin') {
         valA = a.price > 0 ? ((a.price - a.purchasePrice) / a.price) * 100 : 0;
         valB = b.price > 0 ? ((b.price - b.purchasePrice) / b.price) * 100 : 0;
+      } else if (sortBy === 'expiry') {
+        valA = a.expiryDate || '9999-12-31';
+        valB = b.expiryDate || '9999-12-31';
       }
 
       if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
@@ -131,11 +149,16 @@ export default function Products({ settings, onNavigateToInventory }: ProductsPr
 
   // KPIs
   const stats = useMemo(() => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const nowTime = new Date().getTime();
+
     const totalCount = products.length;
     let totalSalesVal = 0;
     let totalCostVal = 0;
     let lowStockCount = 0;
     let outOfStockCount = 0;
+    let expiredCount = 0;
+    let expiringSoonCount = 0;
 
     products.forEach(p => {
       const stock = p.stock || 0;
@@ -150,6 +173,18 @@ export default function Products({ settings, onNavigateToInventory }: ProductsPr
       } else if (stock <= (p.minStock || 0)) {
         lowStockCount++;
       }
+
+      if (p.expiryDate) {
+        if (p.expiryDate < todayStr) {
+          expiredCount++;
+        } else {
+          const expTime = new Date(p.expiryDate).getTime();
+          const diffDays = Math.ceil((expTime - nowTime) / (1000 * 60 * 60 * 24));
+          if (diffDays <= 30) {
+            expiringSoonCount++;
+          }
+        }
+      }
     });
 
     const expectedProfit = totalSalesVal - totalCostVal;
@@ -162,7 +197,9 @@ export default function Products({ settings, onNavigateToInventory }: ProductsPr
       expectedProfit,
       marginPct,
       lowStockCount,
-      outOfStockCount
+      outOfStockCount,
+      expiredCount,
+      expiringSoonCount
     };
   }, [products]);
 
@@ -283,8 +320,56 @@ export default function Products({ settings, onNavigateToInventory }: ProductsPr
         </div>
       </div>
 
+      {/* Smart Expiry Banner Alert if there are expired or expiring soon products */}
+      {(stats.expiredCount > 0 || stats.expiringSoonCount > 0) && (
+        <div className="bg-gradient-to-r from-rose-950/80 via-slate-900 to-amber-950/80 border border-rose-800/60 rounded-2xl p-4 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-rose-600/20 text-rose-400 rounded-xl border border-rose-500/30 animate-pulse">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="font-extrabold text-white text-sm flex items-center gap-2">
+                <span>تنبيه نظام الصلاحية الذكي (Smart Expiry Warning)</span>
+                {stats.expiredCount > 0 && (
+                  <span className="px-2 py-0.5 bg-rose-600 text-white font-black text-[10px] rounded-md">
+                    {stats.expiredCount} منتهي الصلاحية
+                  </span>
+                )}
+                {stats.expiringSoonCount > 0 && (
+                  <span className="px-2 py-0.5 bg-amber-500 text-white font-black text-[10px] rounded-md">
+                    {stats.expiringSoonCount} ينتهي قريباً
+                  </span>
+                )}
+              </div>
+              <p className="text-slate-300 mt-0.5">
+                توجد منتجات تحتاج إلى اتخاذ إجراء فوراً لتفادي الخسائر أو استبعاد المنتجات المنتهية من الرفوف.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {stats.expiredCount > 0 && (
+              <button
+                onClick={() => setSelectedStockFilter('expired')}
+                className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl transition shadow"
+              >
+                عرض المنتهي (🔴)
+              </button>
+            )}
+            {stats.expiringSoonCount > 0 && (
+              <button
+                onClick={() => setSelectedStockFilter('expiring_soon')}
+                className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-white font-bold rounded-xl transition shadow"
+              >
+                عرض قريبة الانتهاء (⏳)
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* KPI DASHBOARD CARDS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3.5">
         {/* Total Products */}
         <div className="bg-slate-800/90 border border-slate-700/80 rounded-2xl p-4 shadow-sm hover:border-slate-600 transition-all">
           <div className="flex items-center justify-between text-slate-400 mb-2">
@@ -298,38 +383,38 @@ export default function Products({ settings, onNavigateToInventory }: ProductsPr
         {/* Sales Value */}
         <div className="bg-slate-800/90 border border-slate-700/80 rounded-2xl p-4 shadow-sm hover:border-slate-600 transition-all">
           <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-bold">قيمة المخزون (سعر البيع)</span>
+            <span className="text-xs font-bold">قيمة المخزون (بيع)</span>
             <DollarSign className="w-4 h-4 text-blue-400" />
           </div>
-          <div className="text-2xl font-black text-blue-400">
+          <div className="text-xl font-black text-blue-400 truncate">
             {stats.totalSalesVal.toLocaleString('ar-SA', { minimumFractionDigits: 2 })} <span className="text-xs text-slate-400 font-normal">{settings.currency}</span>
           </div>
-          <p className="text-[11px] text-slate-400 mt-1">القيمة الإجمالية المتوقعة للمبيعات</p>
+          <p className="text-[11px] text-slate-400 mt-1">القيمة الإجمالية للمبيعات</p>
         </div>
 
         {/* Cost Value */}
         <div className="bg-slate-800/90 border border-slate-700/80 rounded-2xl p-4 shadow-sm hover:border-slate-600 transition-all">
           <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-bold">تكلفة البضائع (سعر الشراء)</span>
+            <span className="text-xs font-bold">تكلفة البضائع (شراء)</span>
             <Tag className="w-4 h-4 text-purple-400" />
           </div>
-          <div className="text-2xl font-black text-purple-300">
+          <div className="text-xl font-black text-purple-300 truncate">
             {stats.totalCostVal.toLocaleString('ar-SA', { minimumFractionDigits: 2 })} <span className="text-xs text-slate-400 font-normal">{settings.currency}</span>
           </div>
-          <p className="text-[11px] text-slate-400 mt-1">إجمالي التكلفة الشاملة للمخزون</p>
+          <p className="text-[11px] text-slate-400 mt-1">إجمالي التكلفة الشاملة</p>
         </div>
 
         {/* Expected Profit & Margin */}
         <div className="bg-slate-800/90 border border-slate-700/80 rounded-2xl p-4 shadow-sm hover:border-slate-600 transition-all">
           <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-bold">الأرباح المتوقعة والهامش</span>
+            <span className="text-xs font-bold">الأرباح والهامش</span>
             <Percent className="w-4 h-4 text-emerald-400" />
           </div>
-          <div className="text-2xl font-black text-emerald-400">
+          <div className="text-xl font-black text-emerald-400 truncate">
             {stats.expectedProfit.toLocaleString('ar-SA', { minimumFractionDigits: 2 })} <span className="text-xs text-slate-400 font-normal">{settings.currency}</span>
           </div>
           <p className="text-[11px] text-emerald-400/90 font-bold mt-1">
-            هامش الربح الإجمالي: {stats.marginPct.toFixed(1)}%
+            الهامش: {stats.marginPct.toFixed(1)}%
           </p>
         </div>
 
@@ -341,11 +426,32 @@ export default function Products({ settings, onNavigateToInventory }: ProductsPr
           </div>
           <div className="flex items-baseline gap-2">
             <div className="text-2xl font-black text-amber-400">{stats.lowStockCount}</div>
-            <span className="text-xs text-slate-400">منخفض</span>
-            <div className="text-lg font-extrabold text-rose-400 mr-2">{stats.outOfStockCount}</div>
-            <span className="text-xs text-slate-400">نفد</span>
+            <span className="text-[10px] text-slate-400">منخفض</span>
+            <div className="text-lg font-extrabold text-rose-400 mr-1">{stats.outOfStockCount}</div>
+            <span className="text-[10px] text-slate-400">نفد</span>
           </div>
-          <p className="text-[11px] text-amber-400/80 mt-1">تتطلب إعادة طلب وتوريد قريب</p>
+          <p className="text-[11px] text-amber-400/80 mt-1">تتطلب إعادة طلب</p>
+        </div>
+
+        {/* Expiry Alerts Card */}
+        <div className={`bg-slate-800/90 border rounded-2xl p-4 shadow-sm transition-all ${
+          stats.expiredCount > 0 
+            ? 'border-rose-500/80 bg-rose-950/20' 
+            : stats.expiringSoonCount > 0 
+            ? 'border-amber-500/80 bg-amber-950/20' 
+            : 'border-slate-700/80'
+        }`}>
+          <div className="flex items-center justify-between text-slate-400 mb-2">
+            <span className="text-xs font-bold">تنبيهات الصلاحية</span>
+            <AlertCircle className={`w-4 h-4 ${stats.expiredCount > 0 ? 'text-rose-400' : 'text-amber-400'}`} />
+          </div>
+          <div className="flex items-baseline gap-2">
+            <div className="text-2xl font-black text-rose-400">{stats.expiredCount}</div>
+            <span className="text-[10px] text-rose-300">منتهي</span>
+            <div className="text-lg font-extrabold text-amber-400 mr-1">{stats.expiringSoonCount}</div>
+            <span className="text-[10px] text-amber-300">قريب</span>
+          </div>
+          <p className="text-[11px] text-slate-400 mt-1">متابعة تواريخ الانتهاء</p>
         </div>
       </div>
 
@@ -409,17 +515,19 @@ export default function Products({ settings, onNavigateToInventory }: ProductsPr
             </select>
           </div>
 
-          {/* Stock Filter */}
-          <div className="w-full md:w-48">
+          {/* Stock & Expiry Filter */}
+          <div className="w-full md:w-56">
             <select
               value={selectedStockFilter}
               onChange={(e: any) => setSelectedStockFilter(e.target.value)}
-              className="w-full py-2.5 px-3 bg-slate-900/90 border border-slate-700 rounded-xl text-xs sm:text-sm text-white focus:outline-none focus:border-emerald-500 transition-all"
+              className="w-full py-2.5 px-3 bg-slate-900/90 border border-slate-700 rounded-xl text-xs sm:text-sm text-white focus:outline-none focus:border-emerald-500 transition-all font-bold"
             >
-              <option value="all">جميع حالات المخزون</option>
+              <option value="all">جميع الحالات والتصنيفات</option>
               <option value="in_stock">متوفر بالسعة الكاملة</option>
-              <option value="low_stock">منخفض (تنبيه الطلب)</option>
-              <option value="out_of_stock">منتهي / غير متوفر</option>
+              <option value="low_stock">⚠️ منخفض (تنبيه الطلب)</option>
+              <option value="out_of_stock">❌ نفد المخزون</option>
+              <option value="expired">🔴 منتهي الصلاحية ({stats.expiredCount})</option>
+              <option value="expiring_soon">⏳ قريب انتهاء الصلاحية ({stats.expiringSoonCount})</option>
             </select>
           </div>
 
@@ -434,6 +542,7 @@ export default function Products({ settings, onNavigateToInventory }: ProductsPr
               <option value="price">ترتيب بالسعر</option>
               <option value="stock">ترتيب بالكمية</option>
               <option value="margin">ترتيب بنسبة الربح</option>
+              <option value="expiry">ترتيب بتاريخ الصلاحية</option>
             </select>
             <button
               onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
@@ -620,6 +729,55 @@ export default function Products({ settings, onNavigateToInventory }: ProductsPr
                         )}
                       </td>
 
+                      {/* Expiry Date & Batch */}
+                      <td className="py-3 px-4">
+                        {(() => {
+                          if (!p.expiryDate) {
+                            return <span className="text-[11px] text-slate-500 font-mono">غير محدد</span>;
+                          }
+                          const todayStr = new Date().toISOString().split('T')[0];
+                          const nowTime = new Date().getTime();
+                          const isExpired = p.expiryDate < todayStr;
+                          const expTime = new Date(p.expiryDate).getTime();
+                          const diffDays = Math.ceil((expTime - nowTime) / (1000 * 60 * 60 * 24));
+
+                          if (isExpired) {
+                            return (
+                              <div>
+                                <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-rose-500/20 text-rose-400 border border-rose-500/40 inline-flex items-center gap-1">
+                                  <span>🚫 منتهي ({p.expiryDate})</span>
+                                </span>
+                                {p.batchNumber && (
+                                  <div className="text-[10px] text-slate-400 font-mono mt-0.5">دفعة: {p.batchNumber}</div>
+                                )}
+                              </div>
+                            );
+                          } else if (diffDays <= 30) {
+                            return (
+                              <div>
+                                <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-amber-500/20 text-amber-300 border border-amber-500/40 inline-flex items-center gap-1">
+                                  <span>⏳ {diffDays <= 0 ? 'ينتهي اليوم' : `باقي ${diffDays} يوم`} ({p.expiryDate})</span>
+                                </span>
+                                {p.batchNumber && (
+                                  <div className="text-[10px] text-slate-400 font-mono mt-0.5">دفعة: {p.batchNumber}</div>
+                                )}
+                              </div>
+                            );
+                          } else {
+                            return (
+                              <div>
+                                <span className="text-xs font-mono text-emerald-400">
+                                  {p.expiryDate}
+                                </span>
+                                {p.batchNumber && (
+                                  <div className="text-[10px] text-slate-400 font-mono">دفعة: {p.batchNumber}</div>
+                                )}
+                              </div>
+                            );
+                          }
+                        })()}
+                      </td>
+
                       {/* Stock Quantity */}
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2">
@@ -717,6 +875,18 @@ export default function Products({ settings, onNavigateToInventory }: ProductsPr
                       <span>{categoryObj?.icon || '📦'}</span>
                       <span>{categoryObj?.name || p.category}</span>
                     </div>
+
+                    {p.expiryDate && (() => {
+                      const todayStr = new Date().toISOString().split('T')[0];
+                      const isExp = p.expiryDate < todayStr;
+                      return (
+                        <div className={`absolute top-2 left-2 px-2 py-0.5 rounded-md text-[9px] font-black shadow backdrop-blur-md ${
+                          isExp ? 'bg-rose-600 text-white' : 'bg-amber-500 text-slate-950'
+                        }`}>
+                          {isExp ? 'منتهي' : `ينتهي ${p.expiryDate}`}
+                        </div>
+                      );
+                    })()}
 
                     <div className={`absolute bottom-2 left-2 px-2 py-0.5 rounded-md text-[10px] font-bold border ${stockBadgeClass}`}>
                       {stock} {p.unit} ({stockText})
@@ -846,17 +1016,10 @@ export default function Products({ settings, onNavigateToInventory }: ProductsPr
       {/* 5. BARCODE LABEL GENERATOR & PRINT MODAL */}
       {/* ========================================================= */}
       {showBarcodeModal && selectedBarcodeProduct && (
-        <BarcodePrintModal
+        <BarcodeLabelModal
           product={selectedBarcodeProduct}
+          allProducts={products}
           settings={settings}
-          printCount={barcodePrintCount}
-          setPrintCount={setBarcodePrintCount}
-          labelSize={barcodeLabelSize}
-          setLabelSize={setBarcodeLabelSize}
-          showPrice={showPriceOnLabel}
-          setShowPrice={setShowPriceOnLabel}
-          showStoreName={showStoreNameOnLabel}
-          setShowStoreName={setShowStoreNameOnLabel}
           onClose={() => { setShowBarcodeModal(false); setSelectedBarcodeProduct(null); }}
         />
       )}
@@ -900,6 +1063,8 @@ function ProductFormModal({
   const [minStock, setMinStock] = useState<number>(product?.minStock || 5);
   const [taxRate, setTaxRate] = useState<number>(product?.taxRate ?? settings.taxRate ?? 15);
   const [isTaxInclusive, setIsTaxInclusive] = useState<boolean>(product?.isTaxInclusive ?? true);
+  const [expiryDate, setExpiryDate] = useState<string>(product?.expiryDate || '');
+  const [batchNumber, setBatchNumber] = useState<string>(product?.batchNumber || '');
   const [image, setImage] = useState<string>(product?.image || '');
   const [description, setDescription] = useState<string>(product?.description || '');
 
@@ -990,6 +1155,8 @@ function ProductFormModal({
       minStock: Number(minStock),
       taxRate: Number(taxRate),
       isTaxInclusive,
+      expiryDate: expiryDate ? expiryDate : undefined,
+      batchNumber: batchNumber.trim() || undefined,
       image: image.trim() || undefined,
       description: description.trim() || undefined,
       barcodes: secondaryBarcodes,
@@ -1189,6 +1356,34 @@ function ProductFormModal({
                     value={minStock}
                     onChange={(e) => setMinStock(parseFloat(e.target.value) || 0)}
                     className="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold text-white focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                {/* Expiry Date */}
+                <div>
+                  <label className="block text-xs font-extrabold text-amber-300 mb-1 flex items-center gap-1">
+                    <span>تاريخ انتهاء الصلاحية</span>
+                    <span className="text-[10px] text-slate-400 font-normal">(اختياري للسلع الغذائية/الطبية)</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={expiryDate}
+                    onChange={(e) => setExpiryDate(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold text-white focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                {/* Batch / Lot Number */}
+                <div>
+                  <label className="block text-xs font-extrabold text-slate-300 mb-1">
+                    رقم التشغيلة / الدفعة (Batch No.)
+                  </label>
+                  <input
+                    type="text"
+                    value={batchNumber}
+                    onChange={(e) => setBatchNumber(e.target.value)}
+                    placeholder="مثال: B2025-08A"
+                    className="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs font-mono text-white focus:outline-none focus:border-emerald-500"
                   />
                 </div>
 
@@ -1835,148 +2030,3 @@ function ProductHistoryViewModal({
   );
 }
 
-/* ==================================================================== */
-/* BARCODE PRINT & GENERATOR MODAL                                      */
-/* ==================================================================== */
-function BarcodePrintModal({
-  product,
-  settings,
-  printCount,
-  setPrintCount,
-  labelSize,
-  setLabelSize,
-  showPrice,
-  setShowPrice,
-  showStoreName,
-  setShowStoreName,
-  onClose
-}: {
-  product: Product;
-  settings: StoreSettings;
-  printCount: number;
-  setPrintCount: (n: number) => void;
-  labelSize: '50x25' | '38x25' | 'a4';
-  setLabelSize: (s: '50x25' | '38x25' | 'a4') => void;
-  showPrice: boolean;
-  setShowPrice: (b: boolean) => void;
-  showStoreName: boolean;
-  setShowStoreName: (b: boolean) => void;
-  onClose: () => void;
-}) {
-  const handlePrint = () => {
-    window.print();
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl space-y-4 p-6">
-        
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-          <div className="flex items-center gap-2">
-            <Printer className="w-5 h-5 text-amber-400" />
-            <h2 className="font-black text-white text-base">طباعة ملصقات الباركود للمنتج</h2>
-          </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
-        </div>
-
-        {/* Customization Options */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-          <div>
-            <label className="block font-bold text-slate-300 mb-1">عدد نسخ الطباعة المطلوب:</label>
-            <input
-              type="number"
-              min="1"
-              max="200"
-              value={printCount}
-              onChange={(e) => setPrintCount(Math.max(1, parseInt(e.target.value) || 1))}
-              className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white font-mono"
-            />
-          </div>
-
-          <div>
-            <label className="block font-bold text-slate-300 mb-1">مقاس ملصق الطباعة:</label>
-            <select
-              value={labelSize}
-              onChange={(e: any) => setLabelSize(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white font-bold"
-            >
-              <option value="50x25">50 × 25 مم (قياسي حراري)</option>
-              <option value="38x25">38 × 25 مم (صغير)</option>
-              <option value="a4">صفحة A4 متعددة الملصقات</option>
-            </select>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="showPrice"
-              checked={showPrice}
-              onChange={(e) => setShowPrice(e.target.checked)}
-              className="rounded bg-slate-800 border-slate-700"
-            />
-            <label htmlFor="showPrice" className="text-slate-200 font-bold">إظهار السعر والعملة على الملصق</label>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="showStore"
-              checked={showStoreName}
-              onChange={(e) => setShowStoreName(e.target.checked)}
-              className="rounded bg-slate-800 border-slate-700"
-            />
-            <label htmlFor="showStore" className="text-slate-200 font-bold">إظهار اسم المتجر والمؤسسة</label>
-          </div>
-        </div>
-
-        {/* Live SVG Barcode Label Preview Card */}
-        <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800 flex flex-col items-center justify-center space-y-2 text-center my-2">
-          <span className="text-[10px] text-slate-500 font-bold">معاينة الملصق المطبوع</span>
-          
-          <div className="bg-white text-black p-3 rounded-lg shadow-md max-w-xs w-full text-center space-y-1 font-sans">
-            {showStoreName && (
-              <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-800 border-b border-slate-200 pb-0.5">
-                {settings.name}
-              </div>
-            )}
-            
-            <div className="font-black text-xs text-slate-900 line-clamp-1">{product.name}</div>
-            
-            {/* Synthetic Code128 SVG Lines Barcode Visual */}
-            <div className="py-1 flex items-center justify-center gap-0.5 h-10 overflow-hidden px-4">
-              {[2,1,3,1,2,3,1,2,1,3,2,1,3,1,2,1,2,3,1,2,3,1,2].map((w, idx) => (
-                <div key={idx} style={{ width: `${w * 1.5}px` }} className="h-full bg-slate-900" />
-              ))}
-            </div>
-
-            <div className="font-mono text-[11px] font-bold tracking-widest text-slate-800">
-              {product.barcode}
-            </div>
-
-            {showPrice && (
-              <div className="text-xs font-black text-slate-900 pt-0.5 border-t border-slate-200">
-                السعر: {product.price.toFixed(2)} {settings.currency} <span className="text-[9px] font-normal">(شامل الضريبة)</span>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Action Controls */}
-        <div className="flex items-center justify-between pt-2">
-          <button onClick={onClose} className="px-5 py-2.5 bg-slate-800 text-slate-300 font-bold text-xs rounded-xl">
-            إلغاء
-          </button>
-          <button
-            onClick={handlePrint}
-            className="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl transition-all flex items-center gap-2 shadow-lg"
-          >
-            <Printer className="w-4 h-4" />
-            <span>طباعة الملصقات الآن ({printCount} نسـخة)</span>
-          </button>
-        </div>
-
-      </div>
-    </div>
-  );
-}

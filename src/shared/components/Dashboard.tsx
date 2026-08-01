@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Invoice, Product, StoreSettings } from '../../types';
-import { TrendingUp, ShoppingBag, AlertTriangle, FileText, Landmark, Users, Clock, ArrowLeft, RefreshCw, ChevronDown, ChevronUp, Check } from 'lucide-react';
+import { TrendingUp, ShoppingBag, AlertTriangle, FileText, Landmark, Users, Clock, ArrowLeft, RefreshCw, ChevronDown, ChevronUp, Check, Calendar } from 'lucide-react';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import StatCard from './ui/StatCard';
 
 interface DashboardProps {
@@ -305,62 +306,79 @@ export default function Dashboard({ invoices, products, settings, onNavigate, sy
       {/* Main Grid: Chart and Quick Actions */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Chart Column (2 cols wide on desktop) */}
-        <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-6">
-          <div className="flex justify-between items-center">
+        <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4 flex flex-col justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100">
             <div>
-              <h3 className="font-bold text-slate-800 text-lg underline decoration-emerald-500 decoration-4 underline-offset-8">حركة مبيعات الـ 7 أيام الأخيرة</h3>
-              <p className="text-xs text-slate-400 mt-2">تحديث فوري للمبيعات والمؤشرات</p>
+              <h3 className="font-bold text-slate-800 text-lg underline decoration-emerald-500 decoration-4 underline-offset-8 flex items-center gap-2">
+                تطور المبيعات اليومية خلال الأسبوع الحالي
+              </h3>
+              <p className="text-xs text-slate-400 mt-2">رسم بياني تفاعلي (Area Chart) يعكس الأداء المالي اليومي وحركة الفواتير</p>
             </div>
-            <span className="text-[10px] bg-slate-100 text-slate-600 font-bold px-3 py-1 rounded border border-slate-200">مؤشر أداء المبيعات</span>
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              <div className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>إجمالي الأسبوع: {salesData7Days.reduce((acc, curr) => acc + curr.amount, 0).toLocaleString(undefined, { minimumFractionDigits: 2 })} {settings.currency}</span>
+              </div>
+            </div>
           </div>
 
-          {/* SVG Custom High-Fidelity Chart */}
-          <div className="h-64 w-full relative pt-2">
-            <div className="absolute inset-0 flex flex-col justify-between pointer-events-none text-[10px] text-slate-400 font-bold">
-              <div className="border-b border-dashed border-slate-100 pb-1 flex justify-between">
-                <span>{(maxAmount).toFixed(0)} {settings.currency}</span>
-              </div>
-              <div className="border-b border-dashed border-slate-100 pb-1 flex justify-between">
-                <span>{(maxAmount * 0.66).toFixed(0)} {settings.currency}</span>
-              </div>
-              <div className="border-b border-dashed border-slate-100 pb-1 flex justify-between">
-                <span>{(maxAmount * 0.33).toFixed(0)} {settings.currency}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>0 {settings.currency}</span>
-              </div>
-            </div>
-
-            {/* Bars container */}
-            <div className="h-full flex items-end justify-between relative z-10 pt-4 px-6">
-              {salesData7Days.map((d, index) => {
-                const heightPercentage = Math.max(8, (d.amount / maxAmount) * 80);
-                const isCurrentDay = index === 4; // Mock layout highlighting Wednesday like the theme
-                return (
-                  <div key={d.date} className="flex flex-col items-center group relative w-12">
-                    {/* Tooltip on hover */}
-                    <div className="absolute -top-10 bg-slate-800 text-white text-xs px-2.5 py-1 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition duration-200 pointer-events-none whitespace-nowrap z-30 font-bold">
-                      {d.amount.toFixed(2)} {settings.currency}
-                    </div>
-
-                    {/* Bar graphic */}
-                    <div 
-                      style={{ height: `${heightPercentage}%` }} 
-                      className={`w-full rounded-t-lg transition-all duration-500 hover:scale-105 ${
-                        d.amount === 0 
-                          ? 'bg-slate-100' 
-                          : isCurrentDay
-                            ? 'bg-emerald-700 shadow-md shadow-emerald-200'
-                            : 'bg-emerald-500 hover:bg-emerald-600'
-                      }`}
-                    ></div>
-
-                    {/* X Axis Label */}
-                    <span className={`text-[10px] font-bold mt-2.5 block ${isCurrentDay ? 'text-emerald-700 font-extrabold' : 'text-slate-500'}`}>{d.label}</span>
-                  </div>
-                );
-              })}
-            </div>
+          {/* Interactive Recharts Area Chart */}
+          <div className="h-72 w-full pt-2">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart
+                data={salesData7Days}
+                margin={{ top: 10, right: 10, left: 10, bottom: 0 }}
+              >
+                <defs>
+                  <linearGradient id="salesGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.45} />
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis 
+                  dataKey="label" 
+                  tickLine={false} 
+                  axisLine={{ stroke: '#cbd5e1' }}
+                  tick={{ fill: '#64748b', fontSize: 12, fontWeight: 600 }} 
+                />
+                <YAxis 
+                  tickLine={false} 
+                  axisLine={false}
+                  tick={{ fill: '#64748b', fontSize: 11 }}
+                  tickFormatter={(val) => `${val}`}
+                />
+                <Tooltip
+                  content={({ active, payload, label }) => {
+                    if (active && payload && payload.length) {
+                      const dataItem = payload[0].payload;
+                      return (
+                        <div className="bg-slate-900/95 backdrop-blur-md text-white p-3 rounded-2xl shadow-xl text-xs border border-slate-700/80 font-sans space-y-1">
+                          <p className="font-bold text-slate-300 text-[11px] flex items-center justify-between gap-4">
+                            <span>{label}</span>
+                            <span className="text-slate-400 font-mono">{dataItem.date}</span>
+                          </p>
+                          <p className="text-base font-black text-emerald-400">
+                            {Number(payload[0].value).toLocaleString(undefined, { minimumFractionDigits: 2 })} {settings.currency}
+                          </p>
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
+                />
+                <Area 
+                  type="monotone" 
+                  dataKey="amount" 
+                  name="المبيعات" 
+                  stroke="#059669" 
+                  strokeWidth={3}
+                  fillOpacity={1} 
+                  fill="url(#salesGradient)" 
+                  activeDot={{ r: 7, stroke: '#047857', strokeWidth: 3, fill: '#ffffff' }}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
           </div>
         </div>
 

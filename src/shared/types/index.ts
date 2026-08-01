@@ -46,6 +46,8 @@ export interface Product {
   taxRate: number; // e.g., 15 for 15% VAT
   isTaxInclusive?: boolean;
   minSellingPrice?: number;
+  expiryDate?: string; // YYYY-MM-DD ISO string
+  batchNumber?: string;
   image?: string;
   description?: string;
   sku?: string;

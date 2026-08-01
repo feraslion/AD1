@@ -1,5 +1,9 @@
-import React, { useState } from 'react';
-import { X, Share2, MessageCircle, Send, Phone, Mail, Copy, Check, ExternalLink, Globe, Facebook, Twitter, Linkedin } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { 
+  X, Share2, MessageCircle, Send, Phone, Mail, Copy, Check, 
+  ExternalLink, Globe, Facebook, Twitter, Linkedin, FileText, 
+  Paperclip, Upload, HardDrive, Download, User, Smartphone
+} from 'lucide-react';
 import { Customer, Invoice } from '../../../types';
 
 interface SocialShareModalProps {
@@ -7,23 +11,37 @@ interface SocialShareModalProps {
   onClose: () => void;
   customers?: Customer[];
   invoice?: Invoice | null;
+  initialFile?: File | null;
+  initialFileName?: string;
 }
 
 export const SocialShareModal: React.FC<SocialShareModalProps> = ({
   isOpen,
   onClose,
   customers = [],
-  invoice
+  invoice,
+  initialFile = null,
+  initialFileName = ''
 }) => {
   const [phoneNumber, setPhoneNumber] = useState<string>(
-    invoice?.customerPhone || (customers.length > 0 ? customers[0].phone : '') || ''
+    invoice?.customerPhone || (customers.length > 0 ? customers[0]?.phone : '') || ''
+  );
+  const [customerEmail, setCustomerEmail] = useState<string>(
+    customers.find(c => c.phone === invoice?.customerPhone)?.email || (customers.length > 0 ? customers[0]?.email : '') || ''
   );
   const [customerName, setCustomerName] = useState<string>(
-    invoice?.customerName || (customers.length > 0 ? customers[0].name : '') || 'العميل العزيز'
+    invoice?.customerName || (customers.length > 0 ? customers[0]?.name : '') || 'العميل العزيز'
   );
   const [messageTemplate, setMessageTemplate] = useState<'invoice' | 'statement' | 'quote' | 'welcome' | 'custom'>('invoice');
   const [customMessage, setCustomMessage] = useState<string>('');
   const [copied, setCopied] = useState<boolean>(false);
+  const [attachedFile, setAttachedFile] = useState<File | null>(initialFile);
+  const [attachedFileName, setAttachedFileName] = useState<string>(
+    initialFileName || (invoice ? `فاتورة_${invoice.invoiceNumber || invoice.id.slice(-6)}.pdf` : '')
+  );
+  const [activeTab, setActiveTab] = useState<'whatsapp' | 'telegram' | 'gmail' | 'drive' | 'native'>('whatsapp');
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
 
@@ -37,7 +55,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
       return customMessage || `مرحباً ${customerName}، يسعدنا التواصل معكم عبر نظام AD1 ERP.`;
     }
     if (messageTemplate === 'invoice' && invoice) {
-      return `مرحباً ${customerName} 👋\nتفضلو بفاتورة الشراء رقم: #${invoice.id.slice(-6)}\nالمبلغ الإجمالي: ${invoice.totalAmount.toFixed(2)} ر.س شامل الضريبة (15%).\nنشكر لكم تعاملكم معنا 🌸\nمتجرنا: AD1 ERP`;
+      return `مرحباً ${customerName} 👋\nتفضلو بفاتورة الشراء رقم: #${invoice.invoiceNumber || invoice.id.slice(-6)}\nالمبلغ الإجمالي: ${invoice.grandTotal ? invoice.grandTotal.toFixed(2) : invoice.totalAmount?.toFixed(2)} ر.س شامل الضريبة (15%).\nنشكر لكم تعاملكم معنا 🌸\nمتجرنا: AD1 ERP`;
     }
     if (messageTemplate === 'invoice' && !invoice) {
       return `مرحباً ${customerName} 👋\nتم إصدار فاتورتك بنجاح من نظام الكاشير.\nنشكر لكم تعاملكم الراقي معنا!`;
@@ -55,9 +73,15 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
   };
 
   const finalMessage = getBuiltMessage();
-  const whatsappUrl = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(finalMessage)}`;
-  const telegramUrl = `https://t.me/share/url?url=${encodeURIComponent('https://ad1-erp.app')}&text=${encodeURIComponent(finalMessage)}`;
-  const mailtoUrl = `mailto:?subject=${encodeURIComponent('رسالة من نظام الكاشير')}&body=${encodeURIComponent(finalMessage)}`;
+  const emailSubject = invoice ? `فاتورة مبيعات رقم ${invoice.invoiceNumber || invoice.id.slice(-6)} - AD1 ERP` : `رسالة ومعاملة رسمية من نظام AD1 ERP`;
+
+  // Sharing links
+  const whatsappAppUrl = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(finalMessage)}`;
+  const whatsappWebUrl = `https://web.whatsapp.com/send?phone=${formattedPhone}&text=${encodeURIComponent(finalMessage)}`;
+  const telegramUrl = `https://t.me/share/url?url=${encodeURIComponent(window.location.href)}&text=${encodeURIComponent(finalMessage)}`;
+  const gmailComposeUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(customerEmail)}&su=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(finalMessage)}`;
+  const mailtoUrl = `mailto:${encodeURIComponent(customerEmail)}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(finalMessage)}`;
+  const googleDriveUrl = `https://drive.google.com/drive/my-drive`;
 
   const handleCopyMessage = () => {
     navigator.clipboard.writeText(finalMessage);
@@ -65,243 +89,535 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setAttachedFile(file);
+      setAttachedFileName(file.name);
+    }
+  };
+
+  const handleNativeShare = async () => {
+    if (navigator.share) {
+      try {
+        const shareData: ShareData = {
+          title: emailSubject,
+          text: finalMessage,
+          url: window.location.href,
+        };
+
+        if (attachedFile && navigator.canShare && navigator.canShare({ files: [attachedFile] })) {
+          shareData.files = [attachedFile];
+        }
+
+        await navigator.share(shareData);
+      } catch (err) {
+        console.warn('Native share cancelled or failed:', err);
+      }
+    } else {
+      handleCopyMessage();
+      alert('تم نسخ النص للحافظة! يمكنك الآن لصقه مباشرة في أي تطبيق.');
+    }
+  };
+
+  const handleSaveToDrive = () => {
+    // Open Google Drive in new tab
+    window.open(googleDriveUrl, '_blank');
+
+    // Trigger local download if file attached so user can drop it into drive
+    if (attachedFile) {
+      const url = URL.createObjectURL(attachedFile);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = attachedFileName || attachedFile.name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden flex flex-col dir-rtl text-right">
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 bg-slate-900 text-white">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-emerald-500/20 text-emerald-400 rounded-xl">
-              <MessageCircle className="w-5 h-5" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-3 sm:p-4 animate-in fade-in duration-200">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-2xl overflow-hidden flex flex-col dir-rtl text-right max-h-[92vh]">
+        
+        {/* Modal Header */}
+        <div className="flex items-center justify-between p-4 bg-slate-900 text-white border-b border-slate-800 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-emerald-500/20 text-emerald-400 rounded-xl border border-emerald-500/30">
+              <Share2 className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-bold text-base text-white">اختصارات الواتساب والتواصل الاجتماعي</h3>
-              <p className="text-xs text-slate-400">إرسال الفواتير والرسائل مباشرة للعملاء (Alt+W)</p>
+              <h3 className="font-extrabold text-base text-white flex items-center gap-2">
+                <span>مركز مشاركة وتصدير المستندات والملفات</span>
+                <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 text-[10px] font-bold rounded-md">
+                  4 منصات شاملة
+                </span>
+              </h3>
+              <p className="text-xs text-slate-400">
+                إرسال الفواتير والعروض والتقارير عبر واتساب، تلجرام، جيميل، وجوجل درايف
+              </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition"
+            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Modal Body */}
-        <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
-          {/* Recipient Details */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">اسم العميل:</label>
-              <input
-                type="text"
-                value={customerName}
-                onChange={e => setCustomerName(e.target.value)}
-                placeholder="أدخل اسم العميل"
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold focus:outline-none focus:border-emerald-500"
-              />
+        <div className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1">
+          
+          {/* Channel Selector Tabs */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 p-1.5 bg-slate-100 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700/60 text-xs font-bold">
+            <button
+              onClick={() => setActiveTab('whatsapp')}
+              className={`py-2 px-2.5 rounded-lg transition flex items-center justify-center gap-1.5 ${
+                activeTab === 'whatsapp'
+                  ? 'bg-emerald-600 text-white shadow-md'
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+            >
+              <MessageCircle className="w-4 h-4 text-emerald-300" />
+              <span>واتساب</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('telegram')}
+              className={`py-2 px-2.5 rounded-lg transition flex items-center justify-center gap-1.5 ${
+                activeTab === 'telegram'
+                  ? 'bg-sky-500 text-white shadow-md'
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+            >
+              <Send className="w-4 h-4 text-sky-200" />
+              <span>تلجرام</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('gmail')}
+              className={`py-2 px-2.5 rounded-lg transition flex items-center justify-center gap-1.5 ${
+                activeTab === 'gmail'
+                  ? 'bg-rose-600 text-white shadow-md'
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+            >
+              <Mail className="w-4 h-4 text-rose-200" />
+              <span>جيميل</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('drive')}
+              className={`py-2 px-2.5 rounded-lg transition flex items-center justify-center gap-1.5 ${
+                activeTab === 'drive'
+                  ? 'bg-amber-600 text-white shadow-md'
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+            >
+              <HardDrive className="w-4 h-4 text-amber-200" />
+              <span>درايف</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('native')}
+              className={`col-span-2 sm:col-span-1 py-2 px-2.5 rounded-lg transition flex items-center justify-center gap-1.5 ${
+                activeTab === 'native'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+            >
+              <Share2 className="w-4 h-4 text-indigo-200" />
+              <span>مشاركة النظام</span>
+            </button>
+          </div>
+
+          {/* Recipient Input Controls */}
+          <div className="bg-slate-50 dark:bg-slate-800/50 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  اسم المستلم / العميل:
+                </label>
+                <input
+                  type="text"
+                  value={customerName}
+                  onChange={e => setCustomerName(e.target.value)}
+                  placeholder="أدخل اسم العميل"
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-800 dark:text-slate-100 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  رقم الواتساب / الهاتف:
+                </label>
+                <input
+                  type="text"
+                  value={phoneNumber}
+                  onChange={e => setPhoneNumber(e.target.value)}
+                  placeholder="05xxxxxxx أو 9665xxxxxxx"
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-800 dark:text-slate-100 focus:outline-none focus:border-emerald-500 text-left dir-ltr"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  البريد الإلكتروني (Gmail):
+                </label>
+                <input
+                  type="email"
+                  value={customerEmail}
+                  onChange={e => setCustomerEmail(e.target.value)}
+                  placeholder="client@gmail.com"
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono text-slate-800 dark:text-slate-100 focus:outline-none focus:border-emerald-500 text-left dir-ltr"
+                />
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">رقم الواتساب / الهاتف:</label>
+
+            {/* Customer Dropdown Quick Selector */}
+            {customers.length > 0 && (
+              <div className="pt-2 border-t border-slate-200 dark:border-slate-700/60 flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-500 shrink-0">اختيار سريع:</span>
+                <select
+                  onChange={e => {
+                    const cust = customers.find(c => c.id === e.target.value);
+                    if (cust) {
+                      setCustomerName(cust.name);
+                      setPhoneNumber(cust.phone);
+                      if (cust.email) setCustomerEmail(cust.email);
+                    }
+                  }}
+                  className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-200"
+                >
+                  <option value="">-- اختر من قائمة العملاء --</option>
+                  {customers.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.phone}) {c.email ? `- ${c.email}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
+          {/* Attached File Picker / Status */}
+          <div className="bg-slate-50 dark:bg-slate-800/50 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700/60 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 overflow-hidden">
+              <div className="p-2 bg-indigo-500/10 text-indigo-500 rounded-lg shrink-0">
+                <Paperclip className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <span className="text-xs font-extrabold text-slate-800 dark:text-slate-100 block">
+                  الملف المرفق للإرسال والمشاركة:
+                </span>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                  {attachedFileName ? (
+                    <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                      📎 {attachedFileName} {attachedFile ? `(${(attachedFile.size / 1024).toFixed(1)} KB)` : ''}
+                    </span>
+                  ) : (
+                    'لم يتم إرفاق ملف بعد (يمكنك إرفاق PDF أو Excel أو صورة)'
+                  )}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
               <input
-                type="text"
-                value={phoneNumber}
-                onChange={e => setPhoneNumber(e.target.value)}
-                placeholder="05xxxxxxx أو 9665xxxxxxx"
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono focus:outline-none focus:border-emerald-500 text-left dir-ltr"
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                accept=".pdf,.xlsx,.csv,.png,.jpg,.jpeg"
+                className="hidden"
               />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>{attachedFile ? 'تغيير الملف' : 'إرفاق ملف'}</span>
+              </button>
             </div>
           </div>
 
-          {/* Quick Select Customer if available */}
-          {customers.length > 0 && (
-            <div>
-              <label className="block text-xs font-bold text-slate-500 mb-1">اختيار سريع من قائمة العملاء:</label>
-              <select
-                onChange={e => {
-                  const cust = customers.find(c => c.id === e.target.value);
-                  if (cust) {
-                    setCustomerName(cust.name);
-                    setPhoneNumber(cust.phone);
-                  }
-                }}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold focus:outline-none text-slate-700"
-              >
-                <option value="">-- اختر عميلاً مسجلاً --</option>
-                {customers.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} - {c.phone}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
           {/* Template Selection */}
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-2">نوع الرسالة النموذجية:</label>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">
+              نوع وشكل النص المرفق:
+            </label>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
               <button
                 onClick={() => setMessageTemplate('invoice')}
-                className={`py-2 px-2.5 rounded-lg text-xs font-bold transition border text-center ${
-                  messageTemplate === 'invoice' ? 'bg-emerald-50 border-emerald-500 text-emerald-700 shadow-sm' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                className={`py-2 px-2 rounded-lg text-xs font-bold transition border text-center ${
+                  messageTemplate === 'invoice' 
+                    ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 text-emerald-700 dark:text-emerald-300 font-extrabold' 
+                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
                 }`}
               >
-                🧾 إرسال فاتورة
+                🧾 فاتورة
               </button>
               <button
                 onClick={() => setMessageTemplate('statement')}
-                className={`py-2 px-2.5 rounded-lg text-xs font-bold transition border text-center ${
-                  messageTemplate === 'statement' ? 'bg-emerald-50 border-emerald-500 text-emerald-700 shadow-sm' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                className={`py-2 px-2 rounded-lg text-xs font-bold transition border text-center ${
+                  messageTemplate === 'statement' 
+                    ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 text-emerald-700 dark:text-emerald-300 font-extrabold' 
+                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
                 }`}
               >
                 📊 كشف حساب
               </button>
               <button
                 onClick={() => setMessageTemplate('quote')}
-                className={`py-2 px-2.5 rounded-lg text-xs font-bold transition border text-center ${
-                  messageTemplate === 'quote' ? 'bg-emerald-50 border-emerald-500 text-emerald-700 shadow-sm' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                className={`py-2 px-2 rounded-lg text-xs font-bold transition border text-center ${
+                  messageTemplate === 'quote' 
+                    ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 text-emerald-700 dark:text-emerald-300 font-extrabold' 
+                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
                 }`}
               >
                 📄 عرض سعر
               </button>
               <button
                 onClick={() => setMessageTemplate('welcome')}
-                className={`py-2 px-2.5 rounded-lg text-xs font-bold transition border text-center ${
-                  messageTemplate === 'welcome' ? 'bg-emerald-50 border-emerald-500 text-emerald-700 shadow-sm' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                className={`py-2 px-2 rounded-lg text-xs font-bold transition border text-center ${
+                  messageTemplate === 'welcome' 
+                    ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 text-emerald-700 dark:text-emerald-300 font-extrabold' 
+                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
                 }`}
               >
-                ✨ ترحيب بعميل
+                ✨ ترحيب
               </button>
               <button
                 onClick={() => setMessageTemplate('custom')}
-                className={`col-span-2 py-2 px-2.5 rounded-lg text-xs font-bold transition border text-center ${
-                  messageTemplate === 'custom' ? 'bg-emerald-50 border-emerald-500 text-emerald-700 shadow-sm' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                className={`py-2 px-2 rounded-lg text-xs font-bold transition border text-center ${
+                  messageTemplate === 'custom' 
+                    ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 text-emerald-700 dark:text-emerald-300 font-extrabold' 
+                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
                 }`}
               >
-                ✍️ نص مخصص للعميل
+                ✍️ مخصص
               </button>
             </div>
           </div>
 
-          {/* Message Preview or Custom Editor */}
+          {/* Message Content Preview or Custom Editor */}
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">معاينة النص المرسل:</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                محتوى الرسالة:
+              </label>
+              <button
+                onClick={handleCopyMessage}
+                className="flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline"
+              >
+                {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copied ? 'تم النسخ!' : 'نسخ النص'}</span>
+              </button>
+            </div>
+
             {messageTemplate === 'custom' ? (
               <textarea
                 value={customMessage}
                 onChange={e => setCustomMessage(e.target.value)}
-                placeholder="اكتب رسالتك الخاصة الموجهة للعميل هنا..."
-                className="w-full h-24 p-3 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-emerald-500 resize-none"
+                placeholder="اكتب رسالتك المخصصة هنا..."
+                className="w-full h-24 p-3 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:border-emerald-500 resize-none"
               />
             ) : (
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 whitespace-pre-wrap font-sans leading-relaxed">
+              <div className="p-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 rounded-xl text-xs text-slate-800 dark:text-slate-200 whitespace-pre-wrap font-sans leading-relaxed">
                 {finalMessage}
               </div>
             )}
-            <div className="flex justify-end mt-1">
-              <button
-                onClick={handleCopyMessage}
-                className="flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-800"
-              >
-                {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copied ? 'تم نسخ نص الرسالة' : 'نسخ النص للحافظة'}</span>
-              </button>
-            </div>
           </div>
 
-          {/* Social Channels Actions */}
-          <div className="space-y-2 pt-2 border-t border-slate-100">
-            <label className="block text-xs font-bold text-slate-800">إرسال مباشر عبر وسائل التواصل والمعاملات:</label>
+          {/* TAB CONTENT ACTION PANELS */}
+          <div className="pt-2 border-t border-slate-200 dark:border-slate-800">
+            
+            {/* WHATSAPP TAB */}
+            {activeTab === 'whatsapp' && (
+              <div className="space-y-3 bg-emerald-500/5 p-4 rounded-xl border border-emerald-500/20">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <MessageCircle className="w-5 h-5 text-emerald-500" />
+                    <span className="font-extrabold text-sm text-slate-800 dark:text-slate-100">
+                      خيار الإرسال المباشر عبر تطبيق واتساب (WhatsApp)
+                    </span>
+                  </div>
+                  <span className="text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200 font-bold px-2 py-0.5 rounded-full">
+                    مباشر وسريع
+                  </span>
+                </div>
 
-            {/* Primary WhatsApp Button */}
-            <a
-              href={whatsappUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-sm transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20"
-            >
-              <MessageCircle className="w-5 h-5" />
-              <span>إرسال عبر واتساب (WhatsApp Direct)</span>
-              <ExternalLink className="w-4 h-4 mr-auto" />
-            </a>
+                <p className="text-xs text-slate-600 dark:text-slate-300">
+                  يمكنك فتح واتساب مباشرة على رقم العميل ({formattedPhone || 'غير محدد'}) مع نص الرسالة الجاهزة.
+                </p>
 
-            {/* Secondary Social Apps Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
-              <a
-                href={telegramUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="py-2 px-3 bg-sky-500 hover:bg-sky-400 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5"
-              >
-                <Send className="w-3.5 h-3.5" />
-                <span>تيليجرام</span>
-              </a>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <a
+                    href={whatsappAppUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-black text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20"
+                  >
+                    <Smartphone className="w-4 h-4" />
+                    <span>فتح في تطبيق واتساب الجوال</span>
+                    <ExternalLink className="w-3.5 h-3.5 mr-auto" />
+                  </a>
 
-              <a
-                href={mailtoUrl}
-                className="py-2 px-3 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5"
-              >
-                <Mail className="w-3.5 h-3.5" />
-                <span>إيميل</span>
-              </a>
+                  <a
+                    href={whatsappWebUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="py-3 px-4 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-xs transition flex items-center justify-center gap-2"
+                  >
+                    <Globe className="w-4 h-4 text-emerald-400" />
+                    <span>فتح في واتساب ويب (WhatsApp Web)</span>
+                    <ExternalLink className="w-3.5 h-3.5 mr-auto" />
+                  </a>
+                </div>
+              </div>
+            )}
 
-              <a
-                href={phoneNumber ? `tel:${phoneNumber}` : '#'}
-                className="py-2 px-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5"
-              >
-                <Phone className="w-3.5 h-3.5" />
-                <span>اتصال هاتف</span>
-              </a>
+            {/* TELEGRAM TAB */}
+            {activeTab === 'telegram' && (
+              <div className="space-y-3 bg-sky-500/5 p-4 rounded-xl border border-sky-500/20">
+                <div className="flex items-center gap-2">
+                  <Send className="w-5 h-5 text-sky-500" />
+                  <span className="font-extrabold text-sm text-slate-800 dark:text-slate-100">
+                    خيار الإرسال عبر تطبيق تلجرام (Telegram)
+                  </span>
+                </div>
 
-              <button
-                onClick={() => {
-                  if (navigator.share) {
-                    navigator.share({
-                      title: 'AD1 ERP',
-                      text: finalMessage,
-                      url: window.location.href
-                    }).catch(() => {});
-                  } else {
-                    handleCopyMessage();
-                  }
-                }}
-                className="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5"
-              >
-                <Share2 className="w-3.5 h-3.5" />
-                <span>مشاركة العامة</span>
-              </button>
-            </div>
+                <p className="text-xs text-slate-600 dark:text-slate-300">
+                  سيتم توجيهك لرابط مشاركة تلجرام لاختيار العميل أو المجموعة أو القناة المراد إرسال المستند إليها.
+                </p>
 
-            {/* Quick Links for Official Store Social Accounts */}
-            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl mt-3">
-              <span className="text-[11px] font-bold text-slate-500 block mb-2">روابط شبكات التواصل الاجتماعية للمؤسسة:</span>
-              <div className="flex items-center gap-3 text-slate-600 text-xs font-bold">
-                <a href="https://wa.me" target="_blank" rel="noreferrer" className="flex items-center gap-1 hover:text-emerald-600">
-                  <MessageCircle className="w-3.5 h-3.5 text-emerald-600" /> واتساب الأعمال
-                </a>
-                <a href="https://x.com" target="_blank" rel="noreferrer" className="flex items-center gap-1 hover:text-sky-600">
-                  <Twitter className="w-3.5 h-3.5 text-sky-500" /> تويتر / X
-                </a>
-                <a href="https://facebook.com" target="_blank" rel="noreferrer" className="flex items-center gap-1 hover:text-blue-600">
-                  <Facebook className="w-3.5 h-3.5 text-blue-600" /> فيسبوك
-                </a>
-                <a href="https://linkedin.com" target="_blank" rel="noreferrer" className="flex items-center gap-1 hover:text-blue-700">
-                  <Linkedin className="w-3.5 h-3.5 text-blue-700" /> لينكد إن
+                <a
+                  href={telegramUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-3 px-4 bg-sky-500 hover:bg-sky-400 text-white rounded-xl font-black text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-sky-500/20"
+                >
+                  <Send className="w-4 h-4" />
+                  <span>مشاركة فورية عبر تلجرام</span>
+                  <ExternalLink className="w-3.5 h-3.5 mr-auto" />
                 </a>
               </div>
-            </div>
+            )}
+
+            {/* GMAIL TAB */}
+            {activeTab === 'gmail' && (
+              <div className="space-y-3 bg-rose-500/5 p-4 rounded-xl border border-rose-500/20">
+                <div className="flex items-center gap-2">
+                  <Mail className="w-5 h-5 text-rose-500" />
+                  <span className="font-extrabold text-sm text-slate-800 dark:text-slate-100">
+                    خيار الإرسال عبر البريد الإلكتروني (Gmail & Email)
+                  </span>
+                </div>
+
+                <p className="text-xs text-slate-600 dark:text-slate-300">
+                  سيتم فتح شاشة إنشاء إيميل جديد في Gmail تلقائياً موجهة للبريد ({customerEmail || 'لم يحدد بريد'}) مع الموضوع والنص.
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <a
+                    href={gmailComposeUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="py-3 px-4 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-black text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-rose-600/20"
+                  >
+                    <Mail className="w-4 h-4" />
+                    <span>فتح في Gmail ويب مباشر</span>
+                    <ExternalLink className="w-3.5 h-3.5 mr-auto" />
+                  </a>
+
+                  <a
+                    href={mailtoUrl}
+                    className="py-3 px-4 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-xs transition flex items-center justify-center gap-2"
+                  >
+                    <Globe className="w-4 h-4 text-rose-400" />
+                    <span>تطبيق الإيميل الافتراضي (Mailto)</span>
+                    <ExternalLink className="w-3.5 h-3.5 mr-auto" />
+                  </a>
+                </div>
+              </div>
+            )}
+
+            {/* DRIVE TAB */}
+            {activeTab === 'drive' && (
+              <div className="space-y-3 bg-amber-500/5 p-4 rounded-xl border border-amber-500/20">
+                <div className="flex items-center gap-2">
+                  <HardDrive className="w-5 h-5 text-amber-500" />
+                  <span className="font-extrabold text-sm text-slate-800 dark:text-slate-100">
+                    خيار الحفظ والأرشفة على جوجل درايف (Google Drive)
+                  </span>
+                </div>
+
+                <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                  احفظ الفاتورة أو التقرير في مساحة Google Drive الخاصة بك للأرشفة والرجوع إليها في أي وقت.
+                  سيتم فتح حساب Drive وتنزيل الملف لرفعه فوراً.
+                </p>
+
+                <button
+                  type="button"
+                  onClick={handleSaveToDrive}
+                  className="w-full py-3 px-4 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-black text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-amber-600/20"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>تنزيل الملف وفتح Google Drive للرفع</span>
+                  <ExternalLink className="w-3.5 h-3.5 mr-auto" />
+                </button>
+              </div>
+            )}
+
+            {/* NATIVE SHARE TAB */}
+            {activeTab === 'native' && (
+              <div className="space-y-3 bg-indigo-500/5 p-4 rounded-xl border border-indigo-500/20">
+                <div className="flex items-center gap-2">
+                  <Share2 className="w-5 h-5 text-indigo-500" />
+                  <span className="font-extrabold text-sm text-slate-800 dark:text-slate-100">
+                    مشاركة عبر نافذة النظام والجوال العامة (Native Web Share)
+                  </span>
+                </div>
+
+                <p className="text-xs text-slate-600 dark:text-slate-300">
+                  تسمح بإرفاق ملف الفاتورة PDF الحقيقي مباشرة إلى الواتساب والتصلات الأخرى على الأجهزة المحمولة والحواسيب.
+                </p>
+
+                <button
+                  type="button"
+                  onClick={handleNativeShare}
+                  className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-black text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20"
+                >
+                  <Share2 className="w-4 h-4" />
+                  <span>فتح قائمة مشاركة التطبيقات والملفات بالنظام</span>
+                </button>
+              </div>
+            )}
+
           </div>
+
         </div>
 
-        {/* Footer */}
-        <div className="p-3 bg-slate-100 border-t border-slate-200 text-center text-[10px] text-slate-500 flex justify-between items-center px-4">
-          <span>مربوطة تلقائياً مع نظام الفواتير والعملاء</span>
-          <span className="bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded font-mono font-bold">Alt + W</span>
+        {/* Modal Footer */}
+        <div className="p-3.5 bg-slate-100 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-800 text-xs text-slate-500 flex justify-between items-center px-5 shrink-0">
+          <div className="flex items-center gap-3">
+            <span className="font-bold text-slate-700 dark:text-slate-300">AD1 ERP Smart Share</span>
+            <span className="text-[10px] text-slate-400">(يدعم جميع ملفات الفواتير والتقارير)</span>
+          </div>
+          <button
+            onClick={onClose}
+            className="px-4 py-1.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 font-bold rounded-lg transition"
+          >
+            إغلاق
+          </button>
         </div>
+
       </div>
     </div>
   );
 };
 
 export default SocialShareModal;
+
