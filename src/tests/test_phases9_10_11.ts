@@ -256,7 +256,7 @@ async function runPhases9To11Tests() {
     console.log('\n================================================================');
     console.log('🎉 ALL PHASES 9, 10, AND 11 VERIFICATION TESTS PASSED SUCCESSFULLY!');
     console.log('================================================================\n');
-
+    process.exit(0);
   } catch (error: any) {
     console.error('\n❌ PHASES 9-11 TEST FAILED with error:');
     console.error(error);

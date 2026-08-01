@@ -196,7 +196,7 @@ async function runPhases12To15Tests() {
     console.log('\n============================================================');
     console.log('🎉 ALL TESTS PASSED FOR PHASES 12, 13, 14, AND 15! ENTERPRISE ERP IS FULLY VERIFIED.');
     console.log('============================================================\n');
-
+    process.exit(0);
   } catch (error) {
     console.error('\n❌ PHASES 12-15 TEST FAILED with error:', error);
     process.exit(1);
