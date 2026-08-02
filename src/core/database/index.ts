@@ -14,7 +14,7 @@ export const createPool = () => {
     port: process.env.SQL_PORT ? Number(process.env.SQL_PORT) : (isUnixSocket ? undefined : 5432),
     connectionTimeoutMillis: 15000,
     idleTimeoutMillis: 30000,
-    max: 20
+    max: 5 // Lowered max from 20 to 5 for test/CI environments to prevent "too many clients" connection exhaustion
   });
 };
 

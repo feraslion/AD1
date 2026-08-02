@@ -1,0 +1,3 @@
+## 2025-03-05 - [React POS Keyboard Shortcuts and Fast Input Re-renders]
+**Learning:** Frequent input changes (like typing in a search box or scanning barcodes in rapid succession) trigger complete component re-renders. Expensive operations like filtering product arrays and computing total invoices directly on every render block the main thread and degrade keystroke performance. Memoizing calculations with `useMemo` is crucial to isolate these heavy operations from typing and fast inputs.
+**Action:** Always wrap catalog search filters and aggregated cart calculations in `useMemo` hooks, specifying minimal dependencies to prevent input lags.
