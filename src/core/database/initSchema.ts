@@ -502,11 +502,15 @@ export async function ensureDatabaseTables(force = false) {
       type TEXT NOT NULL,
       customer_id TEXT,
       supplier_id TEXT,
+      party_id TEXT,
+      party_type TEXT,
       amount NUMERIC NOT NULL,
       currency TEXT DEFAULT 'SAR',
       exchange_rate NUMERIC DEFAULT '1.0',
       foreign_amount NUMERIC DEFAULT '0',
       payment_method TEXT DEFAULT 'cash',
+      method TEXT DEFAULT 'cash',
+      reference TEXT,
       account_id TEXT,
       date TEXT NOT NULL,
       notes TEXT,
@@ -516,6 +520,12 @@ export async function ensureDatabaseTables(force = false) {
       updated_at TIMESTAMP DEFAULT NOW()
     );
   `, 'payments');
+
+  // Ensure payments table has all columns mapped in schema
+  await execSql(sql`ALTER TABLE payments ADD COLUMN IF NOT EXISTS party_id TEXT;`, 'payments_col_party_id');
+  await execSql(sql`ALTER TABLE payments ADD COLUMN IF NOT EXISTS party_type TEXT;`, 'payments_col_party_type');
+  await execSql(sql`ALTER TABLE payments ADD COLUMN IF NOT EXISTS method TEXT DEFAULT 'cash';`, 'payments_col_method');
+  await execSql(sql`ALTER TABLE payments ADD COLUMN IF NOT EXISTS reference TEXT;`, 'payments_col_reference');
 
   // 25. Expenses
   await execSql(sql`
