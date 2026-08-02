@@ -3,6 +3,8 @@ import {
   getAuth, 
   signInAnonymously, 
   signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword,
+  updateProfile,
   signOut as firebaseSignOut, 
   onAuthStateChanged,
   User as FirebaseUser 
@@ -13,6 +15,23 @@ import { logger } from '../../shared/utils/logger';
 // Initialize Firebase App
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
+
+/**
+ * Register a new user with email and password in Firebase Auth
+ */
+export const signUpWithFirebase = async (email: string, password: string, displayName?: string): Promise<FirebaseUser | null> => {
+  try {
+    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    if (displayName && userCredential.user) {
+      await updateProfile(userCredential.user, { displayName });
+    }
+    logger.info('FirebaseAuth', 'Successfully registered new user in Firebase Auth', userCredential.user.uid);
+    return userCredential.user;
+  } catch (error: any) {
+    logger.error('FirebaseAuth', 'Firebase signup failed', error);
+    throw error;
+  }
+};
 
 /**
  * Authenticates user anonymously in Firebase Auth or with credentials

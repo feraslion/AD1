@@ -1,8 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Invoice, Product, StoreSettings } from '../../types';
-import { TrendingUp, ShoppingBag, AlertTriangle, FileText, Landmark, Users, Clock, ArrowLeft, RefreshCw, ChevronDown, ChevronUp, Check, Calendar } from 'lucide-react';
+import { TrendingUp, ShoppingBag, AlertTriangle, FileText, Landmark, Users, Clock, ArrowLeft, RefreshCw, ChevronDown, ChevronUp, Check, Calendar, CheckSquare, Square, Plus, Trash2, ListTodo, CheckCircle2 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import StatCard from './ui/StatCard';
+
+interface TodoItem {
+  id: string;
+  text: string;
+  completed: boolean;
+  createdAt: string;
+}
+
+const DEFAULT_TODOS: TodoItem[] = [
+  { id: '1', text: 'تنظيف وتجهيز المحل والممر الرئيسي', completed: true, createdAt: new Date().toISOString() },
+  { id: '2', text: 'جرد رفوف العصائر والمشروبات سريعة الدوران', completed: false, createdAt: new Date().toISOString() },
+  { id: '3', text: 'مراجعة وطباعة ملصقات الباركود للمنتجات الجديدة', completed: false, createdAt: new Date().toISOString() },
+  { id: '4', text: 'فحص كشف النقدية ومطابقة رصيد الخزينة', completed: false, createdAt: new Date().toISOString() }
+];
 
 interface DashboardProps {
   invoices: Invoice[];
@@ -18,6 +32,49 @@ export default function Dashboard({ invoices, products, settings, onNavigate, sy
   const [isLowStockExpanded, setIsLowStockExpanded] = useState(false);
   const [replenishQty, setReplenishQty] = useState<Record<string, string>>({});
   const [successItems, setSuccessItems] = useState<Record<string, boolean>>({});
+
+  // To-Do List state with localStorage persistence
+  const [todos, setTodos] = useState<TodoItem[]>(() => {
+    const saved = localStorage.getItem('erp_daily_todos');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      } catch (e) {}
+    }
+    return DEFAULT_TODOS;
+  });
+
+  const [newTodoInput, setNewTodoInput] = useState('');
+
+  useEffect(() => {
+    localStorage.setItem('erp_daily_todos', JSON.stringify(todos));
+  }, [todos]);
+
+  const handleAddTodo = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTodoInput.trim()) return;
+    const newItem: TodoItem = {
+      id: Date.now().toString(),
+      text: newTodoInput.trim(),
+      completed: false,
+      createdAt: new Date().toISOString()
+    };
+    setTodos([newItem, ...todos]);
+    setNewTodoInput('');
+  };
+
+  const handleToggleTodo = (id: string) => {
+    setTodos(todos.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
+  };
+
+  const handleDeleteTodo = (id: string) => {
+    setTodos(todos.filter(t => t.id !== id));
+  };
+
+  const handleClearCompleted = () => {
+    setTodos(todos.filter(t => !t.completed));
+  };
 
   // Memoize all complex dashboard calculations to avoid O(N) or O(N*M) on every render!
   const calculations = React.useMemo(() => {
@@ -453,66 +510,171 @@ export default function Dashboard({ invoices, products, settings, onNavigate, sy
         </div>
       </div>
 
-      {/* Bottom recent activity table */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
-        <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-          <div>
-            <h3 className="font-bold text-slate-800 text-base underline decoration-emerald-500 decoration-4 underline-offset-8">أحدث العمليات والفواتير</h3>
-            <p className="text-xs text-slate-400 mt-2">الفواتير الأخيرة الصادرة فوراً من نقطة البيع</p>
+      {/* Bottom section: Recent Activity & Daily To-Do List */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Recent Invoices Table (2 cols wide on desktop) */}
+        <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-200 dark:bg-slate-800 dark:border-slate-700 space-y-4">
+          <div className="flex justify-between items-center pb-2 border-b border-slate-100 dark:border-slate-700">
+            <div>
+              <h3 className="font-bold text-slate-800 dark:text-slate-100 text-base underline decoration-emerald-500 decoration-4 underline-offset-8">أحدث العمليات والفواتير</h3>
+              <p className="text-xs text-slate-400 mt-2">الفواتير الأخيرة الصادرة فوراً من نقطة البيع</p>
+            </div>
+            <button 
+              onClick={() => onNavigate('invoices')}
+              className="text-xs text-emerald-600 font-bold hover:underline flex items-center gap-1 bg-emerald-50 dark:bg-emerald-950/40 px-3 py-1.5 rounded-full hover:bg-emerald-100 transition-all"
+            >
+              عرض الكل <ArrowLeft className="w-3.5 h-3.5" />
+            </button>
           </div>
-          <button 
-            onClick={() => onNavigate('invoices')}
-            className="text-xs text-emerald-600 font-bold hover:underline flex items-center gap-1 bg-emerald-50 px-3 py-1.5 rounded-full hover:bg-emerald-100 transition-all"
-          >
-            عرض الكل <ArrowLeft className="w-3.5 h-3.5" />
-          </button>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-right text-slate-500 dark:text-slate-400">
+              <thead className="text-xs text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-900/60 rounded-lg">
+                <tr>
+                  <th className="px-4 py-3">رقم الفاتورة</th>
+                  <th className="px-4 py-3">التاريخ والوقت</th>
+                  <th className="px-4 py-3">العميل</th>
+                  <th className="px-4 py-3">طريقة الدفع</th>
+                  <th className="px-4 py-3">المجموع الكلي</th>
+                  <th className="px-4 py-3">الحالة</th>
+                </tr>
+              </thead>
+              <tbody>
+                {invoices.slice(0, 5).map((inv) => (
+                  <tr key={inv.id} className="border-b border-slate-100 dark:border-slate-700/60 hover:bg-slate-50/50 dark:hover:bg-slate-700/30">
+                    <td className="px-4 py-3.5 font-bold text-slate-800 dark:text-slate-200">{inv.invoiceNumber}</td>
+                    <td className="px-4 py-3.5 text-xs text-slate-500 dark:text-slate-400">
+                      {new Date(inv.date).toLocaleString('ar-SA')}
+                    </td>
+                    <td className="px-4 py-3.5 font-medium text-slate-700 dark:text-slate-300">{inv.customerName || 'عميل نقدي'}</td>
+                    <td className="px-4 py-3.5">
+                      <span className="text-xs px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold">
+                        {inv.paymentMethod === 'cash' ? '💵 نقدي' : 
+                         inv.paymentMethod === 'card' ? '💳 شبكة' : 
+                         inv.paymentMethod === 'credit' ? '⏳ آجل' : '🔀 مختلط'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3.5 font-black text-slate-800 dark:text-slate-200">
+                      {inv.grandTotal.toFixed(2)} {settings.currency}
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <span className={`text-xs px-2.5 py-1 rounded-full font-bold ${
+                        inv.status === 'paid' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
+                        inv.status === 'unpaid' ? 'bg-rose-50 text-rose-700 border border-rose-100' :
+                        'bg-amber-50 text-amber-700 border border-amber-100'
+                      }`}>
+                        {inv.status === 'paid' ? 'مدفوعة' :
+                         inv.status === 'unpaid' ? 'غير مدفوعة (آجل)' :
+                         'مدفوعة جزئياً'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-right text-slate-500">
-            <thead className="text-xs text-slate-700 bg-slate-50 rounded-lg">
-              <tr>
-                <th className="px-4 py-3">رقم الفاتورة</th>
-                <th className="px-4 py-3">التاريخ والوقت</th>
-                <th className="px-4 py-3">العميل</th>
-                <th className="px-4 py-3">طريقة الدفع</th>
-                <th className="px-4 py-3">المجموع الكلي</th>
-                <th className="px-4 py-3">الحالة</th>
-              </tr>
-            </thead>
-            <tbody>
-              {invoices.slice(0, 5).map((inv) => (
-                <tr key={inv.id} className="border-b border-slate-100 hover:bg-slate-50/50">
-                  <td className="px-4 py-3.5 font-bold text-slate-800">{inv.invoiceNumber}</td>
-                  <td className="px-4 py-3.5 text-xs text-slate-500">
-                    {new Date(inv.date).toLocaleString('ar-SA')}
-                  </td>
-                  <td className="px-4 py-3.5 font-medium text-slate-700">{inv.customerName || 'عميل نقدي'}</td>
-                  <td className="px-4 py-3.5">
-                    <span className="text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 font-bold">
-                      {inv.paymentMethod === 'cash' ? '💵 نقدي' : 
-                       inv.paymentMethod === 'card' ? '💳 شبكة' : 
-                       inv.paymentMethod === 'credit' ? '⏳ آجل' : '🔀 مختلط'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3.5 font-black text-slate-800">
-                    {inv.grandTotal.toFixed(2)} {settings.currency}
-                  </td>
-                  <td className="px-4 py-3.5">
-                    <span className={`text-xs px-2.5 py-1 rounded-full font-bold ${
-                      inv.status === 'paid' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
-                      inv.status === 'unpaid' ? 'bg-rose-50 text-rose-700 border border-rose-100' :
-                      'bg-amber-50 text-amber-700 border border-amber-100'
-                    }`}>
-                      {inv.status === 'paid' ? 'مدفوعة' :
-                       inv.status === 'unpaid' ? 'غير مدفوعة (آجل)' :
-                       'مدفوعة جزئياً'}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {/* To-Do List Widget (1 col wide) */}
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 dark:bg-slate-800 dark:border-slate-700 flex flex-col justify-between space-y-4">
+          <div>
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-700">
+              <div>
+                <h3 className="font-bold text-slate-800 dark:text-slate-100 text-base underline decoration-emerald-500 decoration-4 underline-offset-8 flex items-center gap-2">
+                  <ListTodo className="w-5 h-5 text-emerald-600" />
+                  قائمة المهام اليومية
+                </h3>
+                <p className="text-xs text-slate-400 mt-2">تسجيل وإدارة المهام التشغيلية للمحل والرفوف</p>
+              </div>
+              <span className="text-[11px] font-bold px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 rounded-full border border-emerald-200/60 font-mono">
+                {todos.filter(t => t.completed).length} / {todos.length}
+              </span>
+            </div>
+
+            {/* Add Todo Form */}
+            <form onSubmit={handleAddTodo} className="flex items-center gap-2 mt-4">
+              <input
+                type="text"
+                value={newTodoInput}
+                onChange={(e) => setNewTodoInput(e.target.value)}
+                placeholder="أضف مهمة جديدة (مثلاً: تنظيف الرفوف...)"
+                className="flex-1 px-3 py-2 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
+              />
+              <button
+                type="submit"
+                className="p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition shadow-sm flex items-center justify-center shrink-0"
+                title="إضافة المهمة"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </form>
+
+            {/* Todo List Items */}
+            <div className="space-y-2 mt-4 max-h-72 overflow-y-auto pr-1">
+              {todos.length === 0 ? (
+                <div className="text-center py-8 text-slate-400 dark:text-slate-500 space-y-1">
+                  <CheckCircle2 className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600" />
+                  <p className="text-xs font-bold">لا توجد مهام حالياً!</p>
+                  <p className="text-[11px]">قم بإضافة مهمة جديدة لمتابعة العمل اليومي.</p>
+                </div>
+              ) : (
+                todos.map((todo) => (
+                  <div
+                    key={todo.id}
+                    className={`flex items-center justify-between p-2.5 rounded-xl border transition duration-150 ${
+                      todo.completed
+                        ? 'bg-emerald-50/40 border-emerald-200/60 dark:bg-emerald-950/20 dark:border-emerald-800/40'
+                        : 'bg-slate-50/60 border-slate-200/80 dark:bg-slate-900/40 dark:border-slate-700/60 hover:border-slate-300'
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleToggleTodo(todo.id)}
+                      className="flex items-center gap-2.5 text-right flex-1 min-w-0"
+                    >
+                      {todo.completed ? (
+                        <CheckSquare className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      ) : (
+                        <Square className="w-4 h-4 text-slate-400 dark:text-slate-500 shrink-0" />
+                      )}
+                      <span
+                        className={`text-xs font-bold truncate ${
+                          todo.completed
+                            ? 'line-through text-slate-400 dark:text-slate-500'
+                            : 'text-slate-700 dark:text-slate-200'
+                        }`}
+                      >
+                        {todo.text}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteTodo(todo.id)}
+                      className="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg transition shrink-0 opacity-80 hover:opacity-100"
+                      title="حذف المهمة"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Clear completed action */}
+          {todos.some(t => t.completed) && (
+            <div className="pt-3 border-t border-slate-100 dark:border-slate-700 flex justify-end">
+              <button
+                type="button"
+                onClick={handleClearCompleted}
+                className="text-[11px] font-bold text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 transition flex items-center gap-1"
+              >
+                <Trash2 className="w-3 h-3" />
+                تنظيف المهام المكتملة
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

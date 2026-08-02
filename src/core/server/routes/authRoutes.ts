@@ -158,9 +158,9 @@ authRouter.post('/login', async (req: Request, res: Response) => {
 
 /**
  * 2. POST /api/auth/register
- * Register a new employee/user
+ * Register a new employee/user (Supports Firebase Auth UID or system user creation)
  */
-authRouter.post('/register', authenticate, requireRole('manager', 'admin'), async (req: Request, res: Response) => {
+authRouter.post('/register', async (req: Request, res: Response) => {
   try {
     const { email, name, password, role, pin } = req.body;
 

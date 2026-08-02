@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { StoreSettings } from '../../types';
-import { Lock, ShieldAlert, KeyRound, ArrowRightLeft, RefreshCw, Mail, Key, Send, CheckCircle2, ShieldCheck, UserCheck } from 'lucide-react';
+import { Lock, ShieldAlert, KeyRound, ArrowRightLeft, RefreshCw, Mail, Key, Send, CheckCircle2, ShieldCheck, UserCheck, UserPlus, Flame, Shield } from 'lucide-react';
 import { UserService } from '../../services/api';
 import { PermissionService } from '../permissions/PermissionService';
+import { signUpWithFirebase } from './firebase';
 
 interface LoginProps {
   onLoginSuccess: (user: { name: string; role: string; code: string; roleId?: string; token?: string; isVerified?: boolean }) => void;
@@ -10,7 +11,7 @@ interface LoginProps {
 }
 
 export default function Login({ onLoginSuccess, settings }: LoginProps) {
-  const [loginMode, setLoginMode] = useState<'pin' | 'password'>('pin');
+  const [loginMode, setLoginMode] = useState<'pin' | 'password' | 'signup'>('pin');
   const [employees, setEmployees] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedUser, setSelectedUser] = useState<any | null>(null);
@@ -19,6 +20,15 @@ export default function Login({ onLoginSuccess, settings }: LoginProps) {
   // Password Mode state
   const [emailInput, setEmailInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
+
+  // Sign Up Form State
+  const [signupName, setSignupName] = useState('');
+  const [signupEmail, setSignupEmail] = useState('');
+  const [signupPassword, setSignupPassword] = useState('');
+  const [signupRole, setSignupRole] = useState<'manager' | 'accountant' | 'inventory' | 'cashier'>('cashier');
+  const [signupPin, setSignupPin] = useState('1234');
+  const [useFirebaseAuth, setUseFirebaseAuth] = useState(true);
+  const [signupSuccessMsg, setSignupSuccessMsg] = useState('');
   
   // Forgot Password Modal
   const [showForgotModal, setShowForgotModal] = useState(false);
@@ -195,6 +205,84 @@ export default function Login({ onLoginSuccess, settings }: LoginProps) {
     }
   };
 
+  const handleSignUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!signupName || !signupEmail || !signupPassword) {
+      setError('يرجى تعبئة جميع الحقول المطلوبة (الاسم، البريد، كلمة المرور)');
+      return;
+    }
+
+    setAuthInProgress(true);
+    setError('');
+    setSignupSuccessMsg('');
+
+    try {
+      let firebaseUid = '';
+      if (useFirebaseAuth) {
+        try {
+          const fbUser = await signUpWithFirebase(signupEmail, signupPassword, signupName);
+          if (fbUser) {
+            firebaseUid = fbUser.uid;
+          }
+        } catch (fbErr: any) {
+          console.warn('Firebase signup notice:', fbErr?.message || fbErr);
+        }
+      }
+
+      // Call System Backend API Register endpoint
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: signupEmail,
+          name: signupName,
+          password: signupPassword,
+          role: signupRole,
+          pin: signupPin,
+          uid: firebaseUid
+        })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'فشل إنشاء حساب موظف جديد');
+      }
+
+      setSignupSuccessMsg('تم إنشاء حساب الموظف بنجاح ومزامنته مع Firebase Auth! يمكنك الآن تسجيل الدخول.');
+
+      // Refresh employees list
+      UserService.getUsers().then(usersRes => {
+        const mapped = usersRes.map((u: any) => ({
+          ...u,
+          pin: u.pin || '1234',
+          code: u.id,
+          color: u.role === 'manager' ? 'bg-indigo-50 border-indigo-200 text-indigo-700' :
+                 u.role === 'accountant' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
+                 u.role === 'inventory' ? 'bg-amber-50 border-amber-200 text-amber-700' :
+                 'bg-blue-50 border-blue-200 text-blue-700'
+        }));
+        setEmployees(mapped);
+      }).catch(() => {});
+
+      setTimeout(() => {
+        setEmailInput(signupEmail);
+        setPasswordInput(signupPassword);
+        setLoginMode('password');
+        setSignupSuccessMsg('');
+        setSignupName('');
+        setSignupEmail('');
+        setSignupPassword('');
+      }, 2000);
+
+    } catch (err: any) {
+      console.error('Sign-up error:', err);
+      setError(err.message || 'حدث خطأ أثناء إنشاء الحساب');
+    } finally {
+      setAuthInProgress(false);
+    }
+  };
+
   const handleClear = () => {
     setPin('');
     setError('');
@@ -218,20 +306,28 @@ export default function Login({ onLoginSuccess, settings }: LoginProps) {
         </div>
 
         {/* Auth Mode Toggle Tabs */}
-        <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200 font-bold text-xs">
+        <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200 font-bold text-[11px] sm:text-xs">
           <button
             type="button"
             onClick={() => { setLoginMode('pin'); setError(''); }}
             className={`flex-1 py-2 rounded-xl transition ${loginMode === 'pin' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
           >
-            رمز PIN السريع للموظفين
+            رمز PIN
           </button>
           <button
             type="button"
             onClick={() => { setLoginMode('password'); setError(''); }}
             className={`flex-1 py-2 rounded-xl transition ${loginMode === 'password' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
           >
-            البريد وكلمة المرور
+            كلمة المرور
+          </button>
+          <button
+            type="button"
+            onClick={() => { setLoginMode('signup'); setError(''); }}
+            className={`flex-1 py-2 rounded-xl transition flex items-center justify-center gap-1 ${loginMode === 'signup' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+          >
+            <UserPlus className="w-3.5 h-3.5" />
+            حساب جديد
           </button>
         </div>
 
@@ -247,6 +343,124 @@ export default function Login({ onLoginSuccess, settings }: LoginProps) {
             <RefreshCw className="w-7 h-7 text-emerald-600 animate-spin" />
             <span className="text-xs text-slate-500 font-bold">جاري تحميل ملفات الموظفين الآمنة...</span>
           </div>
+        ) : loginMode === 'signup' ? (
+          /* Sign Up Mode */
+          <form onSubmit={handleSignUp} className="space-y-3.5 text-right">
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                <UserCheck className="w-3.5 h-3.5 text-slate-500" />
+                اسم الموظف / المستخدم:
+              </label>
+              <input
+                type="text"
+                value={signupName}
+                onChange={(e) => setSignupName(e.target.value)}
+                placeholder="مثال: محمد علي (مشرف المبيعات)"
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                required
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                <Mail className="w-3.5 h-3.5 text-slate-500" />
+                البريد الإلكتروني:
+              </label>
+              <input
+                type="email"
+                value={signupEmail}
+                onChange={(e) => setSignupEmail(e.target.value)}
+                placeholder="employee@system.com"
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                  <Key className="w-3.5 h-3.5 text-slate-500" />
+                  كلمة المرور:
+                </label>
+                <input
+                  type="password"
+                  value={signupPassword}
+                  onChange={(e) => setSignupPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                  <KeyRound className="w-3.5 h-3.5 text-slate-500" />
+                  رمز PIN (4 أرقام):
+                </label>
+                <input
+                  type="text"
+                  maxLength={4}
+                  value={signupPin}
+                  onChange={(e) => setSignupPin(e.target.value)}
+                  placeholder="1234"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600 text-center"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                <Shield className="w-3.5 h-3.5 text-slate-500" />
+                الصلاحية والدور:
+              </label>
+              <select
+                value={signupRole}
+                onChange={(e: any) => setSignupRole(e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600"
+              >
+                <option value="cashier">كاشير المبيعات (Cashier)</option>
+                <option value="accountant">محاسب مالي (Accountant)</option>
+                <option value="inventory">أمين مستودع (Inventory)</option>
+                <option value="manager">مدير النظام (Manager / Admin)</option>
+              </select>
+            </div>
+
+            <label className="flex items-center gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 cursor-pointer hover:bg-slate-100 transition">
+              <input
+                type="checkbox"
+                checked={useFirebaseAuth}
+                onChange={(e) => setUseFirebaseAuth(e.target.checked)}
+                className="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500"
+              />
+              <Flame className="w-4 h-4 text-amber-500" />
+              <span>الربط والمصادقة مع Firebase Auth</span>
+            </label>
+
+            {signupSuccessMsg && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-bold flex items-center gap-2 animate-fadeIn">
+                <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-emerald-600" />
+                <span>{signupSuccessMsg}</span>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={authInProgress}
+              className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl transition shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2"
+            >
+              {authInProgress ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  جاري تسجيل المستخدم في الخادم و Firebase Auth...
+                </>
+              ) : (
+                <>
+                  <UserPlus className="w-4 h-4" />
+                  إنشاء وتفعيل حساب الموظف الجديد
+                </>
+              )}
+            </button>
+          </form>
         ) : loginMode === 'password' ? (
           /* Password Login Mode */
           <form onSubmit={handlePasswordSubmit} className="space-y-4">

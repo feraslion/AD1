@@ -15,7 +15,10 @@
     "clean": "node -e \"['dist','server.js','release'].forEach(p=>fs.rmSync(p,{recursive:true,force:true}))\"",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "test": "bun src/tests/test_phase8_currency.ts && bun src/tests/test_phases9_10_11.ts && bun src/tests/test_phases12_13_14_15.ts"
+    "test": "bun src/tests/test_phase8_currency.ts && bun src/tests/test_phases9_10_11.ts && bun src/tests/test_phases12_13_14_15.ts",
+    "test:light": "bun src/tests/test_phases7_engine.ts",
+    "benchmark": "bun src/harness/benchmark.ts",
+    "ci:pipeline": "npm run lint && npm run build && npm run test:light && npm run benchmark"
   },
   "build": {
     "appId": "com.feraslion.ad1",
