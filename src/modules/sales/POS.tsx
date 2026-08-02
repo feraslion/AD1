@@ -4,7 +4,8 @@ import {
   ShoppingCart, Search, Plus, Minus, Trash2, UserPlus, CreditCard, 
   DollarSign, Wallet, FileText, CheckCircle, X, Printer, QrCode, 
   Scan, AlertCircle, AlertTriangle, Wifi, WifiOff, RefreshCw, Settings, Calculator, 
-  Zap, Percent, Tag, Scale, Volume2, Check, Monitor, RotateCcw, Lock, Unlock, Coins, Camera, Moon, Sun, Download
+  Zap, Percent, Tag, Scale, Volume2, Check, Monitor, RotateCcw, Lock, Unlock, Coins, Camera, Moon, Sun, Download,
+  LayoutGrid, Folder, FolderOpen, Layers, Filter, ChevronLeft
 } from 'lucide-react';
 import { SalesService } from '../../services/SalesService';
 import { playScannerSound } from '../../utils/audio';
@@ -116,6 +117,10 @@ export default function POS({ products, categories, customers, settings, onAddIn
   const [showNumpad, setShowNumpad] = useState<boolean>(false);
   const [numpadValue, setNumpadValue] = useState<string>('');
   const [activeCartItemId, setActiveCartItemId] = useState<string | null>(null);
+
+  // Mobile Category Drawer & View Tab Switcher
+  const [showCategoryDrawer, setShowCategoryDrawer] = useState<boolean>(false);
+  const [mobileActiveTab, setMobileActiveTab] = useState<'catalog' | 'cart'>('catalog');
 
   // PDF Export state
   const [isDownloadingPdf, setIsDownloadingPdf] = useState<boolean>(false);
@@ -706,10 +711,46 @@ export default function POS({ products, categories, customers, settings, onAddIn
         </div>
       </div>
 
+      {/* Mobile Screen Navigation Switcher (Catalog vs Cart) */}
+      <div className="xl:hidden flex bg-slate-200 dark:bg-slate-800 p-1 rounded-2xl font-bold text-xs shadow-inner">
+        <button
+          type="button"
+          onClick={() => setMobileActiveTab('catalog')}
+          className={`flex-1 py-3 rounded-xl flex items-center justify-center gap-2 transition active:scale-95 min-h-[44px] ${
+            mobileActiveTab === 'catalog'
+              ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-sm font-extrabold'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+          }`}
+        >
+          <LayoutGrid className="w-4.5 h-4.5" />
+          <span>المنتجات والكتالوج ({filteredProducts.length})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setMobileActiveTab('cart')}
+          className={`flex-1 py-3 rounded-xl flex items-center justify-center gap-2 transition active:scale-95 min-h-[44px] ${
+            mobileActiveTab === 'cart'
+              ? 'bg-emerald-600 text-white shadow-sm font-extrabold'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+          }`}
+        >
+          <ShoppingCart className="w-4.5 h-4.5" />
+          <span>السلة ({cart.length})</span>
+          {grandTotal > 0 && (
+            <span className="bg-amber-400 text-slate-900 text-[10px] px-2 py-0.5 rounded-full font-mono font-black">
+              {grandTotal.toFixed(0)} {settings.currency}
+            </span>
+          )}
+        </button>
+      </div>
+
       {/* Main Grid: Products Catalog vs Shopping Cart */}
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 flex-1 overflow-hidden">
         {/* Products Catalog - 7 cols */}
-        <div className="xl:col-span-7 flex flex-col bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden h-full">
+        <div className={`xl:col-span-7 flex-col bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden h-full ${
+          mobileActiveTab === 'catalog' ? 'flex' : 'hidden xl:flex'
+        }`}>
           {/* Search & Scanner Controls */}
           <div className="p-4 bg-slate-50/80 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 space-y-3">
             <div className="flex flex-col sm:flex-row gap-2.5">
@@ -857,34 +898,56 @@ export default function POS({ products, categories, customers, settings, onAddIn
               </div>
             )}
 
-            {/* Category Tabs */}
-            <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+            {/* Category Selection Bar with Mobile Drawer Trigger */}
+            <div className="flex items-center gap-2">
               <button
-                onClick={() => setSelectedCategory('all')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition ${
-                  selectedCategory === 'all' 
-                    ? 'bg-emerald-600 text-white shadow-sm' 
-                    : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
-                }`}
+                type="button"
+                onClick={() => setShowCategoryDrawer(true)}
+                className="flex items-center gap-1.5 px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-sm border border-emerald-500/30 shrink-0 min-h-[44px] active:scale-95"
+                title="فتح القائمة الكاملة للتصنيفات"
               >
-                📂 الكل ({products.length})
+                <LayoutGrid className="w-4 h-4 text-emerald-200" />
+                <span>التصنيفات</span>
+                <span className="bg-emerald-800 text-emerald-100 text-[10px] px-2 py-0.5 rounded-md font-mono font-bold">
+                  {selectedCategory === 'all' ? 'الكل' : (categories.find(c => c.id === selectedCategory)?.name || 'محدد')}
+                </span>
               </button>
-              {categories.map(cat => {
-                const count = products.filter(p => p.category === cat.id).length;
-                return (
-                  <button
-                    key={cat.id}
-                    onClick={() => setSelectedCategory(cat.id)}
-                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition ${
-                      selectedCategory === cat.id 
-                        ? 'bg-emerald-600 text-white shadow-sm' 
-                        : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
-                    }`}
-                  >
-                    {cat.icon} {cat.name} ({count})
-                  </button>
-                );
-              })}
+
+              <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar flex-1 items-center">
+                <button
+                  onClick={() => setSelectedCategory('all')}
+                  className={`px-4 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition min-h-[44px] flex items-center gap-1.5 active:scale-95 ${
+                    selectedCategory === 'all' 
+                      ? 'bg-emerald-600 text-white shadow-sm' 
+                      : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  <span>📂</span>
+                  <span>الكل</span>
+                  <span className="text-[10px] font-mono bg-slate-100 dark:bg-slate-700/80 px-1.5 py-0.5 rounded text-slate-500 dark:text-slate-400 font-bold">{products.length}</span>
+                </button>
+                {categories.map(cat => {
+                  const count = products.filter(p => p.category === cat.id).length;
+                  const isSelected = selectedCategory === cat.id;
+                  return (
+                    <button
+                      key={cat.id}
+                      onClick={() => setSelectedCategory(cat.id)}
+                      className={`px-4 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition min-h-[44px] flex items-center gap-1.5 active:scale-95 ${
+                        isSelected 
+                          ? 'bg-emerald-600 text-white shadow-sm' 
+                          : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      <span>{cat.icon || '📁'}</span>
+                      <span>{cat.name}</span>
+                      <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded font-bold ${
+                        isSelected ? 'bg-emerald-800 text-white' : 'bg-slate-100 dark:bg-slate-700/80 text-slate-500 dark:text-slate-400'
+                      }`}>{count}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
 
@@ -962,7 +1025,9 @@ export default function POS({ products, categories, customers, settings, onAddIn
         </div>
 
         {/* Shopping Cart Drawer - 5 cols */}
-        <div className="xl:col-span-5 flex flex-col bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden h-full">
+        <div className={`xl:col-span-5 flex-col bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden h-full ${
+          mobileActiveTab === 'cart' ? 'flex' : 'hidden xl:flex'
+        }`}>
           {/* Cart Header */}
           <div className="p-3.5 bg-[#1e293b] text-white flex justify-between items-center border-b border-slate-700">
             <div className="flex items-center gap-2">
@@ -972,22 +1037,22 @@ export default function POS({ products, categories, customers, settings, onAddIn
             {cart.length > 0 && (
               <button 
                 onClick={clearCart}
-                className="text-xs text-rose-300 font-bold hover:text-rose-100 flex items-center gap-1 bg-rose-950/50 border border-rose-800/40 px-2.5 py-1 rounded-lg transition"
+                className="text-xs text-rose-300 font-bold hover:text-rose-100 flex items-center gap-1 bg-rose-950/50 border border-rose-800/40 px-3 py-2 rounded-xl transition min-h-[44px] active:scale-95"
               >
-                <Trash2 className="w-3.5 h-3.5" /> تفريغ
+                <Trash2 className="w-4 h-4" /> تفريغ
               </button>
             )}
           </div>
 
           {/* Customer Selection bar */}
-          <div className="p-3 bg-slate-50 border-b border-slate-200 flex gap-2 items-center">
+          <div className="p-3 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700 flex gap-2 items-center">
             <select
               value={selectedCustomer ? selectedCustomer.id : ''}
               onChange={(e) => {
                 const c = customers.find(cust => cust.id === e.target.value);
                 setSelectedCustomer(c || null);
               }}
-              className="flex-1 bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              className="flex-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 min-h-[44px]"
             >
               <option value="">👤 عميل نقدي سريع (افتراضي)</option>
               {customers.map(c => (
@@ -999,20 +1064,20 @@ export default function POS({ products, categories, customers, settings, onAddIn
 
             <button 
               onClick={() => setShowCustomerModal(true)}
-              className="p-2 bg-emerald-50 border border-emerald-200 text-emerald-600 rounded-xl hover:bg-emerald-100 transition"
+              className="p-3 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 rounded-xl hover:bg-emerald-100 dark:hover:bg-emerald-900 transition min-w-[44px] min-h-[44px] flex items-center justify-center active:scale-95"
               title="إضافة عميل جديد"
             >
-              <UserPlus className="w-4 h-4" />
+              <UserPlus className="w-4.5 h-4.5" />
             </button>
           </div>
 
           {/* Cart Items List */}
-          <div ref={cartListRef} className="flex-1 overflow-y-auto scroll-smooth p-3 space-y-2 bg-slate-50/30">
+          <div ref={cartListRef} className="flex-1 overflow-y-auto scroll-smooth p-3 space-y-2.5 bg-slate-50/30 dark:bg-slate-900/30">
             {cart.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-slate-300 space-y-2 py-10">
-                <ShoppingCart className="w-14 h-14 text-slate-200" />
-                <p className="font-bold text-xs text-slate-400">سلة الفاتورة فارغة</p>
-                <p className="text-[11px] text-slate-400">امسح الباركود أو انقر على صنف لإضافته</p>
+                <ShoppingCart className="w-14 h-14 text-slate-200 dark:text-slate-700" />
+                <p className="font-bold text-xs text-slate-400 dark:text-slate-500">سلة الفاتورة فارغة</p>
+                <p className="text-[11px] text-slate-400 dark:text-slate-500">امسح الباركود أو انقر على صنف لإضافته</p>
               </div>
             ) : (
               cart.map(item => {
@@ -1028,29 +1093,29 @@ export default function POS({ products, categories, customers, settings, onAddIn
                 const netItemPrice = itemPrice - itemDiscount;
 
                 return (
-                  <div key={item.id} className="p-3 bg-white border border-slate-200 rounded-xl flex justify-between items-start gap-2 hover:border-slate-300 transition shadow-2xs">
+                  <div key={item.id} className="p-3 bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/80 rounded-2xl flex justify-between items-start gap-2 hover:border-slate-300 transition shadow-2xs">
                     <div className="flex-1 space-y-1">
                       <div className="flex justify-between items-start">
-                        <h4 className="font-bold text-slate-800 text-xs line-clamp-2 leading-snug">{item.product.name}</h4>
+                        <h4 className="font-bold text-slate-800 dark:text-slate-100 text-xs line-clamp-2 leading-snug">{item.product.name}</h4>
                         <button 
                           onClick={() => removeFromCart(item.id)}
-                          className="text-slate-300 hover:text-rose-500 p-0.5 transition"
-                          title="حذف"
+                          className="w-10 h-10 min-w-[40px] min-h-[40px] text-slate-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl flex items-center justify-center transition active:scale-95"
+                          title="حذف من السلة"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                       
                       {/* Price & Unit Details */}
-                      <div className="text-[11px] text-slate-500 flex items-center gap-2">
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-2">
                         <span>سعر الوحدة: {item.product.price.toFixed(2)}</span>
                         <span>•</span>
                         <span>{item.product.unit}</span>
                       </div>
 
                       {/* Item-level Discount Control */}
-                      <div className="flex items-center gap-1.5 mt-1 pt-1 border-t border-slate-100">
-                        <span className="text-[10px] font-bold text-slate-400 flex items-center gap-0.5">
+                      <div className="flex items-center gap-1.5 mt-1 pt-1 border-t border-slate-100 dark:border-slate-700/50">
+                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 flex items-center gap-0.5">
                           <Tag className="w-3 h-3" /> خصم:
                         </span>
                         <input 
@@ -1059,12 +1124,12 @@ export default function POS({ products, categories, customers, settings, onAddIn
                           placeholder="0"
                           value={item.discount || ''}
                           onChange={(e) => updateItemDiscount(item.id, Math.max(0, parseFloat(e.target.value) || 0), item.discountType)}
-                          className="w-12 text-center bg-slate-50 border border-slate-200 rounded text-xs py-0.5 px-1 font-mono text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-bold"
+                          className="w-14 text-center bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs py-1 px-1 font-mono text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-bold min-h-[36px]"
                         />
                         <select
                           value={item.discountType}
                           onChange={(e) => updateItemDiscount(item.id, item.discount, e.target.value as 'fixed' | 'percentage')}
-                          className="bg-slate-50 border border-slate-200 rounded text-[10px] py-0.5 px-0.5 text-slate-600 focus:outline-none font-bold"
+                          className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-[10px] py-1 px-1 text-slate-600 dark:text-slate-300 focus:outline-none font-bold min-h-[36px]"
                         >
                           <option value="percentage">%</option>
                           <option value="fixed">{settings.currency}</option>
@@ -1073,17 +1138,18 @@ export default function POS({ products, categories, customers, settings, onAddIn
                     </div>
 
                     {/* Quantity Adjustment Controls & Net Subtotal */}
-                    <div className="flex flex-col items-end justify-between h-full space-y-2 min-w-[90px]">
-                      <div className="text-xs font-extrabold text-emerald-600 font-mono">
+                    <div className="flex flex-col items-end justify-between h-full space-y-2 min-w-[100px]">
+                      <div className="text-xs font-extrabold text-emerald-600 dark:text-emerald-400 font-mono">
                         {netItemPrice.toFixed(2)} {settings.currency}
                       </div>
 
-                      <div className="flex items-center bg-slate-100 rounded-lg p-0.5 border border-slate-200">
+                      <div className="flex items-center bg-slate-100 dark:bg-slate-900 rounded-xl p-1 border border-slate-200 dark:border-slate-700">
                         <button 
                           onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                          className="p-1 text-slate-600 hover:bg-white rounded transition"
+                          className="w-10 h-10 min-w-[40px] min-h-[40px] flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-800 rounded-lg transition active:scale-95 font-bold"
+                          title="إنقاص الكمية"
                         >
-                          <Minus className="w-3 h-3" />
+                          <Minus className="w-4 h-4" />
                         </button>
                         <input
                           type="number"
@@ -1091,13 +1157,14 @@ export default function POS({ products, categories, customers, settings, onAddIn
                           min="0.001"
                           value={item.quantity}
                           onChange={(e) => updateQuantity(item.id, parseFloat(e.target.value) || 0)}
-                          className="w-10 text-center font-extrabold text-xs text-slate-800 font-mono bg-transparent border-none p-0 focus:outline-none"
+                          className="w-11 text-center font-extrabold text-xs text-slate-800 dark:text-slate-100 font-mono bg-transparent border-none p-0 focus:outline-none min-h-[40px]"
                         />
                         <button 
                           onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                          className="p-1 text-slate-600 hover:bg-white rounded transition"
+                          className="w-10 h-10 min-w-[40px] min-h-[40px] flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-800 rounded-lg transition active:scale-95 font-bold"
+                          title="زيادة الكمية"
                         >
-                          <Plus className="w-3 h-3" />
+                          <Plus className="w-4 h-4" />
                         </button>
                       </div>
                     </div>
@@ -1895,6 +1962,107 @@ export default function POS({ products, categories, customers, settings, onAddIn
         products={products}
         onOpenCameraScanner={() => setShowCameraScanner(true)}
       />
+
+      {/* Mobile & Desktop Touch-Friendly Category Drawer Sheet */}
+      {showCategoryDrawer && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex justify-end animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-sm h-full shadow-2xl flex flex-col justify-between border-r border-slate-200 dark:border-slate-800 text-right overflow-hidden">
+            {/* Drawer Header */}
+            <div className="p-4 bg-slate-900 text-white flex justify-between items-center border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <LayoutGrid className="w-5 h-5 text-emerald-400" />
+                <h3 className="font-bold text-base">تصنيفات المنتجات والسلع</h3>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setShowCategoryDrawer(false)}
+                className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition active:scale-95"
+                title="إغلاق"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Drawer Body - Category Cards */}
+            <div className="p-4 flex-1 overflow-y-auto space-y-2.5">
+              <div className="text-xs font-bold text-slate-400 dark:text-slate-500 mb-2">
+                اختر التصنيف لعرض منتجاته ({categories.length + 1} تصنيف)
+              </div>
+
+              {/* All Products Option */}
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedCategory('all');
+                  setShowCategoryDrawer(false);
+                  setMobileActiveTab('catalog');
+                }}
+                className={`w-full min-h-[52px] p-4 rounded-2xl border font-bold text-sm flex items-center justify-between transition active:scale-[0.98] ${
+                  selectedCategory === 'all'
+                    ? 'bg-emerald-600 text-white border-emerald-500 shadow-md'
+                    : 'bg-slate-50 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">📂</span>
+                  <span>كل المنتجات والخدمات</span>
+                </div>
+                <span className={`text-xs px-2.5 py-1 rounded-full font-mono font-bold ${
+                  selectedCategory === 'all' ? 'bg-emerald-800 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                }`}>
+                  {products.length}
+                </span>
+              </button>
+
+              {/* Individual Category Cards */}
+              {categories.map(cat => {
+                const count = products.filter(p => p.category === cat.id).length;
+                const isSelected = selectedCategory === cat.id;
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedCategory(cat.id);
+                      setShowCategoryDrawer(false);
+                      setMobileActiveTab('catalog');
+                    }}
+                    className={`w-full min-h-[52px] p-4 rounded-2xl border font-bold text-sm flex items-center justify-between transition active:scale-[0.98] ${
+                      isSelected
+                        ? 'bg-emerald-600 text-white border-emerald-500 shadow-md'
+                        : 'bg-slate-50 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-xl">{cat.icon || '📁'}</span>
+                      <span>{cat.name}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs px-2.5 py-1 rounded-full font-mono font-bold ${
+                        isSelected ? 'bg-emerald-800 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                      }`}>
+                        {count} منتج
+                      </span>
+                      {isSelected && <Check className="w-5 h-5 text-white shrink-0" />}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Drawer Footer */}
+            <div className="p-4 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-700">
+              <button
+                type="button"
+                onClick={() => setShowCategoryDrawer(false)}
+                className="w-full py-3.5 bg-slate-900 text-white dark:bg-slate-700 rounded-xl text-xs font-bold hover:bg-slate-800 transition active:scale-95 min-h-[44px]"
+              >
+                إغلاق القائمة
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

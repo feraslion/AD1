@@ -11,6 +11,7 @@
     "build:windows": "bun run build:web && bunx electron-builder --win -c.publish=never",
     "build:android": "bun run build:web && bunx cap sync android && (cd android && ./gradlew assembleRelease)",
     "build:all": "bun run build:web && bun run build:windows && bun run build:android",
+    "app:build:release": "npm run build && npx cap sync && npx cap build android --flavor release",
     "start": "node dist/server.cjs",
     "clean": "node -e \"['dist','server.js','release'].forEach(p=>fs.rmSync(p,{recursive:true,force:true}))\"",
     "lint": "tsc --noEmit",

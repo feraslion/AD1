@@ -53,11 +53,16 @@ export async function ensureDatabaseTables(force = false) {
   try {
     await db.execute(sql`CREATE TABLE IF NOT EXISTS _ddl_test (id INT)`);
     await db.execute(sql`DROP TABLE IF EXISTS _ddl_test`);
-  } catch (err: any) {
+  } catch (_err: any) {
     try {
       await db.execute(sql`ROLLBACK`);
-    } catch (_) {}
-    console.log('[Schema Migration] DDL test notice:', err?.message || err);
+      await db.execute(sql`CREATE TABLE IF NOT EXISTS _ddl_test (id INT)`);
+      await db.execute(sql`DROP TABLE IF EXISTS _ddl_test`);
+    } catch (_) {
+      try {
+        await db.execute(sql`ROLLBACK`);
+      } catch (_) {}
+    }
   }
 
   // 1. Companies
