@@ -153,6 +153,7 @@ async function runPhase8CurrencyTests() {
     console.log('\n======================================================');
     console.log('🎉 ALL PHASE 8 MULTI-CURRENCY TESTS PASSED SUCCESSFULLY!');
     console.log('======================================================\n');
+    process.exit(0);
   } catch (error: any) {
     console.error('\n❌ PHASE 8 TEST FAILED with error:');
     console.error(error);

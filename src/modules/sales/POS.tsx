@@ -861,6 +861,7 @@ export default function POS({ products, categories, customers, settings, onAddIn
           {/* Customer Selection bar */}
           <div className="p-3 bg-slate-50 border-b border-slate-200 flex gap-2 items-center">
             <select
+              aria-label="اختيار العميل"
               value={selectedCustomer ? selectedCustomer.id : ''}
               onChange={(e) => {
                 const c = customers.find(cust => cust.id === e.target.value);
@@ -880,6 +881,7 @@ export default function POS({ products, categories, customers, settings, onAddIn
               onClick={() => setShowCustomerModal(true)}
               className="p-2 bg-emerald-50 border border-emerald-200 text-emerald-600 rounded-xl hover:bg-emerald-100 transition"
               title="إضافة عميل جديد"
+              aria-label="إضافة عميل جديد"
             >
               <UserPlus className="w-4 h-4" />
             </button>
@@ -915,6 +917,7 @@ export default function POS({ products, categories, customers, settings, onAddIn
                           onClick={() => removeFromCart(item.id)}
                           className="text-slate-300 hover:text-rose-500 p-0.5 transition"
                           title="حذف"
+                          aria-label="حذف الصنف من السلة"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -939,11 +942,13 @@ export default function POS({ products, categories, customers, settings, onAddIn
                           value={item.discount || ''}
                           onChange={(e) => updateItemDiscount(item.id, Math.max(0, parseFloat(e.target.value) || 0), item.discountType)}
                           className="w-12 text-center bg-slate-50 border border-slate-200 rounded text-xs py-0.5 px-1 font-mono text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-bold"
+                          aria-label="خصم الصنف"
                         />
                         <select
                           value={item.discountType}
                           onChange={(e) => updateItemDiscount(item.id, item.discount, e.target.value as 'fixed' | 'percentage')}
                           className="bg-slate-50 border border-slate-200 rounded text-[10px] py-0.5 px-0.5 text-slate-600 focus:outline-none font-bold"
+                          aria-label="نوع خصم الصنف"
                         >
                           <option value="percentage">%</option>
                           <option value="fixed">{settings.currency}</option>
@@ -961,6 +966,7 @@ export default function POS({ products, categories, customers, settings, onAddIn
                         <button 
                           onClick={() => updateQuantity(item.id, item.quantity - 1)}
                           className="p-1 text-slate-600 hover:bg-white rounded transition"
+                          aria-label="تقليل الكمية"
                         >
                           <Minus className="w-3 h-3" />
                         </button>
@@ -971,10 +977,12 @@ export default function POS({ products, categories, customers, settings, onAddIn
                           value={item.quantity}
                           onChange={(e) => updateQuantity(item.id, parseFloat(e.target.value) || 0)}
                           className="w-10 text-center font-extrabold text-xs text-slate-800 font-mono bg-transparent border-none p-0 focus:outline-none"
+                          aria-label="كمية الصنف"
                         />
                         <button 
                           onClick={() => updateQuantity(item.id, item.quantity + 1)}
                           className="p-1 text-slate-600 hover:bg-white rounded transition"
+                          aria-label="زيادة الكمية"
                         >
                           <Plus className="w-3 h-3" />
                         </button>
@@ -1447,8 +1455,9 @@ export default function POS({ products, categories, customers, settings, onAddIn
 
             <div className="p-5 space-y-3.5">
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-600">اسم العميل (مطلوب):</label>
+                <label htmlFor="quick-customer-name" className="text-xs font-bold text-slate-600">اسم العميل (مطلوب):</label>
                 <input
+                  id="quick-customer-name"
                   type="text"
                   required
                   value={newCustName}
@@ -1459,8 +1468,9 @@ export default function POS({ products, categories, customers, settings, onAddIn
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-600">رقم الهاتف:</label>
+                <label htmlFor="quick-customer-phone" className="text-xs font-bold text-slate-600">رقم الهاتف:</label>
                 <input
+                  id="quick-customer-phone"
                   type="text"
                   value={newCustPhone}
                   onChange={(e) => setNewCustPhone(e.target.value)}
