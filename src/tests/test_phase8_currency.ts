@@ -2,7 +2,7 @@ import { CurrencyRepository } from '../core/repositories/CurrencyRepository.ts';
 import { CurrencyService, DEFAULT_CURRENCIES } from '../services/CurrencyService.ts';
 import { JournalEngine } from '../core/services/JournalEngine.ts';
 import { ReportsRepository } from '../core/repositories/ReportsRepository.ts';
-import { db } from '../core/database/index.ts';
+import { db, pool } from '../core/database/index.ts';
 import { ensureDatabaseTables } from '../core/database/initSchema.ts';
 import { seedEnterpriseData } from '../core/database/seedEnterpriseData.ts';
 import { accounts } from '../core/database/schema.ts';
@@ -166,6 +166,9 @@ async function runPhase8CurrencyTests() {
     console.log('\n======================================================');
     console.log('🎉 ALL PHASE 8 MULTI-CURRENCY TESTS PASSED SUCCESSFULLY!');
     console.log('======================================================\n');
+    try {
+      await pool.end();
+    } catch (_) {}
   } catch (error: any) {
     console.error('\n❌ PHASE 8 TEST FAILED with error:');
     console.error(error);

@@ -1,9 +1,9 @@
 name: Lightweight CI + Test/Benchmark Harness
 on:
   push:
-    branches: [ main ]
+    branches: [ main, master ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, master ]
 jobs:
   harness-verification:
     runs-on: ubuntu-latest
@@ -11,14 +11,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js environment
+      - name: Setup Node.js 22 Environment
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'npm'
+          node-version: '22'
+
+      - name: Setup Bun Environment
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
 
       - name: Install dependencies
-        run: npm ci
+        run: bun install
 
       - name: Execute Harness (Lint + Build + Test + Bench)
-        run: npm run ci:pipeline
+        run: bun run ci:pipeline

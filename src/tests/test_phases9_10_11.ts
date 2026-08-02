@@ -5,7 +5,7 @@ import { ProductService } from '../core/services/ProductService.ts';
 import { ProductRepository } from '../core/repositories/ProductRepository.ts';
 import { CustomerRepository } from '../core/repositories/CustomerRepository.ts';
 import { SupplierRepository } from '../core/repositories/SupplierRepository.ts';
-import { db } from '../core/database/index.ts';
+import { db, pool } from '../core/database/index.ts';
 import { ensureDatabaseTables } from '../core/database/initSchema.ts';
 import { seedEnterpriseData } from '../core/database/seedEnterpriseData.ts';
 import { products, warehouses, customers, suppliers, accounts } from '../core/database/schema.ts';
@@ -269,7 +269,9 @@ async function runPhases9To11Tests() {
     console.log('\n================================================================');
     console.log('🎉 ALL PHASES 9, 10, AND 11 VERIFICATION TESTS PASSED SUCCESSFULLY!');
     console.log('================================================================\n');
-
+    try {
+      await pool.end();
+    } catch (_) {}
   } catch (error: any) {
     console.error('\n❌ PHASES 9-11 TEST FAILED with error:');
     console.error(error);

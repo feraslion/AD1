@@ -2,6 +2,7 @@ import { JournalEngine } from '../core/services/JournalEngine.ts';
 import { TransactionPostingService } from '../core/services/TransactionPostingService.ts';
 import { AccountService } from '../core/services/AccountService.ts';
 import { ensureDatabaseTables } from '../core/database/initSchema.ts';
+import { pool } from '../core/database/index.ts';
 
 async function runPhase7Tests() {
   console.log("=== PHASE 7 DOUBLE ENTRY ACCOUNTING ENGINE VERIFICATION ===");
@@ -109,6 +110,9 @@ async function runPhase7Tests() {
     }
 
     console.log("\n=== ALL PHASE 7 ENGINE TESTS PASSED PERFECTLY! ===");
+    try {
+      await pool.end();
+    } catch (_) {}
     process.exit(0);
   } catch (error: any) {
     if (
