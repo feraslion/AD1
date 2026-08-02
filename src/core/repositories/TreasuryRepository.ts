@@ -105,7 +105,12 @@ export class TreasuryRepository {
           ...b,
           currentBalance: parseFloat(b.currentBalance || '0')
         }));
-      } catch (e) {
+      } catch (e: any) {
+        const errMsg = `${e?.message || ''} ${e?.cause?.message || ''} ${String(e || '')}`;
+        const errCode = e?.code || e?.cause?.code;
+        if (errMsg.includes('does not exist') || errCode === '42P01' || errMsg.includes('cashboxes')) {
+          throw e;
+        }
         console.error('Error fetching cashboxes:', e);
         return [{
           id: 'cashbox_main',
@@ -172,7 +177,12 @@ export class TreasuryRepository {
           ...b,
           currentBalance: parseFloat(b.currentBalance || '0')
         }));
-      } catch (e) {
+      } catch (e: any) {
+        const errMsg = `${e?.message || ''} ${e?.cause?.message || ''} ${String(e || '')}`;
+        const errCode = e?.code || e?.cause?.code;
+        if (errMsg.includes('does not exist') || errCode === '42P01' || errMsg.includes('bank_accounts')) {
+          throw e;
+        }
         console.error('Error fetching bank accounts:', e);
         return [{
           id: 'bank_main',
@@ -240,9 +250,14 @@ export class TreasuryRepository {
           transferFee: parseFloat(t.transferFee || '0'),
           reconciled: t.reconciled === 'true'
         }));
-      } catch (e) {
+      } catch (e: any) {
+        const errMsg = `${e?.message || ''} ${e?.cause?.message || ''} ${String(e || '')}`;
+        const errCode = e?.code || e?.cause?.code;
+        if (errMsg.includes('does not exist') || errCode === '42P01' || errMsg.includes('treasury_transactions')) {
+          throw e;
+        }
         console.error('Error fetching treasury transactions:', e);
-        throw e;
+        return [];
       }
     });
   }

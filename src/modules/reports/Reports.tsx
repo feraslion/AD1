@@ -15,7 +15,7 @@ import {
   FileText, 
   Calendar, 
   RefreshCw, 
-  PieChart, 
+  PieChart as PieChartIcon, 
   AlertTriangle, 
   Scale, 
   Search, 
@@ -32,6 +32,7 @@ import {
   X,
   Sparkles
 } from 'lucide-react';
+import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, PieChart, Pie, Cell } from 'recharts';
 import StatCard from '../../shared/components/ui/StatCard';
 import Badge from '../../shared/components/ui/Badge';
 
@@ -75,6 +76,7 @@ export default function Reports({ settings }: ReportsProps) {
 
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [profitChartPeriod, setProfitChartPeriod] = useState<'daily' | 'monthly'>('daily');
 
   const loadCurrentTabReport = async () => {
     setLoading(true);
@@ -688,51 +690,193 @@ export default function Reports({ settings }: ReportsProps) {
 
       {/* 6. PROFIT & LOSS TAB */}
       {activeTab === 'profit' && profitReport && (
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6">
-          <div>
-            <h2 className="font-bold text-base text-slate-900">تقرير الأرباح والخسائر الشامل (Profit & Loss Statement)</h2>
-            <p className="text-xs text-slate-500 font-bold">تحليل الإيرادات، تكلفة المبيعات، المصروفات التشغيلية، وصافي الربح</p>
+        <div className="space-y-6">
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6">
+            <div>
+              <h2 className="font-bold text-base text-slate-900">تقرير الأرباح والخسائر الشامل (Profit & Loss Statement)</h2>
+              <p className="text-xs text-slate-500 font-bold">تحليل الإيرادات، تكلفة المبيعات، المصروفات التشغيلية، وصافي الربح</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-4">
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex justify-between items-center">
+                  <span className="font-bold text-slate-700 text-xs">إجمالي الإيرادات (المبيعات):</span>
+                  <span className="font-mono font-black text-base text-slate-900">{formatAmount(profitReport.totalRevenue)}</span>
+                </div>
+
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex justify-between items-center">
+                  <span className="font-bold text-slate-700 text-xs">تكلفة البضاعة المباعة (COGS):</span>
+                  <span className="font-mono font-bold text-base text-rose-600">- {formatAmount(profitReport.totalCOGS)}</span>
+                </div>
+
+                <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex justify-between items-center">
+                  <span className="font-black text-emerald-900 text-xs">الربح الإجمالي (Gross Profit):</span>
+                  <span className="font-mono font-black text-lg text-emerald-700">{formatAmount(profitReport.grossProfit)}</span>
+                </div>
+
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex justify-between items-center">
+                  <span className="font-bold text-slate-700 text-xs">المصروفات والنفقات التشغيلية:</span>
+                  <span className="font-mono font-bold text-base text-rose-600">- {formatAmount(profitReport.totalOperatingExpenses)}</span>
+                </div>
+
+                <div className="p-5 bg-slate-900 text-white rounded-2xl flex justify-between items-center shadow-lg">
+                  <span className="font-black text-sm">صافي الربح النهائي (Net Profit):</span>
+                  <span className="font-mono font-black text-xl text-emerald-400">{formatAmount(profitReport.netProfit)}</span>
+                </div>
+              </div>
+
+              {/* Margin gauge */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 flex flex-col justify-center items-center text-center space-y-4">
+                <h3 className="font-black text-slate-800 text-sm">هامش صافي الربح (Profit Margin)</h3>
+                <div className="w-36 h-36 rounded-full border-8 border-emerald-500 bg-white flex flex-col items-center justify-center shadow-inner">
+                  <span className="font-mono font-black text-2xl text-slate-900">{profitReport.profitMarginPercentage.toFixed(1)}%</span>
+                  <span className="text-[10px] text-slate-400 font-bold mt-1">نسبة الربحية</span>
+                </div>
+                <p className="text-xs text-slate-500 max-w-xs font-bold leading-relaxed">
+                  تقيس هذه النسبة مدى كفاءة النشاط التجاري في تحويل المبيعات إلى أرباح صافية بعد استقطاع كافة التكاليف والمصاريف.
+                </p>
+              </div>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-4">
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex justify-between items-center">
-                <span className="font-bold text-slate-700 text-xs">إجمالي الإيرادات (المبيعات):</span>
-                <span className="font-mono font-black text-base text-slate-900">{formatAmount(profitReport.totalRevenue)}</span>
+          {/* Interactive Recharts Profit Analytics (Daily vs Monthly) */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-4">
+              <div>
+                <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
+                  <BarChart3 className="w-5 h-5 text-emerald-600" />
+                  <span>الرسوم البيانية التفاعلية لصافي الأرباح (Recharts Profit Analytics)</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">عرض وتحليل الأرباح الصافية والإيرادات اليومية والشهرية بناءً على الفواتير الصادرة</p>
               </div>
 
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex justify-between items-center">
-                <span className="font-bold text-slate-700 text-xs">تكلفة البضاعة المباعة (COGS):</span>
-                <span className="font-mono font-bold text-base text-rose-600">- {formatAmount(profitReport.totalCOGS)}</span>
-              </div>
-
-              <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex justify-between items-center">
-                <span className="font-black text-emerald-900 text-xs">الربح الإجمالي (Gross Profit):</span>
-                <span className="font-mono font-black text-lg text-emerald-700">{formatAmount(profitReport.grossProfit)}</span>
-              </div>
-
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex justify-between items-center">
-                <span className="font-bold text-slate-700 text-xs">المصروفات والنفقات التشغيلية:</span>
-                <span className="font-mono font-bold text-base text-rose-600">- {formatAmount(profitReport.totalOperatingExpenses)}</span>
-              </div>
-
-              <div className="p-5 bg-slate-900 text-white rounded-2xl flex justify-between items-center shadow-lg">
-                <span className="font-black text-sm">صافي الربح النهائي (Net Profit):</span>
-                <span className="font-mono font-black text-xl text-emerald-400">{formatAmount(profitReport.netProfit)}</span>
+              {/* Toggle Period: Daily vs Monthly */}
+              <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 self-start sm:self-auto">
+                <button
+                  onClick={() => setProfitChartPeriod('daily')}
+                  className={`px-4 py-1.5 rounded-lg text-xs font-bold transition ${
+                    profitChartPeriod === 'daily'
+                      ? 'bg-emerald-600 text-white shadow'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  الأرباح اليومية
+                </button>
+                <button
+                  onClick={() => setProfitChartPeriod('monthly')}
+                  className={`px-4 py-1.5 rounded-lg text-xs font-bold transition ${
+                    profitChartPeriod === 'monthly'
+                      ? 'bg-emerald-600 text-white shadow'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  الأرباح الشهرية
+                </button>
               </div>
             </div>
 
-            {/* Margin gauge */}
-            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 flex flex-col justify-center items-center text-center space-y-4">
-              <h3 className="font-black text-slate-800 text-sm">هامش صافي الربح (Profit Margin)</h3>
-              <div className="w-36 h-36 rounded-full border-8 border-emerald-500 bg-white flex flex-col items-center justify-center shadow-inner">
-                <span className="font-mono font-black text-2xl text-slate-900">{profitReport.profitMarginPercentage.toFixed(1)}%</span>
-                <span className="text-[10px] text-slate-400 font-bold mt-1">نسبة الربحية</span>
+            {/* Daily Net Profit Chart */}
+            {profitChartPeriod === 'daily' && (
+              <div className="space-y-4">
+                <div className="flex justify-between items-center text-xs text-slate-600 font-bold px-1">
+                  <span>تفاصيل الأرباح اليومية (بالأيام)</span>
+                  <span className="text-emerald-700 font-mono">عدد الأيام المسجلة: {profitReport.dailyProfits?.length || 0}</span>
+                </div>
+
+                <div className="h-80 w-full pt-2">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={profitReport.dailyProfits || []}
+                      margin={{ top: 10, right: 10, left: 10, bottom: 0 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                      <XAxis dataKey="date" tickLine={false} axisLine={{ stroke: '#cbd5e1' }} tick={{ fill: '#64748b', fontSize: 11 }} />
+                      <YAxis tickLine={false} axisLine={false} tick={{ fill: '#64748b', fontSize: 11 }} />
+                      <Tooltip
+                        content={({ active, payload, label }) => {
+                          if (active && payload && payload.length) {
+                            return (
+                              <div className="bg-slate-900 text-white p-3 rounded-xl shadow-xl text-xs space-y-1 font-sans border border-slate-700">
+                                <p className="font-bold text-emerald-400 border-b border-slate-800 pb-1 mb-1">{label}</p>
+                                <p className="flex justify-between gap-4">
+                                  <span className="text-slate-400">الإيرادات:</span>
+                                  <span className="font-mono font-bold">{formatAmount(payload[0]?.value as number)}</span>
+                                </p>
+                                <p className="flex justify-between gap-4">
+                                  <span className="text-slate-400">التكلفة (COGS):</span>
+                                  <span className="font-mono font-bold text-rose-400">{formatAmount(payload[1]?.value as number)}</span>
+                                </p>
+                                <p className="flex justify-between gap-4 pt-1 border-t border-slate-800">
+                                  <span className="text-slate-300 font-bold">صافي الربح:</span>
+                                  <span className="font-mono font-black text-emerald-300">{formatAmount(payload[2]?.value as number)}</span>
+                                </p>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                      <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+                      <Bar dataKey="revenue" name="الإيرادات" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="cogs" name="التكلفة (COGS)" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="profit" name="صافي الربح" fill="#10b981" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
               </div>
-              <p className="text-xs text-slate-500 max-w-xs font-bold leading-relaxed">
-                تقيس هذه النسبة مدى كفاءة النشاط التجاري في تحويل المبيعات إلى أرباح صافية بعد استقطاع كافة التكاليف والمصاريف.
-              </p>
-            </div>
+            )}
+
+            {/* Monthly Net Profit Chart */}
+            {profitChartPeriod === 'monthly' && (
+              <div className="space-y-4">
+                <div className="flex justify-between items-center text-xs text-slate-600 font-bold px-1">
+                  <span>تفاصيل الأرباح الشهرية (بالأشهر)</span>
+                  <span className="text-emerald-700 font-mono">عدد الأشهر المسجلة: {profitReport.monthlyProfits?.length || 0}</span>
+                </div>
+
+                <div className="h-80 w-full pt-2">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart
+                      data={profitReport.monthlyProfits || []}
+                      margin={{ top: 10, right: 10, left: 10, bottom: 0 }}
+                    >
+                      <defs>
+                        <linearGradient id="profitGlow" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.6} />
+                          <stop offset="95%" stopColor="#10b981" stopOpacity={0.05} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                      <XAxis dataKey="month" tickLine={false} axisLine={{ stroke: '#cbd5e1' }} tick={{ fill: '#64748b', fontSize: 11 }} />
+                      <YAxis tickLine={false} axisLine={false} tick={{ fill: '#64748b', fontSize: 11 }} />
+                      <Tooltip
+                        content={({ active, payload, label }) => {
+                          if (active && payload && payload.length) {
+                            return (
+                              <div className="bg-slate-900 text-white p-3.5 rounded-xl shadow-xl text-xs space-y-1.5 font-sans border border-slate-700">
+                                <p className="font-bold text-emerald-400 border-b border-slate-800 pb-1">{label}</p>
+                                <p className="flex justify-between gap-4">
+                                  <span className="text-slate-400">إجمالي الإيرادات:</span>
+                                  <span className="font-mono font-bold">{formatAmount(payload[0]?.value as number)}</span>
+                                </p>
+                                <p className="flex justify-between gap-4">
+                                  <span className="text-slate-300 font-bold">صافي الربح الشهري:</span>
+                                  <span className="font-mono font-black text-emerald-400 text-sm">{formatAmount(payload[1]?.value as number)}</span>
+                                </p>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                      <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+                      <Area type="monotone" dataKey="revenue" name="إجمالي الإيرادات" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.1} strokeWidth={2} />
+                      <Area type="monotone" dataKey="profit" name="صافي الربح الشهري" stroke="#059669" fill="url(#profitGlow)" strokeWidth={3} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

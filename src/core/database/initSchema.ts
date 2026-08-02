@@ -2,18 +2,20 @@ import { db, createPool } from './index.ts';
 import { sql } from 'drizzle-orm';
 
 async function execSql(query: ReturnType<typeof sql>, name: string) {
-  if (ddlSupported === false) {
-    const sqlStr = String((query as any).queryChunks?.[0] || '');
-    if (sqlStr.includes('CREATE TABLE')) {
-      return;
-    }
-  }
   try {
     await db.execute(query);
   } catch (err: any) {
     try {
       await db.execute(sql`ROLLBACK`);
     } catch (_) {}
+    // Retry once after rollback in case an aborted transaction state caused the failure
+    try {
+      await db.execute(query);
+    } catch (_) {
+      try {
+        await db.execute(sql`ROLLBACK`);
+      } catch (_) {}
+    }
   }
 }
 
@@ -34,12 +36,10 @@ export async function withAutoMigration<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 let isSchemaEnsured = false;
-let ddlSupported: boolean | null = null;
 
 export async function ensureDatabaseTables(force = false) {
   if (force) {
     isSchemaEnsured = false;
-    ddlSupported = null;
   }
   if (isSchemaEnsured) {
     return;
@@ -47,15 +47,17 @@ export async function ensureDatabaseTables(force = false) {
   console.log('Ensuring all database tables and schema migrations exist...');
 
   try {
+    await db.execute(sql`ROLLBACK`);
+  } catch (_) {}
+
+  try {
     await db.execute(sql`CREATE TABLE IF NOT EXISTS _ddl_test (id INT)`);
     await db.execute(sql`DROP TABLE IF EXISTS _ddl_test`);
-    ddlSupported = true;
   } catch (err: any) {
     try {
       await db.execute(sql`ROLLBACK`);
     } catch (_) {}
     console.log('[Schema Migration] DDL test notice:', err?.message || err);
-    ddlSupported = false;
   }
 
   // 1. Companies

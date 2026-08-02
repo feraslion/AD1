@@ -68,38 +68,37 @@ export async function authenticate(req: AuthenticatedRequest, res: Response, nex
         // Fetch fresh user record from DB
         const [u] = await db.select().from(users).where(eq(users.id, decodedPayload.id));
         if (u) {
+          if ((u as any).isActive === false || (u as any).isDeleted) {
+            return res.status(401).json({
+              success: false,
+              error: 'غير مصرح به - تم تعطيل أو حذف حساب المستخدم',
+              statusCode: 401
+            });
+          }
           userRecord = u;
         } else {
-          // If deleted or not found in DB but JWT valid
-          userRecord = {
-            id: decodedPayload.id,
-            uid: decodedPayload.uid || decodedPayload.id,
-            email: decodedPayload.email,
-            name: decodedPayload.name || 'User',
-            role: decodedPayload.role || 'cashier',
-            roleId: decodedPayload.roleId
-          };
+          return res.status(401).json({
+            success: false,
+            error: 'غير مصرح به - لم يتم العثور على المستخدم',
+            statusCode: 401
+          });
         }
       } else {
-        // 2. Fallback: direct code login (e.g. Bearer 001) for POS/PIN / Legacy test compatibility
+        // 2. Fallback: code/PIN login user lookup (e.g. Bearer 001 for legacy cashier code access)
         const [u] = await db.select().from(users).where(eq(users.id, token));
-        if (u) {
+        if (u && (u as any).isActive !== false && !(u as any).isDeleted) {
           userRecord = u;
         }
       }
     }
 
-    // 3. Fallback for unauthenticated requests or invalid/stale tokens in development
+    // Reject unauthenticated requests
     if (!userRecord) {
-      const [master] = await db.select().from(users).where(eq(users.id, '001'));
-      userRecord = master || {
-        id: '001',
-        uid: '001',
-        email: 'manager@system.com',
-        name: 'عبدالرحمن (المدير العام)',
-        role: 'manager',
-        roleId: 'role_manager'
-      };
+      return res.status(401).json({
+        success: false,
+        error: 'غير مصرح به - يلزم تقديم رمز التوثيق (Authorization Bearer)',
+        statusCode: 401
+      });
     }
 
     // 4. Load permissions from DB RBAC or fallbacks

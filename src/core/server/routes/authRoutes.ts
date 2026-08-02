@@ -3,7 +3,7 @@ import { db } from '../../database/index.ts';
 import { users, userSessions, roles, permissions, rolePermissions } from '../../database/schema.ts';
 import { eq, and, gt } from 'drizzle-orm';
 import { TokenService } from '../../auth/TokenService.ts';
-import { AuthenticatedRequest, ROLE_DEFAULT_PERMISSIONS } from '../middleware/auth.ts';
+import { AuthenticatedRequest, ROLE_DEFAULT_PERMISSIONS, authenticate, requireRole } from '../middleware/auth.ts';
 
 export const authRouter = Router();
 
@@ -36,6 +36,13 @@ authRouter.post('/login', async (req: Request, res: Response) => {
       return res.status(401).json({
         success: false,
         error: 'بيانات الاعتماد غير صحيحة - اسم المستخدم أو البريد الإلكتروني غير موجود'
+      });
+    }
+
+    if (userRecord.isActive === false || userRecord.isDeleted) {
+      return res.status(401).json({
+        success: false,
+        error: 'حساب المستخدم معطل أو محذوف'
       });
     }
 
@@ -153,7 +160,7 @@ authRouter.post('/login', async (req: Request, res: Response) => {
  * 2. POST /api/auth/register
  * Register a new employee/user
  */
-authRouter.post('/register', async (req: Request, res: Response) => {
+authRouter.post('/register', authenticate, requireRole('manager', 'admin'), async (req: Request, res: Response) => {
   try {
     const { email, name, password, role, pin } = req.body;
 
@@ -453,8 +460,7 @@ authRouter.post('/forgot-password', async (req: Request, res: Response) => {
 
     return res.json({
       success: true,
-      message: 'تم إنشاء رمز تعيين كلمة المرور بنجاح.',
-      resetToken // Returned for UI testing / simulator
+      message: 'تم إنشاء رمز تعيين كلمة المرور بنجاح وترتيب إرساله.'
     });
   } catch (error: any) {
     return res.status(500).json({

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Invoice, StoreSettings, Customer, Product, Quotation, SalesOrder } from '../../types';
 import { 
   Search, Printer, Calendar, ShieldAlert, Share2, Eye, Download, Mail, ArrowLeft, QrCode, RotateCcw, 
@@ -118,6 +118,68 @@ export default function Invoices({ invoices, settings, customers = [], products 
     const matchesStatus = statusFilter === 'all' || inv.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
+
+  // Keyboard Navigation & Smooth Scroll State
+  const [highlightedInvoiceIndex, setHighlightedInvoiceIndex] = useState<number>(0);
+  const invoiceListRef = useRef<HTMLDivElement>(null);
+  const invoiceItemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  // Reset highlight index when filter/search changes
+  useEffect(() => {
+    setHighlightedInvoiceIndex(0);
+  }, [searchQuery, statusFilter, invoices.length]);
+
+  // Smooth scroll highlighted invoice into view
+  useEffect(() => {
+    if (activeSubTab === 'invoices' && highlightedInvoiceIndex >= 0 && invoiceItemRefs.current[highlightedInvoiceIndex]) {
+      invoiceItemRefs.current[highlightedInvoiceIndex]?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest'
+      });
+    }
+  }, [highlightedInvoiceIndex, activeSubTab]);
+
+  // Global Keyboard Navigation Listener for Invoices List
+  useEffect(() => {
+    if (activeSubTab !== 'invoices') return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      const isInputFocused = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT');
+
+      if (['ArrowUp', 'ArrowDown'].includes(e.key)) {
+        if (filteredInvoices.length === 0) return;
+
+        if (isInputFocused && e.key === 'ArrowDown') {
+          (activeEl as HTMLElement)?.blur?.();
+          setHighlightedInvoiceIndex(0);
+          e.preventDefault();
+          return;
+        }
+
+        if (!isInputFocused) {
+          e.preventDefault();
+          setHighlightedInvoiceIndex(prev => {
+            if (e.key === 'ArrowDown') {
+              return Math.min(filteredInvoices.length - 1, prev + 1);
+            } else {
+              return Math.max(0, prev - 1);
+            }
+          });
+        }
+      } else if (e.key === 'Enter' || e.key === ' ') {
+        if (!isInputFocused) {
+          if (highlightedInvoiceIndex >= 0 && highlightedInvoiceIndex < filteredInvoices.length) {
+            e.preventDefault();
+            setSelectedInvoice(filteredInvoices[highlightedInvoiceIndex]);
+          }
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeSubTab, filteredInvoices, highlightedInvoiceIndex]);
 
   const handleReturnInvoice = async (inv: Invoice) => {
     if (inv.status === 'returned') return;
@@ -420,50 +482,70 @@ export default function Invoices({ invoices, settings, customers = [], products 
               </div>
             </div>
 
+            {/* Keyboard navigation legend for cashier */}
+            <div className="p-2 mb-2 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-bold text-slate-600 flex flex-wrap items-center justify-between gap-2 shadow-2xs">
+              <div className="flex items-center gap-1.5">
+                <kbd className="px-1.5 py-0.5 bg-white border border-slate-300 rounded text-emerald-600 font-mono text-[10px]">↑ ↓</kbd>
+                <span>التنقل السلس بالمفاتيح بين الفواتير</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <kbd className="px-1.5 py-0.5 bg-white border border-slate-300 rounded text-emerald-600 font-mono text-[10px]">Enter</kbd>
+                <span>عرض معاينة التفاصيل</span>
+              </div>
+            </div>
+
             {/* List */}
-            <div className="flex-1 overflow-y-auto space-y-2">
+            <div ref={invoiceListRef} className="flex-1 overflow-y-auto scroll-smooth space-y-2">
               {filteredInvoices.length === 0 ? (
                 <div className="text-center py-12 text-slate-400">
                   <ShieldAlert className="w-12 h-12 mx-auto mb-2 text-slate-300" />
                   <p className="font-bold">لا توجد فواتير مطابقة للبحث حالياً</p>
                 </div>
               ) : (
-                filteredInvoices.map((inv) => (
-                  <button
-                    key={inv.id}
-                    onClick={() => setSelectedInvoice(inv)}
-                    className={`w-full text-right p-4 rounded-xl border transition flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 active:scale-[0.99] ${
-                      selectedInvoice?.id === inv.id 
-                        ? 'border-emerald-500 bg-emerald-50/20 shadow-sm' 
-                        : 'border-slate-200 bg-white hover:border-slate-300'
-                    }`}
-                  >
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-extrabold text-slate-800 text-sm sm:text-base">{inv.invoiceNumber}</span>
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                          inv.status === 'returned' ? 'bg-rose-100 text-rose-800' :
-                          inv.status === 'paid' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
-                        }`}>
-                          {inv.status === 'returned' ? 'مرتجع مبيعات' :
-                           inv.status === 'paid' ? 'مدفوعة' : 'غير مدفوعة (آجل)'}
-                        </span>
+                filteredInvoices.map((inv, idx) => {
+                  const isHighlighted = idx === highlightedInvoiceIndex;
+                  const isSelected = selectedInvoice?.id === inv.id;
+                  return (
+                    <button
+                      key={inv.id}
+                      ref={(el) => { invoiceItemRefs.current[idx] = el; }}
+                      onClick={() => {
+                        setHighlightedInvoiceIndex(idx);
+                        setSelectedInvoice(inv);
+                      }}
+                      className={`w-full text-right p-4 rounded-xl border transition flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 active:scale-[0.99] ${
+                        isSelected || isHighlighted 
+                          ? 'border-emerald-500 ring-2 ring-emerald-500/50 bg-emerald-50/30 shadow-sm' 
+                          : 'border-slate-200 bg-white hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-extrabold text-slate-800 text-sm sm:text-base">{inv.invoiceNumber}</span>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                            inv.status === 'returned' ? 'bg-rose-100 text-rose-800' :
+                            inv.status === 'paid' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                          }`}>
+                            {inv.status === 'returned' ? 'مرتجع مبيعات' :
+                             inv.status === 'paid' ? 'مدفوعة' : 'غير مدفوعة (آجل)'}
+                          </span>
+                        </div>
+                        <div className="text-xs text-slate-400 flex gap-2">
+                          <span>{new Date(inv.date).toLocaleString('ar-SA')}</span>
+                          <span>•</span>
+                          <span>العميل: {inv.customerName || 'عميل نقدي'}</span>
+                        </div>
                       </div>
-                      <div className="text-xs text-slate-400 flex gap-2">
-                        <span>{new Date(inv.date).toLocaleString('ar-SA')}</span>
-                        <span>•</span>
-                        <span>العميل: {inv.customerName || 'عميل نقدي'}</span>
-                      </div>
-                    </div>
 
-                    <div className="flex sm:flex-col items-start sm:items-end justify-between w-full sm:w-auto gap-2 border-t sm:border-t-0 border-slate-100 pt-2 sm:pt-0">
-                      <span className="text-[10px] text-slate-400 font-bold">المجموع مع VAT:</span>
-                      <div className="font-extrabold text-emerald-600 font-mono text-sm sm:text-base">
-                        {inv.grandTotal.toFixed(2)} {settings.currency}
+                      <div className="flex sm:flex-col items-start sm:items-end justify-between w-full sm:w-auto gap-2 border-t sm:border-t-0 border-slate-100 pt-2 sm:pt-0">
+                        <span className="text-[10px] text-slate-400 font-bold">المجموع مع VAT:</span>
+                        <div className="font-extrabold text-emerald-600 font-mono text-sm sm:text-base">
+                          {inv.grandTotal.toFixed(2)} {settings.currency}
+                        </div>
                       </div>
-                    </div>
-                  </button>
-                ))
+                    </button>
+                  );
+                })
               )}
             </div>
           </div>

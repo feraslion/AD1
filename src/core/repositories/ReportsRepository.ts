@@ -322,21 +322,63 @@ export class ReportsRepository {
     let totalRevenue = 0;
     let totalCOGS = 0; // Cost of Goods Sold
 
+    const dailyMap: Record<string, { date: string; revenue: number; cogs: number; profit: number; invoicesCount: number }> = {};
+    const monthlyMap: Record<string, { month: string; revenue: number; cogs: number; profit: number; invoicesCount: number }> = {};
+
     allInvoices.forEach(inv => {
-      totalRevenue += Number(inv.totalWithoutTax) || Number(inv.grandTotal) || 0;
+      const rev = Number(inv.totalWithoutTax) || Number(inv.grandTotal) || 0;
+      totalRevenue += rev;
+
+      const dateStr = (inv.date || '').slice(0, 10) || new Date().toISOString().slice(0, 10);
+      const monthStr = dateStr.slice(0, 7); // YYYY-MM
+
+      if (!dailyMap[dateStr]) {
+        dailyMap[dateStr] = { date: dateStr, revenue: 0, cogs: 0, profit: 0, invoicesCount: 0 };
+      }
+      if (!monthlyMap[monthStr]) {
+        monthlyMap[monthStr] = { month: monthStr, revenue: 0, cogs: 0, profit: 0, invoicesCount: 0 };
+      }
+
+      dailyMap[dateStr].revenue += rev;
+      dailyMap[dateStr].invoicesCount += 1;
+
+      monthlyMap[monthStr].revenue += rev;
+      monthlyMap[monthStr].invoicesCount += 1;
     });
 
     // Approximate COGS from invoice items & product purchase prices
     const invIds = allInvoices.map(i => i.id);
     if (invIds.length > 0) {
       const items = await db.select().from(invoiceItems).where(inArray(invoiceItems.invoiceId, invIds));
+      const invDateMap: Record<string, string> = {};
+      allInvoices.forEach(i => {
+        invDateMap[i.id] = (i.date || '').slice(0, 10) || new Date().toISOString().slice(0, 10);
+      });
+
       items.forEach(item => {
         const qty = Number(item.quantity) || 0;
         const price = Number(item.price) || 0;
         const costEstimate = price * 0.70;
-        totalCOGS += qty * costEstimate;
+        const itemCOGS = qty * costEstimate;
+        totalCOGS += itemCOGS;
+
+        const dateStr = invDateMap[item.invoiceId];
+        if (dateStr && dailyMap[dateStr]) {
+          dailyMap[dateStr].cogs += itemCOGS;
+        }
+        const monthStr = dateStr ? dateStr.slice(0, 7) : null;
+        if (monthStr && monthlyMap[monthStr]) {
+          monthlyMap[monthStr].cogs += itemCOGS;
+        }
       });
     }
+
+    Object.keys(dailyMap).forEach(d => {
+      dailyMap[d].profit = dailyMap[d].revenue - dailyMap[d].cogs;
+    });
+    Object.keys(monthlyMap).forEach(m => {
+      monthlyMap[m].profit = monthlyMap[m].revenue - monthlyMap[m].cogs;
+    });
 
     const grossProfit = totalRevenue - totalCOGS;
 
@@ -348,13 +390,18 @@ export class ReportsRepository {
     const netProfit = grossProfit - totalOperatingExpenses;
     const profitMarginPercentage = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
 
+    const dailyProfits = Object.values(dailyMap).sort((a, b) => a.date.localeCompare(b.date));
+    const monthlyProfits = Object.values(monthlyMap).sort((a, b) => a.month.localeCompare(b.month));
+
     return {
       totalRevenue,
       totalCOGS,
       grossProfit,
       totalOperatingExpenses,
       netProfit,
-      profitMarginPercentage
+      profitMarginPercentage,
+      dailyProfits,
+      monthlyProfits
     };
   }
 

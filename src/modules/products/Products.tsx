@@ -616,7 +616,7 @@ export default function Products({ settings, onNavigateToInventory }: ProductsPr
       ) : viewMode === 'table' ? (
         /* TABLE VIEW */
         <div className="bg-slate-800/90 border border-slate-700/80 rounded-2xl overflow-hidden shadow-lg">
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto scroll-smooth">
             <table className="w-full text-right text-xs sm:text-sm text-slate-200">
               <thead className="bg-slate-900/80 text-slate-400 font-extrabold border-b border-slate-700/80 uppercase text-[11px] tracking-wider">
                 <tr>

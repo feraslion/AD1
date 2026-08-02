@@ -69,7 +69,12 @@ export class ExpenseRepository {
           ...c,
           budget: parseFloat(c.budget || '0')
         }));
-      } catch (e) {
+      } catch (e: any) {
+        const errMsg = `${e?.message || ''} ${e?.cause?.message || ''} ${String(e || '')}`;
+        const errCode = e?.code || e?.cause?.code;
+        if (errMsg.includes('does not exist') || errCode === '42P01' || errMsg.includes('expense_categories')) {
+          throw e;
+        }
         console.error('Error fetching expense categories:', e);
         return [
           { id: 'cat_admin', name: 'مصاريف إدارية ومكتبية', code: 'EXP-101', accountId: 'acc_expense', budget: 10000, description: 'أدوات مكتبية، مطبوعات، ولوازم إدارية' },
@@ -129,7 +134,12 @@ export class ExpenseRepository {
           totalAmount: parseFloat(r.totalAmount || '0'),
           categoryName: r.categoryId ? catMap.get(r.categoryId)?.name || 'عام' : 'عام'
         }));
-      } catch (e) {
+      } catch (e: any) {
+        const errMsg = `${e?.message || ''} ${e?.cause?.message || ''} ${String(e || '')}`;
+        const errCode = e?.code || e?.cause?.code;
+        if (errMsg.includes('does not exist') || errCode === '42P01' || errMsg.includes('expense_requests')) {
+          throw e;
+        }
         console.error('Error fetching expense requests:', e);
         return [];
       }
@@ -332,7 +342,12 @@ export class ExpenseRepository {
           count: requests.length,
           categoryBreakdown: Object.values(categoryTotals)
         };
-      } catch (e) {
+      } catch (e: any) {
+        const errMsg = `${e?.message || ''} ${e?.cause?.message || ''} ${String(e || '')}`;
+        const errCode = e?.code || e?.cause?.code;
+        if (errMsg.includes('does not exist') || errCode === '42P01' || errMsg.includes('expense_requests')) {
+          throw e;
+        }
         console.error('Error fetching expense reports:', e);
         return { totalExpenses: 0, totalPending: 0, totalApproved: 0, totalPaid: 0, count: 0, categoryBreakdown: [] };
       }

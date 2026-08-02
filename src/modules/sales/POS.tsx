@@ -477,6 +477,102 @@ export default function POS({ products, categories, customers, settings, onAddIn
     return matchesCategory && matchesSearch;
   });
 
+  // Keyboard Navigation & Smooth Scroll State
+  const [highlightedProductIndex, setHighlightedProductIndex] = useState<number>(0);
+  const productGridRef = useRef<HTMLDivElement>(null);
+  const productItemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const cartListRef = useRef<HTMLDivElement>(null);
+
+  // Reset highlight index when filter/search changes
+  useEffect(() => {
+    setHighlightedProductIndex(0);
+  }, [searchQuery, selectedCategory, products.length]);
+
+  // Smooth scroll highlighted product into view
+  useEffect(() => {
+    if (highlightedProductIndex >= 0 && productItemRefs.current[highlightedProductIndex]) {
+      productItemRefs.current[highlightedProductIndex]?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+        inline: 'nearest'
+      });
+    }
+  }, [highlightedProductIndex]);
+
+  // Global Keyboard Navigation Listener for Cashier Efficiency
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (showPaymentModal || showCustomerModal || showScannerModal || showCameraScanner || showReturnsModal || showCustomerDisplay || showReceiptModal) {
+        return;
+      }
+
+      const activeEl = document.activeElement;
+      const isInputFocused = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT');
+
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+        if (filteredProducts.length === 0) return;
+
+        if (isInputFocused && e.key === 'ArrowDown') {
+          (activeEl as HTMLElement)?.blur?.();
+          setHighlightedProductIndex(0);
+          e.preventDefault();
+          return;
+        }
+
+        if (!isInputFocused) {
+          e.preventDefault();
+          setHighlightedProductIndex(prev => {
+            let cols = 4;
+            if (window.innerWidth < 640) cols = 2;
+            else if (window.innerWidth < 768) cols = 3;
+
+            if (e.key === 'ArrowRight') {
+              return Math.max(0, prev - 1);
+            } else if (e.key === 'ArrowLeft') {
+              return Math.min(filteredProducts.length - 1, prev + 1);
+            } else if (e.key === 'ArrowDown') {
+              return Math.min(filteredProducts.length - 1, prev + cols);
+            } else if (e.key === 'ArrowUp') {
+              return Math.max(0, prev - cols);
+            }
+            return prev;
+          });
+        }
+      } else if (e.key === 'Enter') {
+        if (!isInputFocused || (activeEl as HTMLInputElement)?.placeholder?.includes('ابحث')) {
+          if (highlightedProductIndex >= 0 && highlightedProductIndex < filteredProducts.length) {
+            const selectedProd = filteredProducts[highlightedProductIndex];
+            if (selectedProd && selectedProd.stock > 0) {
+              addToCart(selectedProd);
+              triggerScanMessage(`تم إضافة "${selectedProd.name}" إلى السلة 🛒`, 'success');
+              playScannerSound('success');
+              if (isInputFocused) {
+                (activeEl as HTMLElement)?.blur?.();
+              }
+              e.preventDefault();
+            }
+          }
+        }
+      } else if (e.key === 'F2') {
+        if (cart.length > 0) {
+          e.preventDefault();
+          setPaymentMethod('cash');
+          handleCheckout();
+        }
+      } else if (e.key === 'F4') {
+        if (cart.length > 0) {
+          e.preventDefault();
+          setShowPaymentModal(true);
+        }
+      } else if (e.key === 'Escape') {
+        setHighlightedProductIndex(0);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [filteredProducts, highlightedProductIndex, showPaymentModal, showCustomerModal, showScannerModal, showCameraScanner, showReturnsModal, showCustomerDisplay, showReceiptModal, addToCart, triggerScanMessage, cart, handleCheckout]);
+
   return (
     <div className="flex flex-col gap-4 h-[calc(100vh-120px)]">
       {/* Top Status & POS Command Bar */}
@@ -793,7 +889,23 @@ export default function POS({ products, categories, customers, settings, onAddIn
           </div>
 
           {/* Catalog Grid */}
-          <div className="flex-1 overflow-y-auto p-4 bg-slate-50/50 dark:bg-slate-900/50">
+          <div ref={productGridRef} className="flex-1 overflow-y-auto scroll-smooth p-4 bg-slate-50/50 dark:bg-slate-900/50 space-y-3">
+            {/* Cashier Keyboard Navigation Legend */}
+            <div className="p-2.5 bg-slate-100 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 text-[11px] font-bold text-slate-600 dark:text-slate-300 flex flex-wrap items-center justify-between gap-2 shadow-2xs">
+              <div className="flex items-center gap-1.5">
+                <kbd className="px-1.5 py-0.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded text-emerald-600 dark:text-emerald-400 font-mono text-[10px] shadow-2xs">↑ ↓ ← →</kbd>
+                <span>التنقل السلس بالمفاتيح</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <kbd className="px-1.5 py-0.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded text-emerald-600 dark:text-emerald-400 font-mono text-[10px] shadow-2xs">Enter</kbd>
+                <span>إضافة للمبيعات</span>
+              </div>
+              <div className="flex items-center gap-1.5 hidden sm:flex">
+                <kbd className="px-1.5 py-0.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded text-amber-600 dark:text-amber-400 font-mono text-[10px] shadow-2xs">F2</kbd>
+                <span>سداد كاش فوري</span>
+              </div>
+            </div>
+
             {filteredProducts.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-52 text-slate-400 dark:text-slate-500 space-y-2">
                 <Search className="w-12 h-12 text-slate-300 dark:text-slate-600" />
@@ -801,16 +913,25 @@ export default function POS({ products, categories, customers, settings, onAddIn
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                {filteredProducts.map(p => {
+                {filteredProducts.map((p, idx) => {
                   const isOutOfStock = p.stock <= 0 && p.minStock > 0;
                   const isLowStock = p.stock <= p.minStock && p.stock > 0 && p.minStock > 0;
+                  const isHighlighted = idx === highlightedProductIndex;
                   return (
                     <button
                       key={p.id}
+                      ref={(el) => { productItemRefs.current[idx] = el; }}
                       disabled={isOutOfStock}
-                      onClick={() => addToCart(p)}
-                      className={`bg-white dark:bg-slate-800/90 border rounded-xl p-3 text-right flex flex-col justify-between h-36 transition hover:shadow-md hover:border-emerald-400 dark:hover:border-emerald-500 relative group active:scale-[0.98] ${
-                        isOutOfStock ? 'opacity-50 cursor-not-allowed border-rose-200 dark:border-rose-900 bg-rose-50/20 dark:bg-rose-950/20' : 'border-slate-200 dark:border-slate-700'
+                      onClick={() => {
+                        setHighlightedProductIndex(idx);
+                        addToCart(p);
+                      }}
+                      className={`bg-white dark:bg-slate-800/90 border rounded-xl p-3 text-right flex flex-col justify-between h-36 transition duration-150 hover:shadow-md hover:border-emerald-400 dark:hover:border-emerald-500 relative group active:scale-[0.98] ${
+                        isHighlighted
+                          ? 'ring-2 ring-emerald-500 border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/50 shadow-md scale-[1.01]'
+                          : 'border-slate-200 dark:border-slate-700'
+                      } ${
+                        isOutOfStock ? 'opacity-50 cursor-not-allowed border-rose-200 dark:border-rose-900 bg-rose-50/20 dark:bg-rose-950/20' : ''
                       }`}
                     >
                       {/* Floating badges */}
@@ -886,7 +1007,7 @@ export default function POS({ products, categories, customers, settings, onAddIn
           </div>
 
           {/* Cart Items List */}
-          <div className="flex-1 overflow-y-auto p-3 space-y-2 bg-slate-50/30">
+          <div ref={cartListRef} className="flex-1 overflow-y-auto scroll-smooth p-3 space-y-2 bg-slate-50/30">
             {cart.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-slate-300 space-y-2 py-10">
                 <ShoppingCart className="w-14 h-14 text-slate-200" />

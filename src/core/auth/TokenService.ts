@@ -38,7 +38,7 @@ export class TokenService {
         type: 'access',
       },
       JWT_SECRET,
-      { expiresIn: '30d' }
+      { expiresIn: '1h' }
     );
   }
 
