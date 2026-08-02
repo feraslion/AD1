@@ -2,8 +2,12 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'enterprise-erp-jwt-secret-key-2026';
-const REFRESH_SECRET = process.env.REFRESH_SECRET || 'enterprise-erp-refresh-secret-key-2026';
+const JWT_SECRET = process.env.JWT_SECRET;
+const REFRESH_SECRET = process.env.REFRESH_SECRET;
+
+if (!JWT_SECRET || !REFRESH_SECRET) {
+  throw new Error('CRITICAL CONFIGURATION ERROR: JWT_SECRET and REFRESH_SECRET environment variables must be defined. Security fallback keys have been completely removed for production safety.');
+}
 
 export interface TokenPayload {
   id: string;

@@ -1,3 +1,17 @@
+/**
+ * DIAGNOSTIC TEST FILE — test_drizzle_execute.ts
+ *
+ * PURPOSE:
+ * This file is kept in the root of the repository for diagnostic/troubleshooting
+ * purposes only. It is designed to verify raw database connection and raw SQL/DDL
+ * statement execution using the Drizzle ORM instance (`db`) outside of the main
+ * application loop.
+ *
+ * USAGE:
+ * Run this diagnostic script via Bun or Node:
+ *   SQL_HOST=localhost SQL_DB_NAME=ad1 SQL_ADMIN_USER=postgres SQL_ADMIN_PASSWORD=secret bun test_drizzle_execute.ts
+ */
+
 import { db } from './src/core/database/index.ts';
 import { sql } from 'drizzle-orm';
 
