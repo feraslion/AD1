@@ -1,0 +1,4 @@
+## 2026-08-01 - Prevent Authentication Bypass via Fallback Users in Production
+**Vulnerability:** Unauthenticated requests in the Express server and authenticate middlewares fell back automatically to the master manager user (ID '001') with full admin and manager access.
+**Learning:** This fallback was implemented as a development/testing convenience to easily write and verify API endpoints. However, because it lacked environment checks, it left production endpoints completely open to anyone without correct authentication headers, leading to a critical authentication bypass.
+**Prevention:** Always restrict development fallbacks, bypasses, or testing stubs to non-production environments by wrapping them inside explicit `process.env.NODE_ENV !== 'production'` conditions and immediately returning a `401 Unauthorized` response in production.

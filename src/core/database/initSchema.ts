@@ -11,6 +11,7 @@ async function execSql(query: ReturnType<typeof sql>, name: string) {
   try {
     await db.execute(query);
   } catch (err: any) {
+    console.error(`[Schema Migration] Error executing DDL "${name}":`, err?.message || err);
     try {
       await db.execute(sql`ROLLBACK`);
     } catch (_) {}
@@ -40,6 +41,24 @@ export async function ensureDatabaseTables(force = false) {
   if (force) {
     isSchemaEnsured = false;
     ddlSupported = null;
+    // 🛡️ SECURITY & RELIABILITY ENHANCEMENT:
+    // When force is true (as requested by automated ERP test scripts), drop all existing tables
+    // with CASCADE to ensure a completely pristine, empty database slate for the testing process.
+    try {
+      console.log('[Schema Migration] Force clean requested. Dropping all tables with CASCADE...');
+      await db.execute(sql`
+        DROP TABLE IF EXISTS purchase_request_items, purchase_requests, sales_order_items, sales_orders,
+                              quotation_items, quotations, audit_logs, purchase_invoices, sales_invoices,
+                              exchange_rates, payment_methods, taxes, exchange_rates_history, currencies,
+                              posting_rules, cashboxes, settings, expenses, payments, journal_lines,
+                              journal_details, journal_entries, accounts, purchase_items, purchases,
+                              sales_items, sales, invoice_items, invoices, stock_moves, warehouses,
+                              products, suppliers, customers, units, categories, user_sessions, users,
+                              role_permissions, permissions, roles, branches, companies CASCADE;
+      `);
+    } catch (dropErr: any) {
+      console.warn('[Schema Migration] Drop tables warning:', dropErr?.message || dropErr);
+    }
   }
   if (isSchemaEnsured) {
     return;
@@ -357,7 +376,8 @@ export async function ensureDatabaseTables(force = false) {
       id TEXT PRIMARY KEY,
       company_id TEXT NOT NULL,
       branch_id TEXT,
-      invoice_number TEXT NOT NULL UNIQUE,
+      invoice_number TEXT,
+      purchase_number TEXT UNIQUE,
       supplier_invoice_number TEXT,
       date TEXT NOT NULL,
       subtotal NUMERIC DEFAULT '0',
@@ -374,6 +394,8 @@ export async function ensureDatabaseTables(force = false) {
       updated_at TIMESTAMP DEFAULT NOW()
     );
   `, 'purchases');
+
+  await execSql(sql`ALTER TABLE purchases ADD COLUMN IF NOT EXISTS purchase_number TEXT UNIQUE;`, 'purchases_col_purchase_number');
 
   await execSql(sql`
     DO $$ 
@@ -500,11 +522,15 @@ export async function ensureDatabaseTables(force = false) {
       type TEXT NOT NULL,
       customer_id TEXT,
       supplier_id TEXT,
+      party_id TEXT,
+      party_type TEXT,
       amount NUMERIC NOT NULL,
       currency TEXT DEFAULT 'SAR',
       exchange_rate NUMERIC DEFAULT '1.0',
       foreign_amount NUMERIC DEFAULT '0',
       payment_method TEXT DEFAULT 'cash',
+      method TEXT DEFAULT 'cash',
+      reference TEXT,
       account_id TEXT,
       date TEXT NOT NULL,
       notes TEXT,
@@ -514,6 +540,11 @@ export async function ensureDatabaseTables(force = false) {
       updated_at TIMESTAMP DEFAULT NOW()
     );
   `, 'payments');
+
+  await execSql(sql`ALTER TABLE payments ADD COLUMN IF NOT EXISTS party_id TEXT;`, 'payments_col_party_id');
+  await execSql(sql`ALTER TABLE payments ADD COLUMN IF NOT EXISTS party_type TEXT;`, 'payments_col_party_type');
+  await execSql(sql`ALTER TABLE payments ADD COLUMN IF NOT EXISTS method TEXT DEFAULT 'cash';`, 'payments_col_method');
+  await execSql(sql`ALTER TABLE payments ADD COLUMN IF NOT EXISTS reference TEXT;`, 'payments_col_reference');
 
   // 25. Expenses
   await execSql(sql`

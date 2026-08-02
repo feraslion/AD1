@@ -102,7 +102,7 @@ function sendError(res: Response, message: string, details?: unknown, status = 5
 }
 
 // ─── AUTHENTICATION AND AUTHORIZATION MIDDLEWARES ───
-async function authenticate(req: Request, res: Response, next: NextFunction) {
+export async function authenticate(req: Request, res: Response, next: NextFunction) {
   try {
     const authHeader = req.headers.authorization;
     let userRecord: AuthenticatedUser | null = null;
@@ -138,7 +138,13 @@ async function authenticate(req: Request, res: Response, next: NextFunction) {
     }
 
     // Default manager user fallback for dev/testing session
+    // 🛡️ SECURITY WARNING: Under no circumstances should unauthenticated requests bypass
+    // authentication to a master/admin account in production. This fallback is strictly
+    // restricted to non-production environments to prevent critical authentication bypass.
     if (!userRecord) {
+      if (process.env.NODE_ENV === 'production') {
+        return sendError(res, 'غير مصرح به - يرجى تسجيل الدخول أولاً', null, 401);
+      }
       const [master] = await db.select().from(users).where(eq(users.id, '001'));
       userRecord = (master as AuthenticatedUser) || { id: '001', uid: '001', email: 'manager@system.com', name: 'عبدالرحمن (المدير العام)', role: 'manager', roleId: 'role_manager' };
     }
