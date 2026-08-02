@@ -359,7 +359,8 @@ export async function ensureDatabaseTables(force = false) {
       id TEXT PRIMARY KEY,
       company_id TEXT NOT NULL,
       branch_id TEXT,
-      invoice_number TEXT NOT NULL UNIQUE,
+      purchase_number TEXT NOT NULL UNIQUE,
+      invoice_number TEXT,
       supplier_invoice_number TEXT,
       date TEXT NOT NULL,
       subtotal NUMERIC DEFAULT '0',
@@ -376,6 +377,8 @@ export async function ensureDatabaseTables(force = false) {
       updated_at TIMESTAMP DEFAULT NOW()
     );
   `, 'purchases');
+
+  await execSql(sql`ALTER TABLE purchases ADD COLUMN IF NOT EXISTS purchase_number TEXT UNIQUE;`, 'purchases_col_purchase_number');
 
   await execSql(sql`
     DO $$ 
