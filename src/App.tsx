@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Product, Category, Customer, Unit, StoreSettings, Invoice } from './types';
 import { INITIAL_SETTINGS, INITIAL_UNITS, DEMO_DATASETS, GENERATE_INITIAL_INVOICES } from './data';
 import { ProductService, CustomerService, InvoiceService, CategoryService, UnitService, SettingsService, UserService } from './services/api';
-import { Dashboard, Settings, UsersAndPermissions, CalculatorModal, VirtualKeyboardModal, SocialShareModal } from './shared';
+import { Dashboard, Settings, UsersAndPermissions, CalculatorModal, VirtualKeyboardModal, SocialShareModal, GlobalSearchModal } from './shared';
 import { POS, Invoices } from './modules/sales';
 import { Inventory } from './modules/inventory';
 import { Reports } from './modules/reports';
@@ -39,7 +39,8 @@ import {
   Keyboard,
   MessageCircle,
   Moon,
-  Sun
+  Sun,
+  Search
 } from 'lucide-react';
 
 export default function App() {
@@ -83,10 +84,15 @@ export default function App() {
   const [showCalcModal, setShowCalcModal] = useState<boolean>(false);
   const [showKeyboardModal, setShowKeyboardModal] = useState<boolean>(false);
   const [showSocialModal, setShowSocialModal] = useState<boolean>(false);
+  const [showGlobalSearch, setShowGlobalSearch] = useState<boolean>(false);
 
   useEffect(() => {
     const handleGlobalHotkeys = (e: KeyboardEvent) => {
-      if (e.altKey && (e.key === 'c' || e.key === 'C' || e.key === 'ؤ')) {
+      // Global Search shortcut (Cmd+K / Ctrl+K)
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K' || e.key === 'ن')) {
+        e.preventDefault();
+        setShowGlobalSearch(prev => !prev);
+      } else if (e.altKey && (e.key === 'c' || e.key === 'C' || e.key === 'ؤ')) {
         e.preventDefault();
         setShowCalcModal(prev => !prev);
       } else if (e.altKey && (e.key === 'k' || e.key === 'K' || e.key === 'ن')) {
@@ -486,6 +492,21 @@ export default function App() {
             <h1 className="font-extrabold text-sm sm:text-base text-slate-800 dark:text-slate-100 leading-tight">{settings.name}</h1>
             <span className="text-[10px] text-slate-500 dark:text-slate-400 font-bold block">نظام الكاشير والمحاسبة الذكي (VAT 15%)</span>
           </div>
+
+          {/* Global Search Quick Trigger Button */}
+          <button
+            type="button"
+            onClick={() => setShowGlobalSearch(true)}
+            className="hidden sm:flex items-center gap-2.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200/80 dark:bg-slate-800 dark:hover:bg-slate-700/80 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-500 dark:text-slate-400 text-xs font-bold transition shadow-2xs group mr-2"
+            title="البحث الشامل بالمنتجات والعملاء والفواتير (Cmd/Ctrl + K)"
+          >
+            <Search className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition" />
+            <span className="hidden md:inline text-slate-600 dark:text-slate-300">بحث سريع بالمنتجات، العملاء، الفواتير...</span>
+            <span className="md:hidden text-slate-600 dark:text-slate-300">بحث...</span>
+            <kbd className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold text-slate-500 dark:text-slate-400 group-hover:text-emerald-600 dark:group-hover:text-emerald-400">
+              ⌘K / Ctrl+K
+            </kbd>
+          </button>
         </div>
 
         {/* Sync / State indications */}
@@ -1096,6 +1117,16 @@ export default function App() {
         isOpen={showSocialModal}
         onClose={() => setShowSocialModal(false)}
         customers={customers}
+      />
+
+      <GlobalSearchModal
+        isOpen={showGlobalSearch}
+        onClose={() => setShowGlobalSearch(false)}
+        products={products}
+        customers={customers}
+        invoices={invoices}
+        settings={settings}
+        onNavigateTab={(tab) => setActiveTab(tab)}
       />
     </div>
   );

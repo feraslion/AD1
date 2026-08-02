@@ -4,6 +4,7 @@ export { default as UsersAndPermissions } from './components/UsersAndPermissions
 export { default as CalculatorModal } from './components/ui/CalculatorModal';
 export { default as VirtualKeyboardModal } from './components/ui/VirtualKeyboardModal';
 export { default as SocialShareModal } from './components/ui/SocialShareModal';
+export { default as GlobalSearchModal } from './components/ui/GlobalSearchModal';
 export * from './hooks/useCart';
 export * from '../types';
 export * from '../data';
