@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   X, Share2, MessageCircle, Send, Phone, Mail, Copy, Check, 
   ExternalLink, Globe, Facebook, Twitter, Linkedin, FileText, 
@@ -42,6 +42,16 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
   const [activeTab, setActiveTab] = useState<'whatsapp' | 'telegram' | 'gmail' | 'drive' | 'native'>('whatsapp');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -161,7 +171,8 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition"
+            aria-label="إغلاق النافذة"
+            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none"
           >
             <X className="w-5 h-5" />
           </button>
@@ -174,7 +185,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 p-1.5 bg-slate-100 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700/60 text-xs font-bold">
             <button
               onClick={() => setActiveTab('whatsapp')}
-              className={`py-2 px-2.5 rounded-lg transition flex items-center justify-center gap-1.5 ${
+              className={`py-2 px-2.5 rounded-lg transition flex items-center justify-center gap-1.5 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none ${
                 activeTab === 'whatsapp'
                   ? 'bg-emerald-600 text-white shadow-md'
                   : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
@@ -186,7 +197,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
 
             <button
               onClick={() => setActiveTab('telegram')}
-              className={`py-2 px-2.5 rounded-lg transition flex items-center justify-center gap-1.5 ${
+              className={`py-2 px-2.5 rounded-lg transition flex items-center justify-center gap-1.5 focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:outline-none ${
                 activeTab === 'telegram'
                   ? 'bg-sky-500 text-white shadow-md'
                   : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
@@ -198,7 +209,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
 
             <button
               onClick={() => setActiveTab('gmail')}
-              className={`py-2 px-2.5 rounded-lg transition flex items-center justify-center gap-1.5 ${
+              className={`py-2 px-2.5 rounded-lg transition flex items-center justify-center gap-1.5 focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:outline-none ${
                 activeTab === 'gmail'
                   ? 'bg-rose-600 text-white shadow-md'
                   : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
@@ -210,7 +221,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
 
             <button
               onClick={() => setActiveTab('drive')}
-              className={`py-2 px-2.5 rounded-lg transition flex items-center justify-center gap-1.5 ${
+              className={`py-2 px-2.5 rounded-lg transition flex items-center justify-center gap-1.5 focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:outline-none ${
                 activeTab === 'drive'
                   ? 'bg-amber-600 text-white shadow-md'
                   : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
@@ -222,7 +233,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
 
             <button
               onClick={() => setActiveTab('native')}
-              className={`col-span-2 sm:col-span-1 py-2 px-2.5 rounded-lg transition flex items-center justify-center gap-1.5 ${
+              className={`col-span-2 sm:col-span-1 py-2 px-2.5 rounded-lg transition flex items-center justify-center gap-1.5 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:outline-none ${
                 activeTab === 'native'
                   ? 'bg-indigo-600 text-white shadow-md'
                   : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
@@ -245,7 +256,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
                   value={customerName}
                   onChange={e => setCustomerName(e.target.value)}
                   placeholder="أدخل اسم العميل"
-                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-800 dark:text-slate-100 focus:outline-none focus:border-emerald-500"
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-800 dark:text-slate-100 focus:outline-none focus:border-emerald-500 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none"
                 />
               </div>
 
@@ -258,7 +269,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
                   value={phoneNumber}
                   onChange={e => setPhoneNumber(e.target.value)}
                   placeholder="05xxxxxxx أو 9665xxxxxxx"
-                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-800 dark:text-slate-100 focus:outline-none focus:border-emerald-500 text-left dir-ltr"
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-800 dark:text-slate-100 focus:outline-none focus:border-emerald-500 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none text-left dir-ltr"
                 />
               </div>
 
@@ -271,7 +282,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
                   value={customerEmail}
                   onChange={e => setCustomerEmail(e.target.value)}
                   placeholder="client@gmail.com"
-                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono text-slate-800 dark:text-slate-100 focus:outline-none focus:border-emerald-500 text-left dir-ltr"
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono text-slate-800 dark:text-slate-100 focus:outline-none focus:border-emerald-500 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none text-left dir-ltr"
                 />
               </div>
             </div>
@@ -289,7 +300,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
                       if (cust.email) setCustomerEmail(cust.email);
                     }
                   }}
-                  className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-200"
+                  className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none focus:border-emerald-500"
                 >
                   <option value="">-- اختر من قائمة العملاء --</option>
                   {customers.map(c => (
@@ -335,7 +346,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5"
+                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:outline-none"
               >
                 <Upload className="w-3.5 h-3.5" />
                 <span>{attachedFile ? 'تغيير الملف' : 'إرفاق ملف'}</span>
@@ -351,7 +362,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
               <button
                 onClick={() => setMessageTemplate('invoice')}
-                className={`py-2 px-2 rounded-lg text-xs font-bold transition border text-center ${
+                className={`py-2 px-2 rounded-lg text-xs font-bold transition border text-center focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none ${
                   messageTemplate === 'invoice' 
                     ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 text-emerald-700 dark:text-emerald-300 font-extrabold' 
                     : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
@@ -361,7 +372,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
               </button>
               <button
                 onClick={() => setMessageTemplate('statement')}
-                className={`py-2 px-2 rounded-lg text-xs font-bold transition border text-center ${
+                className={`py-2 px-2 rounded-lg text-xs font-bold transition border text-center focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none ${
                   messageTemplate === 'statement' 
                     ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 text-emerald-700 dark:text-emerald-300 font-extrabold' 
                     : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
@@ -371,7 +382,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
               </button>
               <button
                 onClick={() => setMessageTemplate('quote')}
-                className={`py-2 px-2 rounded-lg text-xs font-bold transition border text-center ${
+                className={`py-2 px-2 rounded-lg text-xs font-bold transition border text-center focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none ${
                   messageTemplate === 'quote' 
                     ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 text-emerald-700 dark:text-emerald-300 font-extrabold' 
                     : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
@@ -381,7 +392,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
               </button>
               <button
                 onClick={() => setMessageTemplate('welcome')}
-                className={`py-2 px-2 rounded-lg text-xs font-bold transition border text-center ${
+                className={`py-2 px-2 rounded-lg text-xs font-bold transition border text-center focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none ${
                   messageTemplate === 'welcome' 
                     ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 text-emerald-700 dark:text-emerald-300 font-extrabold' 
                     : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
@@ -391,7 +402,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
               </button>
               <button
                 onClick={() => setMessageTemplate('custom')}
-                className={`py-2 px-2 rounded-lg text-xs font-bold transition border text-center ${
+                className={`py-2 px-2 rounded-lg text-xs font-bold transition border text-center focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none ${
                   messageTemplate === 'custom' 
                     ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 text-emerald-700 dark:text-emerald-300 font-extrabold' 
                     : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
@@ -410,7 +421,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
               </label>
               <button
                 onClick={handleCopyMessage}
-                className="flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline"
+                className="flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none rounded-sm"
               >
                 {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                 <span>{copied ? 'تم النسخ!' : 'نسخ النص'}</span>
@@ -422,7 +433,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
                 value={customMessage}
                 onChange={e => setCustomMessage(e.target.value)}
                 placeholder="اكتب رسالتك المخصصة هنا..."
-                className="w-full h-24 p-3 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:border-emerald-500 resize-none"
+                className="w-full h-24 p-3 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:border-emerald-500 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none resize-none"
               />
             ) : (
               <div className="p-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 rounded-xl text-xs text-slate-800 dark:text-slate-200 whitespace-pre-wrap font-sans leading-relaxed">
@@ -458,7 +469,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
                     href={whatsappAppUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-black text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20"
+                    className="py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-black text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none"
                   >
                     <Smartphone className="w-4 h-4" />
                     <span>فتح في تطبيق واتساب الجوال</span>
@@ -469,7 +480,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
                     href={whatsappWebUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="py-3 px-4 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-xs transition flex items-center justify-center gap-2"
+                    className="py-3 px-4 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-xs transition flex items-center justify-center gap-2 focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:outline-none"
                   >
                     <Globe className="w-4 h-4 text-emerald-400" />
                     <span>فتح في واتساب ويب (WhatsApp Web)</span>
@@ -497,7 +508,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
                   href={telegramUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full py-3 px-4 bg-sky-500 hover:bg-sky-400 text-white rounded-xl font-black text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-sky-500/20"
+                  className="w-full py-3 px-4 bg-sky-500 hover:bg-sky-400 text-white rounded-xl font-black text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-sky-500/20 focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:outline-none"
                 >
                   <Send className="w-4 h-4" />
                   <span>مشاركة فورية عبر تلجرام</span>
@@ -525,7 +536,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
                     href={gmailComposeUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="py-3 px-4 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-black text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-rose-600/20"
+                    className="py-3 px-4 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-black text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-rose-600/20 focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:outline-none"
                   >
                     <Mail className="w-4 h-4" />
                     <span>فتح في Gmail ويب مباشر</span>
@@ -534,7 +545,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
 
                   <a
                     href={mailtoUrl}
-                    className="py-3 px-4 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-xs transition flex items-center justify-center gap-2"
+                    className="py-3 px-4 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-xs transition flex items-center justify-center gap-2 focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:outline-none"
                   >
                     <Globe className="w-4 h-4 text-rose-400" />
                     <span>تطبيق الإيميل الافتراضي (Mailto)</span>
@@ -562,7 +573,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
                 <button
                   type="button"
                   onClick={handleSaveToDrive}
-                  className="w-full py-3 px-4 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-black text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-amber-600/20"
+                  className="w-full py-3 px-4 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-black text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-amber-600/20 focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:outline-none"
                 >
                   <Download className="w-4 h-4" />
                   <span>تنزيل الملف وفتح Google Drive للرفع</span>
@@ -588,7 +599,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
                 <button
                   type="button"
                   onClick={handleNativeShare}
-                  className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-black text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20"
+                  className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-black text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:outline-none"
                 >
                   <Share2 className="w-4 h-4" />
                   <span>فتح قائمة مشاركة التطبيقات والملفات بالنظام</span>
@@ -608,7 +619,7 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="px-4 py-1.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 font-bold rounded-lg transition"
+            className="px-4 py-1.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 font-bold rounded-lg transition focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:outline-none"
           >
             إغلاق
           </button>
