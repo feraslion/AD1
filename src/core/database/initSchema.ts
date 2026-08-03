@@ -364,7 +364,7 @@ export async function ensureDatabaseTables(force = false) {
       id TEXT PRIMARY KEY,
       company_id TEXT NOT NULL,
       branch_id TEXT,
-      invoice_number TEXT NOT NULL UNIQUE,
+      purchase_number TEXT NOT NULL UNIQUE,
       supplier_invoice_number TEXT,
       date TEXT NOT NULL,
       subtotal NUMERIC DEFAULT '0',
@@ -381,6 +381,12 @@ export async function ensureDatabaseTables(force = false) {
       updated_at TIMESTAMP DEFAULT NOW()
     );
   `, 'purchases');
+
+  // Ensure correct columns on purchases table for schema compatibility
+  try {
+    await execSql(sql`ALTER TABLE purchases ADD COLUMN IF NOT EXISTS purchase_number TEXT;`, 'purchases_col_purchase_number');
+    await execSql(sql`UPDATE purchases SET purchase_number = invoice_number WHERE purchase_number IS NULL AND invoice_number IS NOT NULL;`, 'purchases_sync_purchase_number');
+  } catch (_) {}
 
   await execSql(sql`
     DO $$ 
@@ -505,14 +511,14 @@ export async function ensureDatabaseTables(force = false) {
       id TEXT PRIMARY KEY,
       payment_number TEXT NOT NULL UNIQUE,
       type TEXT NOT NULL,
-      customer_id TEXT,
-      supplier_id TEXT,
+      party_id TEXT,
+      party_type TEXT,
       amount NUMERIC NOT NULL,
       currency TEXT DEFAULT 'SAR',
       exchange_rate NUMERIC DEFAULT '1.0',
       foreign_amount NUMERIC DEFAULT '0',
-      payment_method TEXT DEFAULT 'cash',
-      account_id TEXT,
+      method TEXT DEFAULT 'cash',
+      reference TEXT,
       date TEXT NOT NULL,
       notes TEXT,
       company_id TEXT,
@@ -521,6 +527,20 @@ export async function ensureDatabaseTables(force = false) {
       updated_at TIMESTAMP DEFAULT NOW()
     );
   `, 'payments');
+
+  // Ensure compatible columns on payments table
+  await execSql(sql`ALTER TABLE payments ADD COLUMN IF NOT EXISTS party_id TEXT;`, 'payments_col_party_id');
+  await execSql(sql`ALTER TABLE payments ADD COLUMN IF NOT EXISTS party_type TEXT;`, 'payments_col_party_type');
+  await execSql(sql`ALTER TABLE payments ADD COLUMN IF NOT EXISTS method TEXT DEFAULT 'cash';`, 'payments_col_method');
+  await execSql(sql`ALTER TABLE payments ADD COLUMN IF NOT EXISTS reference TEXT;`, 'payments_col_reference');
+
+  // Backfill/sync from legacy columns if present
+  try {
+    await execSql(sql`UPDATE payments SET party_id = COALESCE(party_id, customer_id, supplier_id) WHERE party_id IS NULL;`, 'payments_sync_party_id');
+    await execSql(sql`UPDATE payments SET party_type = COALESCE(party_type, CASE WHEN customer_id IS NOT NULL THEN 'customer' WHEN supplier_id IS NOT NULL THEN 'supplier' ELSE NULL END) WHERE party_type IS NULL;`, 'payments_sync_party_type');
+    await execSql(sql`UPDATE payments SET method = COALESCE(method, payment_method) WHERE method IS NULL;`, 'payments_sync_method');
+    await execSql(sql`UPDATE payments SET reference = COALESCE(reference, account_id) WHERE reference IS NULL;`, 'payments_sync_reference');
+  } catch (_) {}
 
   // 25. Expenses
   await execSql(sql`
