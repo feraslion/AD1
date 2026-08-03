@@ -631,6 +631,7 @@ export default function POS({ products, categories, customers, settings, onAddIn
           {/* Night Shift Dark Mode Button */}
           <button
             onClick={toggleDarkMode}
+            aria-label={isDarkMode ? "تفعيل وضع النهار" : "تفعيل الوضع الليلي"}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition border ${
               isDarkMode
                 ? 'bg-amber-950/80 border-amber-600/60 text-amber-300 hover:bg-amber-900'
@@ -638,13 +639,14 @@ export default function POS({ products, categories, customers, settings, onAddIn
             }`}
             title="تخفيف إجهاد العين بالوضع الليلي للكاشير (Alt+D)"
           >
-            {isDarkMode ? <Sun className="w-3.5 h-3.5 text-amber-400" /> : <Moon className="w-3.5 h-3.5 text-indigo-400" />}
+            {isDarkMode ? <Sun className="w-3.5 h-3.5 text-amber-400" aria-hidden="true" /> : <Moon className="w-3.5 h-3.5 text-indigo-400" aria-hidden="true" />}
             <span>{isDarkMode ? 'وضع نهار ☀️' : 'وضع ليل 🌙'}</span>
           </button>
 
           {/* Cash Drawer Button */}
           <button
             onClick={handleTriggerCashDrawer}
+            aria-label="فتح درج النقدية يدوياً"
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition border ${
               cashDrawerOpen
                 ? 'bg-emerald-600 border-emerald-400 text-white animate-bounce'
@@ -652,7 +654,7 @@ export default function POS({ products, categories, customers, settings, onAddIn
             }`}
             title="فتح درج النقدية يدوياً"
           >
-            <Unlock className="w-3.5 h-3.5 text-emerald-400" />
+            <Unlock className="w-3.5 h-3.5 text-emerald-400" aria-hidden="true" />
             <span>درج النقدية 🔓</span>
           </button>
 
@@ -989,7 +991,8 @@ export default function POS({ products, categories, customers, settings, onAddIn
                         setHighlightedProductIndex(idx);
                         addToCart(p);
                       }}
-                      className={`bg-white dark:bg-slate-800/90 border rounded-xl p-3 text-right flex flex-col justify-between h-36 transition duration-150 hover:shadow-md hover:border-emerald-400 dark:hover:border-emerald-500 relative group active:scale-[0.98] ${
+                      aria-label={`${p.name}، السعر: ${p.price.toFixed(2)} ${settings.currency}، المخزون: ${p.stock === 999 ? 'غير محدود' : p.stock}`}
+                      className={`bg-white dark:bg-slate-800/90 border rounded-xl p-3 text-right flex flex-col justify-between h-36 transition duration-150 hover:shadow-md hover:border-emerald-400 dark:hover:border-emerald-500 focus-visible:ring-4 focus-visible:ring-emerald-500/70 focus-visible:ring-offset-2 focus-visible:outline-none relative group active:scale-[0.98] ${
                         isHighlighted
                           ? 'ring-2 ring-emerald-500 border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/50 shadow-md scale-[1.01]'
                           : 'border-slate-200 dark:border-slate-700'
@@ -1099,10 +1102,11 @@ export default function POS({ products, categories, customers, settings, onAddIn
                         <h4 className="font-bold text-slate-800 dark:text-slate-100 text-xs line-clamp-2 leading-snug">{item.product.name}</h4>
                         <button 
                           onClick={() => removeFromCart(item.id)}
+                          aria-label={`حذف منتج ${item.product.name} من السلة`}
                           className="w-10 h-10 min-w-[40px] min-h-[40px] text-slate-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl flex items-center justify-center transition active:scale-95"
                           title="حذف من السلة"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 className="w-4 h-4" aria-hidden="true" />
                         </button>
                       </div>
                       
@@ -1146,25 +1150,28 @@ export default function POS({ products, categories, customers, settings, onAddIn
                       <div className="flex items-center bg-slate-100 dark:bg-slate-900 rounded-xl p-1 border border-slate-200 dark:border-slate-700">
                         <button 
                           onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                          aria-label={`إنقاص كمية منتج ${item.product.name}`}
                           className="w-10 h-10 min-w-[40px] min-h-[40px] flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-800 rounded-lg transition active:scale-95 font-bold"
                           title="إنقاص الكمية"
                         >
-                          <Minus className="w-4 h-4" />
+                          <Minus className="w-4 h-4" aria-hidden="true" />
                         </button>
                         <input
                           type="number"
                           step="0.01"
                           min="0.001"
                           value={item.quantity}
+                          aria-label={`كمية منتج ${item.product.name}`}
                           onChange={(e) => updateQuantity(item.id, parseFloat(e.target.value) || 0)}
                           className="w-11 text-center font-extrabold text-xs text-slate-800 dark:text-slate-100 font-mono bg-transparent border-none p-0 focus:outline-none min-h-[40px]"
                         />
                         <button 
                           onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                          aria-label={`زيادة كمية منتج ${item.product.name}`}
                           className="w-10 h-10 min-w-[40px] min-h-[40px] flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-800 rounded-lg transition active:scale-95 font-bold"
                           title="زيادة الكمية"
                         >
-                          <Plus className="w-4 h-4" />
+                          <Plus className="w-4 h-4" aria-hidden="true" />
                         </button>
                       </div>
                     </div>
