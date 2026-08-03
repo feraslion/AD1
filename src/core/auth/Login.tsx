@@ -4,6 +4,7 @@ import { Lock, ShieldAlert, KeyRound, ArrowRightLeft, RefreshCw, Mail, Key, Send
 import { UserService } from '../../services/api';
 import { PermissionService } from '../permissions/PermissionService';
 import { signUpWithFirebase } from './firebase';
+import { resolveApiUrl } from '../api/client';
 
 interface LoginProps {
   onLoginSuccess: (user: { name: string; role: string; code: string; roleId?: string; token?: string; isVerified?: boolean }) => void;
@@ -90,7 +91,7 @@ export default function Login({ onLoginSuccess, settings }: LoginProps) {
     setError('');
 
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch(resolveApiUrl('/api/auth/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -164,7 +165,7 @@ export default function Login({ onLoginSuccess, settings }: LoginProps) {
     e.preventDefault();
     setForgotMsg('');
     try {
-      const res = await fetch('/api/auth/forgot-password', {
+      const res = await fetch(resolveApiUrl('/api/auth/forgot-password'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: forgotEmail })
@@ -183,7 +184,7 @@ export default function Login({ onLoginSuccess, settings }: LoginProps) {
     e.preventDefault();
     setResetSuccessMsg('');
     try {
-      const res = await fetch('/api/auth/reset-password', {
+      const res = await fetch(resolveApiUrl('/api/auth/reset-password'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: resetTokenReceived, newPassword: newPasswordInput })
@@ -230,7 +231,7 @@ export default function Login({ onLoginSuccess, settings }: LoginProps) {
       }
 
       // Call System Backend API Register endpoint
-      const res = await fetch('/api/auth/register', {
+      const res = await fetch(resolveApiUrl('/api/auth/register'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

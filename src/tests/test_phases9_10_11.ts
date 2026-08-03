@@ -21,14 +21,9 @@ async function runPhases9To11Tests() {
       await seedEnterpriseData();
     } catch (dbInitErr: any) {
       console.warn('⚠️ Database connection or schema initialization notice:', dbInitErr.message || dbInitErr);
-      if (
-        dbInitErr.message?.includes('terminated') ||
-        dbInitErr.message?.includes('ECONNREFUSED') ||
-        dbInitErr.message?.includes('Failed query') ||
-        dbInitErr.code === 'ECONNREFUSED'
-      ) {
+      if (dbInitErr.message?.includes('terminated') || dbInitErr.message?.includes('ECONNREFUSED')) {
         console.log('Skipping live DB tests - no active SQL server in current test environment.');
-        process.exit(0);
+        return;
       }
     }
 

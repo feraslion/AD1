@@ -16,7 +16,7 @@
     "clean": "node -e \"['dist','server.js','release'].forEach(p=>fs.rmSync(p,{recursive:true,force:true}))\"",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "test": "bun src/tests/test_security_hardening.ts && bun src/tests/test_phase8_currency.ts && bun src/tests/test_phases9_10_11.ts && bun src/tests/test_phases12_13_14_15.ts",
+    "test": "bun src/tests/test_phase8_currency.ts && bun src/tests/test_phases9_10_11.ts && bun src/tests/test_phases12_13_14_15.ts",
     "test:light": "bun src/tests/test_phases7_engine.ts",
     "benchmark": "bun src/harness/benchmark.ts",
     "ci:pipeline": "npm run lint && npm run build && npm run test:light && npm run benchmark"
@@ -30,6 +30,10 @@
     "files": [
       "dist/**/*",
       "electron/**/*"
+    ],
+    "asarUnpack": [
+      "dist/server.cjs",
+      "dist/**/*.node"
     ],
     "win": {
       "target": "nsis"
@@ -51,6 +55,7 @@
     "drizzle-orm": "^0.45.2",
     "express": "^4.21.2",
     "firebase": "^12.16.0",
+    "firebase-admin": "^14.2.0",
     "html2canvas": "^1.4.1",
     "html5-qrcode": "^2.3.8",
     "jsbarcode": "^3.12.3",

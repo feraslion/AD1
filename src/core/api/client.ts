@@ -11,6 +11,32 @@ export interface ApiResponse<T = any> {
   timestamp?: string;
 }
 
+// Helper to resolve absolute or relative API URLs
+export const resolveApiUrl = (url: string): string => {
+  if (!url) return url;
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+
+  let baseUrl = '';
+  if (typeof window !== 'undefined') {
+    const metaEnv = (import.meta as any)?.env;
+    if ((window as any).VITE_API_BASE_URL) {
+      baseUrl = (window as any).VITE_API_BASE_URL;
+    } else if (metaEnv && metaEnv.VITE_API_BASE_URL) {
+      baseUrl = metaEnv.VITE_API_BASE_URL;
+    } else if (window.location.protocol === 'file:' || window.location.protocol === 'capacitor:') {
+      baseUrl = 'http://localhost:3000';
+    }
+  }
+
+  if (baseUrl) {
+    const cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+    const cleanUrl = url.startsWith('/') ? url : `/${url}`;
+    return `${cleanBase}${cleanUrl}`;
+  }
+
+  return url;
+};
+
 // Helper to retrieve auth token headers
 const getHeaders = (headers: Record<string, string> = {}) => {
   const activeUser = localStorage.getItem('erp_active_user');
@@ -52,7 +78,7 @@ async function attemptTokenRefresh(): Promise<string | null> {
       const refreshToken = localStorage.getItem('erp_refresh_token');
       if (!refreshToken) return null;
 
-      const res = await fetch('/api/auth/refresh', {
+      const res = await fetch(resolveApiUrl('/api/auth/refresh'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refreshToken })
@@ -101,11 +127,12 @@ export const apiClient = {
   ): Promise<T> {
     const method = options.method || 'GET';
     const start = Date.now();
+    const targetUrl = resolveApiUrl(url);
     
-    logger.debug('APIClient', `Outgoing Request: ${method} ${url}`);
+    logger.debug('APIClient', `Outgoing Request: ${method} ${targetUrl}`);
 
     try {
-      const response = await fetch(url, {
+      const response = await fetch(targetUrl, {
         ...options,
         headers: getHeaders(options.headers as Record<string, string>),
       });

@@ -12,14 +12,6 @@ import {
 import firebaseConfig from '../../../firebase-applet-config.json';
 import { logger } from '../../shared/utils/logger';
 
-// SECURITY NOTE:
-// The configuration file 'firebase-applet-config.json' contains only client-side keys and configuration.
-// By Firebase security standards, client config keys are not secret by nature and are publicly bundled.
-// Real security for Firebase data, storage, and authentication relies entirely on:
-// 1. Firestore Security Rules and Storage Security Rules (rejecting unauthenticated/unauthorized reads/writes).
-// 2. App Check (to prevent abuse and verify requests come from genuine app builds).
-// 3. Server-side validation via JWT (TokenService) for sensitive endpoints, rather than trusting client-side Firebase Auth state alone.
-
 // Initialize Firebase App
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
