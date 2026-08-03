@@ -64,12 +64,22 @@ export class JournalEngine {
 
     const normalizedLines = [];
 
+    // Pre-validate that all lines have an account ID before executing database queries
     for (const line of lines) {
       if (!line.accountId) {
         throw new Error('يجب تحديد الحساب المالي لكافة سطور القيد المحاسبي.');
       }
+    }
 
-      const [acc] = await db.select().from(accounts).where(eq(accounts.id, line.accountId));
+    // Optimize: Batch query accounts in a single call to prevent the N+1 query problem
+    const accountIds = Array.from(new Set(lines.map(line => line.accountId).filter((id): id is string => !!id)));
+    const accountsList = accountIds.length > 0
+      ? await db.select().from(accounts).where(inArray(accounts.id, accountIds))
+      : [];
+    const accountsMap = new Map(accountsList.map(acc => [acc.id, acc]));
+
+    for (const line of lines) {
+      const acc = accountsMap.get(line.accountId);
       if (!acc) {
         throw new Error(`الحساب المالي (ID: ${line.accountId}) غير موجود في شجرة الحسابات.`);
       }
