@@ -2,37 +2,45 @@ import { db, createPool } from './index.ts';
 import { sql } from 'drizzle-orm';
 
 async function execSql(query: ReturnType<typeof sql>, name: string) {
-  try {
-    await db.execute(query);
-  } catch (err: any) {
-    try {
-      await db.execute(sql`ROLLBACK`);
-    } catch (_) {}
-    // Retry once after rollback in case an aborted transaction state caused the failure
+  for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       await db.execute(query);
-    } catch (_) {
+      return;
+    } catch (err: any) {
       try {
         await db.execute(sql`ROLLBACK`);
       } catch (_) {}
+      if (attempt < 3) {
+        await new Promise(r => setTimeout(r, 200 * attempt));
+      }
     }
   }
 }
 
 export async function withAutoMigration<T>(fn: () => Promise<T>): Promise<T> {
-  try {
-    return await fn();
-  } catch (err) {
-    console.warn('[AutoMigration] Query failed due to missing schema or relation, executing self-healing migration...', err);
+  let attempts = 0;
+  while (attempts < 3) {
+    attempts++;
     try {
-      await db.execute(sql`ROLLBACK`);
-    } catch (_) {}
-    await ensureDatabaseTables(true);
-    try {
-      await db.execute(sql`ROLLBACK`);
-    } catch (_) {}
-    return await fn();
+      return await fn();
+    } catch (err: any) {
+      try {
+        await db.execute(sql`ROLLBACK`);
+      } catch (_) {}
+
+      if (attempts < 3) {
+        console.warn(`[AutoMigration] Query failed (attempt ${attempts}/3), executing self-healing migration...`, err?.message || err);
+        await ensureDatabaseTables(true);
+        try {
+          await db.execute(sql`ROLLBACK`);
+        } catch (_) {}
+        await new Promise(r => setTimeout(r, 300 * attempts));
+      } else {
+        throw err;
+      }
+    }
   }
+  return await fn();
 }
 
 let isSchemaEnsured = false;

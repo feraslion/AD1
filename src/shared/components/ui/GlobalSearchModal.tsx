@@ -51,6 +51,8 @@ export default function GlobalSearchModal({
   const [query, setQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<CategoryFilter>('all');
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [apiResults, setApiResults] = useState<{ products: Product[]; customers: Customer[]; invoices: Invoice[] } | null>(null);
+  const [isSearchingApi, setIsSearchingApi] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -59,11 +61,48 @@ export default function GlobalSearchModal({
     if (isOpen) {
       setQuery('');
       setSelectedIndex(0);
+      setApiResults(null);
       setTimeout(() => {
         inputRef.current?.focus();
       }, 50);
     }
   }, [isOpen]);
+
+  // Debounced API Search
+  useEffect(() => {
+    if (!query.trim()) {
+      setApiResults(null);
+      setIsSearchingApi(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearchingApi(true);
+      try {
+        const token = localStorage.getItem('erp_active_user_token') || localStorage.getItem('erp_active_user');
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch(`/api/v1/search?q=${encodeURIComponent(query.trim())}`, { headers });
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && json.data) {
+            setApiResults({
+              products: json.data.products || [],
+              customers: json.data.customers || [],
+              invoices: json.data.invoices || []
+            });
+          }
+        }
+      } catch (err) {
+        // Fallback to local filtering on error
+      } finally {
+        setIsSearchingApi(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [query]);
 
   // Lock body scroll when open
   useEffect(() => {
@@ -80,43 +119,49 @@ export default function GlobalSearchModal({
   if (!isOpen) return null;
 
   // Filter Products
-  const matchingProducts = products.filter(p => {
-    if (!query.trim()) return true;
-    const q = query.toLowerCase().trim();
-    return (
-      p.name?.toLowerCase().includes(q) ||
-      p.barcode?.toLowerCase().includes(q) ||
-      p.sku?.toLowerCase().includes(q) ||
-      p.category?.toLowerCase().includes(q) ||
-      p.barcodes?.some(b => b.barcode.toLowerCase().includes(q))
-    );
-  }).slice(0, 15);
+  const matchingProducts = apiResults?.products.length 
+    ? apiResults.products 
+    : products.filter(p => {
+        if (!query.trim()) return true;
+        const q = query.toLowerCase().trim();
+        return (
+          p.name?.toLowerCase().includes(q) ||
+          p.barcode?.toLowerCase().includes(q) ||
+          p.sku?.toLowerCase().includes(q) ||
+          p.category?.toLowerCase().includes(q) ||
+          p.barcodes?.some(b => b.barcode.toLowerCase().includes(q))
+        );
+      }).slice(0, 15);
 
   // Filter Customers
-  const matchingCustomers = customers.filter(c => {
-    if (!query.trim()) return true;
-    const q = query.toLowerCase().trim();
-    return (
-      c.name?.toLowerCase().includes(q) ||
-      c.phone?.toLowerCase().includes(q) ||
-      c.email?.toLowerCase().includes(q) ||
-      c.taxNumber?.toLowerCase().includes(q)
-    );
-  }).slice(0, 15);
+  const matchingCustomers = apiResults?.customers.length 
+    ? apiResults.customers 
+    : customers.filter(c => {
+        if (!query.trim()) return true;
+        const q = query.toLowerCase().trim();
+        return (
+          c.name?.toLowerCase().includes(q) ||
+          c.phone?.toLowerCase().includes(q) ||
+          c.email?.toLowerCase().includes(q) ||
+          c.taxNumber?.toLowerCase().includes(q)
+        );
+      }).slice(0, 15);
 
   // Filter Invoices
-  const matchingInvoices = invoices.filter(inv => {
-    if (!query.trim()) return true;
-    const q = query.toLowerCase().trim();
-    return (
-      inv.invoiceNumber?.toLowerCase().includes(q) ||
-      inv.customerName?.toLowerCase().includes(q) ||
-      inv.cashierName?.toLowerCase().includes(q) ||
-      inv.grandTotal?.toString().includes(q) ||
-      inv.status?.toLowerCase().includes(q) ||
-      inv.date?.includes(q)
-    );
-  }).slice(0, 15);
+  const matchingInvoices = apiResults?.invoices.length 
+    ? apiResults.invoices 
+    : invoices.filter(inv => {
+        if (!query.trim()) return true;
+        const q = query.toLowerCase().trim();
+        return (
+          inv.invoiceNumber?.toLowerCase().includes(q) ||
+          inv.customerName?.toLowerCase().includes(q) ||
+          inv.cashierName?.toLowerCase().includes(q) ||
+          inv.grandTotal?.toString().includes(q) ||
+          inv.status?.toLowerCase().includes(q) ||
+          inv.date?.includes(q)
+        );
+      }).slice(0, 15);
 
   // Combine results according to filter
   type ResultItem = 

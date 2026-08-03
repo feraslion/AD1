@@ -13,9 +13,11 @@ import currenciesRoutes from './currencies.routes.ts';
 import usersRoutes from './users.routes.ts';
 import reportsRoutes from './reports.routes.ts';
 import systemRoutes from './system.routes.ts';
+import searchRoutes from './search.routes.ts';
 
 const router = Router();
 
+router.use('/search', searchRoutes);
 router.use('/products', productsRoutes);
 router.use('/customers', customersRoutes);
 router.use('/suppliers', suppliersRoutes);
