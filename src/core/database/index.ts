@@ -5,6 +5,15 @@ import * as schema from './schema.ts';
 const { Pool } = pkg;
 
 export const createPool = () => {
+  if (process.env.DATABASE_URL) {
+    return new Pool({
+      connectionString: process.env.DATABASE_URL,
+      connectionTimeoutMillis: 15000,
+      idleTimeoutMillis: 30000,
+      max: 20
+    });
+  }
+
   const isUnixSocket = process.env.SQL_HOST?.startsWith('/');
   return new Pool({
     host: process.env.SQL_HOST,
