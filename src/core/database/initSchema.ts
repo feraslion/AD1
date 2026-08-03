@@ -385,7 +385,14 @@ export async function ensureDatabaseTables(force = false) {
   // Ensure correct columns on purchases table for schema compatibility
   try {
     await execSql(sql`ALTER TABLE purchases ADD COLUMN IF NOT EXISTS purchase_number TEXT;`, 'purchases_col_purchase_number');
-    await execSql(sql`UPDATE purchases SET purchase_number = invoice_number WHERE purchase_number IS NULL AND invoice_number IS NOT NULL;`, 'purchases_sync_purchase_number');
+    await execSql(sql`
+      DO $$
+      BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='purchases' AND column_name='invoice_number') THEN
+          UPDATE purchases SET purchase_number = invoice_number WHERE purchase_number IS NULL AND invoice_number IS NOT NULL;
+        END IF;
+      END $$;
+    `, 'purchases_sync_purchase_number');
   } catch (_) {}
 
   await execSql(sql`
@@ -534,12 +541,23 @@ export async function ensureDatabaseTables(force = false) {
   await execSql(sql`ALTER TABLE payments ADD COLUMN IF NOT EXISTS method TEXT DEFAULT 'cash';`, 'payments_col_method');
   await execSql(sql`ALTER TABLE payments ADD COLUMN IF NOT EXISTS reference TEXT;`, 'payments_col_reference');
 
-  // Backfill/sync from legacy columns if present
+  // Backfill/sync from legacy columns if present using safe conditional check
   try {
-    await execSql(sql`UPDATE payments SET party_id = COALESCE(party_id, customer_id, supplier_id) WHERE party_id IS NULL;`, 'payments_sync_party_id');
-    await execSql(sql`UPDATE payments SET party_type = COALESCE(party_type, CASE WHEN customer_id IS NOT NULL THEN 'customer' WHEN supplier_id IS NOT NULL THEN 'supplier' ELSE NULL END) WHERE party_type IS NULL;`, 'payments_sync_party_type');
-    await execSql(sql`UPDATE payments SET method = COALESCE(method, payment_method) WHERE method IS NULL;`, 'payments_sync_method');
-    await execSql(sql`UPDATE payments SET reference = COALESCE(reference, account_id) WHERE reference IS NULL;`, 'payments_sync_reference');
+    await execSql(sql`
+      DO $$
+      BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='payments' AND column_name='customer_id') THEN
+          UPDATE payments SET party_id = COALESCE(party_id, customer_id, supplier_id) WHERE party_id IS NULL;
+          UPDATE payments SET party_type = COALESCE(party_type, CASE WHEN customer_id IS NOT NULL THEN 'customer' WHEN supplier_id IS NOT NULL THEN 'supplier' ELSE NULL END) WHERE party_type IS NULL;
+        END IF;
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='payments' AND column_name='payment_method') THEN
+          UPDATE payments SET method = COALESCE(method, payment_method) WHERE method IS NULL;
+        END IF;
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='payments' AND column_name='account_id') THEN
+          UPDATE payments SET reference = COALESCE(reference, account_id) WHERE reference IS NULL;
+        END IF;
+      END $$;
+    `, 'payments_sync_legacy_columns');
   } catch (_) {}
 
   // 25. Expenses
