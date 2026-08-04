@@ -154,9 +154,10 @@ export const CalculatorModal: React.FC<CalculatorModalProps> = ({ isOpen, onClos
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700/60 rounded-lg transition"
+            aria-label="إغلاق الحاسبة"
+            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700/60 rounded-lg transition focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none"
           >
-            <X className="w-5 h-5" />
+            <X className="w-5 h-5" aria-hidden="true" />
           </button>
         </div>
 
@@ -172,19 +173,22 @@ export const CalculatorModal: React.FC<CalculatorModalProps> = ({ isOpen, onClos
             <span className="text-[11px] text-slate-400">القيمة المالية (ر.س)</span>
             <button
               onClick={handleCopy}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-emerald-400 text-xs transition"
+              aria-label="نسخ نتيجة الحساب"
+              className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-emerald-400 text-xs transition focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none"
             >
-              {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+              {copied ? <Check className="w-3.5 h-3.5" aria-hidden="true" /> : <Copy className="w-3.5 h-3.5" aria-hidden="true" />}
               <span>{copied ? 'تم النسخ!' : 'نسخ النتيجة'}</span>
             </button>
           </div>
         </div>
 
         {/* Mode Tabs */}
-        <div className="flex border-b border-slate-800 text-xs bg-slate-900/50">
+        <div className="flex border-b border-slate-800 text-xs bg-slate-900/50" role="tablist" aria-label="أنماط الحاسبة">
           <button
             onClick={() => setCalcMode('standard')}
-            className={`flex-1 py-2 font-bold text-center border-b-2 transition ${
+            role="tab"
+            aria-selected={calcMode === 'standard'}
+            className={`flex-1 py-2 font-bold text-center border-b-2 transition focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none ${
               calcMode === 'standard' ? 'border-emerald-500 text-emerald-400 bg-slate-800/40' : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -192,7 +196,9 @@ export const CalculatorModal: React.FC<CalculatorModalProps> = ({ isOpen, onClos
           </button>
           <button
             onClick={() => setCalcMode('vat')}
-            className={`flex-1 py-2 font-bold text-center border-b-2 transition ${
+            role="tab"
+            aria-selected={calcMode === 'vat'}
+            className={`flex-1 py-2 font-bold text-center border-b-2 transition focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none ${
               calcMode === 'vat' ? 'border-emerald-500 text-emerald-400 bg-slate-800/40' : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -200,7 +206,9 @@ export const CalculatorModal: React.FC<CalculatorModalProps> = ({ isOpen, onClos
           </button>
           <button
             onClick={() => setCalcMode('change')}
-            className={`flex-1 py-2 font-bold text-center border-b-2 transition ${
+            role="tab"
+            aria-selected={calcMode === 'change'}
+            className={`flex-1 py-2 font-bold text-center border-b-2 transition focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none ${
               calcMode === 'change' ? 'border-emerald-500 text-emerald-400 bg-slate-800/40' : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -213,13 +221,15 @@ export const CalculatorModal: React.FC<CalculatorModalProps> = ({ isOpen, onClos
           <div className="p-3 bg-slate-800/40 border-b border-slate-800 grid grid-cols-2 gap-2 text-xs">
             <button
               onClick={handleAddVat}
-              className="py-2 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold transition flex items-center justify-center gap-1"
+              aria-label="إضافة خمسة عشر بالمئة ضريبة القيمة المضافة"
+              className="py-2 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold transition flex items-center justify-center gap-1 focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none"
             >
               <span>+ إضافة 15% ضريبة</span>
             </button>
             <button
               onClick={handleRemoveVat}
-              className="py-2 px-3 bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-bold transition flex items-center justify-center gap-1"
+              aria-label="خصم خمسة عشر بالمئة ضريبة القيمة المضافة"
+              className="py-2 px-3 bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-bold transition flex items-center justify-center gap-1 focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none"
             >
               <span>- خصم 15% ضريبة</span>
             </button>
@@ -229,7 +239,8 @@ export const CalculatorModal: React.FC<CalculatorModalProps> = ({ isOpen, onClos
                 <button
                   key={pct}
                   onClick={() => handleApplyDiscount(pct)}
-                  className="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded font-mono text-[11px] transition"
+                  aria-label={`تطبيق خصم ${pct} بالمئة`}
+                  className="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded font-mono text-[11px] transition focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none"
                 >
                   -{pct}%
                 </button>
@@ -245,13 +256,14 @@ export const CalculatorModal: React.FC<CalculatorModalProps> = ({ isOpen, onClos
               <span className="font-bold text-emerald-400 font-mono">{numVal.toFixed(2)} ر.س</span>
             </div>
             <div className="flex justify-between items-center gap-2">
-              <span className="text-slate-300 text-[11px]">المبلغ المستلم من العميل:</span>
+              <label htmlFor="cash-given-input" className="text-slate-300 text-[11px]">المبلغ المستلم من العميل:</label>
               <input
+                id="cash-given-input"
                 type="number"
                 value={cashGiven}
                 onChange={e => setCashGiven(e.target.value)}
                 placeholder="أدخل الكاش المستلم"
-                className="w-32 py-1 px-2 bg-slate-950 border border-slate-700 rounded text-left text-white font-mono text-xs focus:outline-none focus:border-emerald-500"
+                className="w-32 py-1 px-2 bg-slate-950 border border-slate-700 rounded text-left text-white font-mono text-xs focus:outline-none focus:border-emerald-500 focus-visible:ring-2 focus-visible:ring-emerald-500"
               />
             </div>
             <div className="p-2 rounded bg-slate-950 border border-slate-800 flex justify-between items-center">
@@ -267,25 +279,29 @@ export const CalculatorModal: React.FC<CalculatorModalProps> = ({ isOpen, onClos
         <div className="p-3 grid grid-cols-4 gap-2 bg-slate-900">
           <button
             onClick={handleClear}
-            className="py-3 bg-rose-950/80 hover:bg-rose-900 text-rose-300 rounded-xl font-bold transition text-sm flex items-center justify-center"
+            aria-label="مسح الكل"
+            className="py-3 bg-rose-950/80 hover:bg-rose-900 text-rose-300 rounded-xl font-bold transition text-sm flex items-center justify-center focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none"
           >
             C
           </button>
           <button
             onClick={handleBackspace}
-            className="py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-bold transition flex items-center justify-center"
+            aria-label="تراجع خطوة"
+            className="py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-bold transition flex items-center justify-center focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none"
           >
-            <Delete className="w-4 h-4" />
+            <Delete className="w-4 h-4" aria-hidden="true" />
           </button>
           <button
             onClick={() => handleOperatorInput('/')}
-            className="py-3 bg-emerald-900/60 hover:bg-emerald-800 text-emerald-300 rounded-xl font-bold transition text-sm flex items-center justify-center"
+            aria-label="تقسيم"
+            className="py-3 bg-emerald-900/60 hover:bg-emerald-800 text-emerald-300 rounded-xl font-bold transition text-sm flex items-center justify-center focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none"
           >
             ÷
           </button>
           <button
             onClick={() => handleOperatorInput('*')}
-            className="py-3 bg-emerald-900/60 hover:bg-emerald-800 text-emerald-300 rounded-xl font-bold transition text-sm flex items-center justify-center"
+            aria-label="ضرب"
+            className="py-3 bg-emerald-900/60 hover:bg-emerald-800 text-emerald-300 rounded-xl font-bold transition text-sm flex items-center justify-center focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none"
           >
             ×
           </button>
@@ -294,14 +310,16 @@ export const CalculatorModal: React.FC<CalculatorModalProps> = ({ isOpen, onClos
             <button
               key={n}
               onClick={() => handleNumInput(n)}
-              className="py-3 bg-slate-800/80 hover:bg-slate-700 text-white rounded-xl font-bold font-mono text-base transition shadow-sm"
+              aria-label={`رقم ${n}`}
+              className="py-3 bg-slate-800/80 hover:bg-slate-700 text-white rounded-xl font-bold font-mono text-base transition shadow-sm focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none"
             >
               {n}
             </button>
           ))}
           <button
             onClick={() => handleOperatorInput('-')}
-            className="py-3 bg-emerald-900/60 hover:bg-emerald-800 text-emerald-300 rounded-xl font-bold transition text-base flex items-center justify-center"
+            aria-label="طرح"
+            className="py-3 bg-emerald-900/60 hover:bg-emerald-800 text-emerald-300 rounded-xl font-bold transition text-base flex items-center justify-center focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none"
           >
             -
           </button>
@@ -310,14 +328,16 @@ export const CalculatorModal: React.FC<CalculatorModalProps> = ({ isOpen, onClos
             <button
               key={n}
               onClick={() => handleNumInput(n)}
-              className="py-3 bg-slate-800/80 hover:bg-slate-700 text-white rounded-xl font-bold font-mono text-base transition shadow-sm"
+              aria-label={`رقم ${n}`}
+              className="py-3 bg-slate-800/80 hover:bg-slate-700 text-white rounded-xl font-bold font-mono text-base transition shadow-sm focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none"
             >
               {n}
             </button>
           ))}
           <button
             onClick={() => handleOperatorInput('+')}
-            className="py-3 bg-emerald-900/60 hover:bg-emerald-800 text-emerald-300 rounded-xl font-bold transition text-base flex items-center justify-center"
+            aria-label="جمع"
+            className="py-3 bg-emerald-900/60 hover:bg-emerald-800 text-emerald-300 rounded-xl font-bold transition text-base flex items-center justify-center focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none"
           >
             +
           </button>
@@ -326,27 +346,31 @@ export const CalculatorModal: React.FC<CalculatorModalProps> = ({ isOpen, onClos
             <button
               key={n}
               onClick={() => handleNumInput(n)}
-              className="py-3 bg-slate-800/80 hover:bg-slate-700 text-white rounded-xl font-bold font-mono text-base transition shadow-sm"
+              aria-label={`رقم ${n}`}
+              className="py-3 bg-slate-800/80 hover:bg-slate-700 text-white rounded-xl font-bold font-mono text-base transition shadow-sm focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none"
             >
               {n}
             </button>
           ))}
           <button
             onClick={handleEvaluate}
-            className="row-span-2 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-xl transition flex items-center justify-center shadow-lg shadow-emerald-900/50"
+            aria-label="يساوي"
+            className="row-span-2 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-xl transition flex items-center justify-center shadow-lg shadow-emerald-900/50 focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none"
           >
             =
           </button>
 
           <button
             onClick={() => handleNumInput('0')}
-            className="col-span-2 py-3 bg-slate-800/80 hover:bg-slate-700 text-white rounded-xl font-bold font-mono text-base transition shadow-sm"
+            aria-label="رقم 0"
+            className="col-span-2 py-3 bg-slate-800/80 hover:bg-slate-700 text-white rounded-xl font-bold font-mono text-base transition shadow-sm focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none"
           >
             0
           </button>
           <button
             onClick={() => handleNumInput('.')}
-            className="py-3 bg-slate-800/80 hover:bg-slate-700 text-white rounded-xl font-bold font-mono text-base transition shadow-sm"
+            aria-label="فاصلة عشرية"
+            className="py-3 bg-slate-800/80 hover:bg-slate-700 text-white rounded-xl font-bold font-mono text-base transition shadow-sm focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none"
           >
             .
           </button>
