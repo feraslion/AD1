@@ -91,93 +91,16 @@ export default function Login({ onLoginSuccess, settings }: LoginProps) {
     setError('');
 
     try {
-      let data: any = null;
-      let backendAvailable = true;
+      const res = await fetch(resolveApiUrl('/api/auth/login'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
 
-      try {
-        const res = await fetch(resolveApiUrl('/api/auth/login'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
+      const data = await res.json();
 
-        // Read the body as text first — it may be empty or HTML (static host / no backend),
-        // which would make res.json() throw 'Unexpected end of JSON input'.
-        const rawText = await res.text().catch(() => '');
-        try {
-          data = rawText ? JSON.parse(rawText) : null;
-        } catch {
-          data = null;
-        }
-
-        if (!res.ok || !data || !data.success) {
-          // Real API rejection (e.g. wrong PIN/password) → surface the actual error
-          if (data && data.success === false) {
-            throw new Error(data.error || 'فشلت عملية المصادقة');
-          }
-          // Backend unreachable or non-JSON/empty response → offline fallback
-          backendAvailable = false;
-        }
-      } catch (fetchErr: any) {
-        // Detect network-level failure (backend unreachable) vs API error
-        const isNetworkError = fetchErr instanceof TypeError && (
-          fetchErr.message.includes('Failed to fetch') ||
-          fetchErr.message.includes('NetworkError') ||
-          fetchErr.message.includes('fetch')
-        );
-        if (isNetworkError) {
-          backendAvailable = false;
-          console.warn('Backend unreachable, falling back to offline auth');
-        } else {
-          throw fetchErr;
-        }
-      }
-
-      if (!backendAvailable) {
-        // Offline fallback: verify against static user list
-        const targetUser = employees.find((u: any) => {
-          if (payload.code) return u.code === payload.code;
-          if (payload.email) return u.email === payload.email;
-          return false;
-        });
-
-        if (!targetUser) {
-          throw new Error('المستخدم غير موجود في قائمة الموظفين');
-        }
-
-        // Verify PIN or password locally
-        if (payload.pin) {
-          const expectedPin = targetUser.pin || '1234';
-          if (payload.pin !== expectedPin) {
-            throw new Error('رمز PIN الذي أدخلته غير صحيح');
-          }
-        } else if (payload.password) {
-          // In offline mode, accept the password as-is (no hash check)
-        } else {
-          throw new Error('يرجى إدخال رمز PIN أو كلمة المرور');
-        }
-
-        // Generate offline session tokens
-        const offlineToken = 'offline_' + btoa(JSON.stringify({ id: targetUser.id, role: targetUser.role, ts: Date.now() }));
-        const offlineRefreshToken = 'offline_refresh_' + btoa(JSON.stringify({ id: targetUser.id, ts: Date.now() }));
-
-        localStorage.setItem('erp_refresh_token', offlineRefreshToken);
-
-        const sessionUser = {
-          id: targetUser.id,
-          name: targetUser.name,
-          role: targetUser.role,
-          code: targetUser.code || targetUser.id,
-          roleId: targetUser.roleId || null,
-          email: targetUser.email,
-          permissions: [],
-          token: offlineToken,
-          isVerified: true
-        };
-
-        PermissionService.setCurrentUser(sessionUser);
-        onLoginSuccess(sessionUser);
-        return;
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'فشلت عملية المصادقة');
       }
 
       // Store tokens
@@ -321,46 +244,10 @@ export default function Login({ onLoginSuccess, settings }: LoginProps) {
         })
       });
 
-      // Safely parse the response body (may be empty/non-JSON when backend is unreachable)
-      const rawText = await res.text().catch(() => '');
-      let data: any = null;
-      try {
-        data = rawText ? JSON.parse(rawText) : null;
-      } catch {
-        data = null;
-      }
+      const data = await res.json();
 
-      if (!res.ok || !data || !data.success) {
-        // Real API rejection → surface the actual error
-        if (data && data.success === false) {
-          throw new Error(data.error || 'فشل إنشاء حساب موظف جديد');
-        }
-        // Backend unreachable → register locally (offline mode)
-        const localId = String(employees.length + 1).padStart(3, '0');
-        const localUser = {
-          id: localId,
-          code: localId,
-          email: signupEmail,
-          name: signupName,
-          role: signupRole,
-          pin: signupPin || '1234',
-          color: signupRole === 'manager' ? 'bg-indigo-50 border-indigo-200 text-indigo-700' :
-                 signupRole === 'accountant' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
-                 signupRole === 'inventory' ? 'bg-amber-50 border-amber-200 text-amber-700' :
-                 'bg-blue-50 border-blue-200 text-blue-700'
-        };
-        setEmployees(prev => [...prev, localUser]);
-        setSignupSuccessMsg('تم إنشاء حساب الموظف محلياً (وضع عدم الاتصال)! يمكنك الآن تسجيل الدخول.');
-        setTimeout(() => {
-          setEmailInput(signupEmail);
-          setPasswordInput(signupPassword);
-          setLoginMode('password');
-          setSignupSuccessMsg('');
-          setSignupName('');
-          setSignupEmail('');
-          setSignupPassword('');
-        }, 2000);
-        return;
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'فشل إنشاء حساب موظف جديد');
       }
 
       setSignupSuccessMsg('تم إنشاء حساب الموظف بنجاح ومزامنته مع Firebase Auth! يمكنك الآن تسجيل الدخول.');
