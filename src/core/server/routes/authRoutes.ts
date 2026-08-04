@@ -4,6 +4,7 @@ import { users, userSessions, roles, permissions, rolePermissions } from '../../
 import { eq, and, gt } from 'drizzle-orm';
 import { TokenService } from '../../auth/TokenService.ts';
 import { AuthenticatedRequest, ROLE_DEFAULT_PERMISSIONS, authenticate, requireRole } from '../middleware/auth.ts';
+import { strictRateLimiter } from '../middleware/rateLimiter.ts';
 
 export const authRouter = Router();
 
@@ -11,7 +12,7 @@ export const authRouter = Router();
  * 1. POST /api/auth/login
  * Login with email/password OR employee code/PIN
  */
-authRouter.post('/login', async (req: Request, res: Response) => {
+authRouter.post('/login', strictRateLimiter, async (req: Request, res: Response) => {
   try {
     const { email, password, code, pin, identifier } = req.body;
     let userRecord: any = null;
@@ -160,7 +161,7 @@ authRouter.post('/login', async (req: Request, res: Response) => {
  * 2. POST /api/auth/register
  * Register a new employee/user (Supports Firebase Auth UID or system user creation)
  */
-authRouter.post('/register', async (req: Request, res: Response) => {
+authRouter.post('/register', strictRateLimiter, async (req: Request, res: Response) => {
   try {
     const { email, name, password, role, pin } = req.body;
 
@@ -430,7 +431,7 @@ authRouter.delete('/sessions/:id', async (req: AuthenticatedRequest, res: Respon
  * 8. POST /api/auth/forgot-password
  * Generate password reset token
  */
-authRouter.post('/forgot-password', async (req: Request, res: Response) => {
+authRouter.post('/forgot-password', strictRateLimiter, async (req: Request, res: Response) => {
   try {
     const { email } = req.body;
     if (!email) {
@@ -475,7 +476,7 @@ authRouter.post('/forgot-password', async (req: Request, res: Response) => {
  * 9. POST /api/auth/reset-password
  * Reset password using valid reset token
  */
-authRouter.post('/reset-password', async (req: Request, res: Response) => {
+authRouter.post('/reset-password', strictRateLimiter, async (req: Request, res: Response) => {
   try {
     const { token, newPassword } = req.body;
     if (!token || !newPassword) {

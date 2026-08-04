@@ -125,7 +125,9 @@ export async function runSecurityRegressionTests() {
 
 // Execute tests if invoked directly
 if (import.meta.url === `file://${process.argv[1]}`) {
-  runSecurityRegressionTests().catch((err) => {
+  runSecurityRegressionTests().then(() => {
+    process.exit(0);
+  }).catch((err) => {
     console.error('❌ SECURITY REGRESSION TEST FAILED:', err);
     process.exit(1);
   });
