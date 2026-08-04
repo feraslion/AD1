@@ -1,0 +1,4 @@
+## 2026-08-04 - [Missing Rate Limiting on Sensitive Authentication Endpoints]
+**Vulnerability:** Authentication and credential recovery endpoints (`/login`, `/register`, `/forgot-password`, and `/reset-password`) lacked rate limiting, leaving them susceptible to brute-force credential stuffing, account creation flooding, and denial-of-service (DoS) attacks.
+**Learning:** While the backend was protected under the global `/api` route via `defaultRateLimiter`, the authentication router (`/api/auth`) was registered prior to `/api` and did not invoke the rate limiter, bypassing the safeguard entirely.
+**Prevention:** Explicitly import and apply dedicated, stricter rate-limiting middleware (`strictRateLimiter`) directly on all sensitive authentication and credential recovery endpoints in the authentication router.
