@@ -48,16 +48,23 @@ export const OfflineQueue = {
 
     let syncedCount = 0;
     let failedCount = 0;
+    const syncedIds = new Set<string>();
 
     for (const inv of queue) {
       try {
         await postInvoiceApi(inv);
-        OfflineQueue.remove(inv.id);
+        syncedIds.add(inv.id);
         syncedCount++;
       } catch (err) {
         console.error(`Failed to sync invoice ${inv.id}`, err);
         failedCount++;
       }
+    }
+
+    // Persist only once at the end of the sync process to avoid synchronous localStorage blocking inside the loop
+    if (syncedIds.size > 0) {
+      const remaining = queue.filter(item => !syncedIds.has(item.id));
+      localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(remaining));
     }
 
     return { syncedCount, failedCount };
