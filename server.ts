@@ -138,8 +138,12 @@ async function authenticate(req: Request, res: Response, next: NextFunction) {
       }
     }
 
-    // Default manager user fallback for dev/testing session
+    // SECURE FALLBACK HARDENING: Prevent bypass of authentication in production.
+    // Default manager fallback is strictly disabled in production.
     if (!userRecord) {
+      if (process.env.NODE_ENV === 'production') {
+        return sendError(res, 'غير مصرح به - يلزم تقديم رمز التوثيق (Authorization Bearer)', null, 401);
+      }
       const [master] = await db.select().from(users).where(eq(users.id, '001'));
       userRecord = (master as AuthenticatedUser) || { id: '001', uid: '001', email: 'manager@system.com', name: 'عبدالرحمن (المدير العام)', role: 'manager', roleId: 'role_manager' };
     }

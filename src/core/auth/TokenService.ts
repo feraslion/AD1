@@ -2,6 +2,12 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 
+if (process.env.NODE_ENV === 'production') {
+  if (!process.env.JWT_SECRET || !process.env.REFRESH_SECRET) {
+    throw new Error('CRITICAL SECURITY ERROR: JWT_SECRET and REFRESH_SECRET must be explicitly set in production!');
+  }
+}
+
 const JWT_SECRET = process.env.JWT_SECRET || 'enterprise-erp-jwt-secret-key-2026';
 const REFRESH_SECRET = process.env.REFRESH_SECRET || 'enterprise-erp-refresh-secret-key-2026';
 

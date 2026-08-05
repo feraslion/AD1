@@ -1,0 +1,4 @@
+## 2026-03-04 - [Production Authentication Bypass via Default Developer Fallback]
+**Vulnerability:** The local Express `authenticate` middleware in `server.ts` fell back to a default administrator manager account ('001') if no valid bearer token was presented in the request header. This fallback was active across all environments, allowing unauthenticated requests to bypass credentials and act as a Manager in production.
+**Learning:** Hardcoded developer backdoors and fallbacks intended to ease local testing can easily leak into production. Middleware definitions in the main application entrypoint often override tested modular middleware.
+**Prevention:** Always restrict developer login fallbacks and testing bypasses explicitly using `process.env.NODE_ENV !== 'production'`. Ensure central middleware modules are consistently used or tested to verify production configurations.
