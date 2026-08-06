@@ -1,19 +1,34 @@
 import { db } from '../database/index.ts';
 import { withAutoMigration } from '../database/initSchema.ts';
 import { products, categories, units, stockMoves, warehouses } from '../database/schema.ts';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, and, or, like } from 'drizzle-orm';
 
 export class ProductRepository {
   static async findAll(params?: { search?: string; category?: string }) {
-    let list = await db.select().from(products);
+    // ⚡ Bolt Performance Optimization:
+    // Filter at the database level using Drizzle ORM query builders (where, and, or, eq, like)
+    // instead of fetching all products into Node.js memory and filtering via JavaScript array.
+    // This avoids high CPU usage and reduces memory overhead as the product catalog grows.
+    const conditions = [];
+
     if (params?.category) {
-      list = list.filter(p => p.category === params.category);
+      conditions.push(eq(products.category, params.category));
     }
+
     if (params?.search) {
-      const term = params.search.toLowerCase();
-      list = list.filter(p => p.name.toLowerCase().includes(term) || p.barcode.includes(term));
+      conditions.push(
+        or(
+          like(products.name, `%${params.search}%`),
+          like(products.barcode, `%${params.search}%`)
+        )
+      );
     }
-    return list;
+
+    let query = db.select().from(products);
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions)) as any;
+    }
+    return await query;
   }
 
   static async findById(id: string) {

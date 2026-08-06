@@ -118,16 +118,23 @@ export class ExpenseRepository {
   static async getRequests(statusFilter?: string) {
     return await withAutoMigration(async () => {
       try {
-        const list = await db.select().from(expenseRequests).orderBy(desc(expenseRequests.createdAt));
+        // ⚡ Bolt Performance Optimization:
+        // Filter at the database level using Drizzle ORM query builders (where, eq)
+        // instead of fetching all records and filtering them in-memory using JavaScript array filter.
+        let list;
+        if (statusFilter && statusFilter !== 'all') {
+          list = await db.select().from(expenseRequests)
+            .where(eq(expenseRequests.status, statusFilter))
+            .orderBy(desc(expenseRequests.createdAt));
+        } else {
+          list = await db.select().from(expenseRequests)
+            .orderBy(desc(expenseRequests.createdAt));
+        }
+
         const categories = await this.getCategories();
         const catMap = new Map(categories.map(c => [c.id, c]));
 
-        let filtered = list;
-        if (statusFilter && statusFilter !== 'all') {
-          filtered = list.filter(r => r.status === statusFilter);
-        }
-
-        return filtered.map(r => ({
+        return list.map(r => ({
           ...r,
           amount: parseFloat(r.amount || '0'),
           taxAmount: parseFloat(r.taxAmount || '0'),

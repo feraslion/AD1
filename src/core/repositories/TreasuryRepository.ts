@@ -237,13 +237,19 @@ export class TreasuryRepository {
   static async getTransactions(type?: string) {
     return await withAutoMigration(async () => {
       try {
-        let query = db.select().from(treasuryTransactions).orderBy(desc(treasuryTransactions.createdAt));
-        const list = await query;
-        let filtered = list;
+        // ⚡ Bolt Performance Optimization:
+        // Filter at the database level using Drizzle ORM query builders (where, eq)
+        // instead of fetching all records and filtering them in-memory using JavaScript array filter.
+        let list;
         if (type) {
-          filtered = list.filter(t => t.transactionType === type);
+          list = await db.select().from(treasuryTransactions)
+            .where(eq(treasuryTransactions.transactionType, type))
+            .orderBy(desc(treasuryTransactions.createdAt));
+        } else {
+          list = await db.select().from(treasuryTransactions)
+            .orderBy(desc(treasuryTransactions.createdAt));
         }
-        return filtered.map(t => ({
+        return list.map(t => ({
           ...t,
           amount: parseFloat(t.amount || '0'),
           exchangeRate: parseFloat(t.exchangeRate || '1'),

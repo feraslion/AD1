@@ -1,29 +1,40 @@
 import { db } from '../database/index.ts';
 import { invoices, invoiceItems, customers, products } from '../database/schema.ts';
-import { eq, desc, inArray, like, or } from 'drizzle-orm';
+import { eq, desc, inArray, like, or, and } from 'drizzle-orm';
 import { CustomerRepository } from './CustomerRepository.ts';
 import { ProductRepository } from './ProductRepository.ts';
 
 export class InvoiceRepository {
   static async findAll(params?: { search?: string; customerId?: string; status?: string }) {
-    let query = db.select().from(invoices).orderBy(desc(invoices.createdAt));
-    let list = await query;
+    // ⚡ Bolt Performance Optimization:
+    // Filter at the database level using Drizzle ORM query builders (where, and, or, eq, like)
+    // instead of fetching all records and filtering them in-memory using JavaScript array filter.
+    // This avoids high CPU usage and reduces memory overhead as the invoices table grows.
+    const conditions = [];
 
     if (params?.search) {
-      const term = params.search.toLowerCase();
-      list = list.filter(inv => 
-        inv.invoiceNumber.toLowerCase().includes(term) ||
-        inv.customerName?.toLowerCase().includes(term)
+      conditions.push(
+        or(
+          like(invoices.invoiceNumber, `%${params.search}%`),
+          like(invoices.customerName, `%${params.search}%`)
+        )
       );
     }
 
     if (params?.customerId) {
-      list = list.filter(inv => inv.customerId === params.customerId);
+      conditions.push(eq(invoices.customerId, params.customerId));
     }
 
     if (params?.status && params.status !== 'all') {
-      list = list.filter(inv => inv.status === params.status);
+      conditions.push(eq(invoices.status, params.status));
     }
+
+    let query = db.select().from(invoices);
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions)) as any;
+    }
+
+    const list = await query.orderBy(desc(invoices.createdAt));
 
     const invoiceIds = list.map(i => i.id);
     const allItems = invoiceIds.length > 0
