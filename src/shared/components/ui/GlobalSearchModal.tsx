@@ -245,7 +245,10 @@ export default function GlobalSearchModal({
               setSelectedIndex(0);
             }}
             placeholder="ابحث عن منتج، عميل، بركود، أو رقم فاتورة..."
-            className="flex-1 bg-transparent border-none text-slate-800 dark:text-slate-100 placeholder-slate-400 font-bold text-sm sm:text-base focus:outline-none focus:ring-0"
+            aria-autocomplete="list"
+            aria-controls="search-results-list"
+            aria-activedescendant={combinedResults[selectedIndex] ? `search-result-${selectedIndex}` : undefined}
+            className="flex-1 bg-transparent border-none text-slate-800 dark:text-slate-100 placeholder-slate-400 font-bold text-sm sm:text-base focus:outline-none focus:ring-0 focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none rounded-lg"
           />
           <div className="flex items-center gap-2 shrink-0">
             <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-mono font-bold bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2 py-1 rounded-md border border-slate-300 dark:border-slate-700">
@@ -254,8 +257,9 @@ export default function GlobalSearchModal({
             <button 
               type="button"
               onClick={onClose}
-              className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-200/80 dark:bg-slate-800 hover:bg-rose-100 dark:hover:bg-rose-950/50 text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 transition"
+              className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-200/80 dark:bg-slate-800 hover:bg-rose-100 dark:hover:bg-rose-950/50 text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 transition focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none"
               title="إغلاق (ESC)"
+              aria-label="إغلاق البحث"
             >
               <X className="w-4 h-4" />
             </button>
@@ -263,11 +267,17 @@ export default function GlobalSearchModal({
         </div>
 
         {/* Filter Category Tabs */}
-        <div className="px-4 py-2.5 bg-slate-100/80 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+        <div
+          role="tablist"
+          aria-label="فئات البحث"
+          className="px-4 py-2.5 bg-slate-100/80 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 flex items-center gap-1.5 overflow-x-auto no-scrollbar"
+        >
           <button
             type="button"
+            role="tab"
+            aria-selected={activeFilter === 'all'}
             onClick={() => { setActiveFilter('all'); setSelectedIndex(0); }}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap min-h-[36px] ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap min-h-[36px] focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none ${
               activeFilter === 'all'
                 ? 'bg-emerald-600 text-white shadow-xs'
                 : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
@@ -281,14 +291,16 @@ export default function GlobalSearchModal({
 
           <button
             type="button"
+            role="tab"
+            aria-selected={activeFilter === 'products'}
             onClick={() => { setActiveFilter('products'); setSelectedIndex(0); }}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap min-h-[36px] ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap min-h-[36px] focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none ${
               activeFilter === 'products'
                 ? 'bg-emerald-600 text-white shadow-xs'
                 : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
             }`}
           >
-            <Package className="w-3.5 h-3.5" />
+            <Package className="w-3.5 h-3.5" aria-hidden="true" />
             <span>المنتجات</span>
             <span className="text-[10px] bg-black/10 dark:bg-white/10 px-1.5 py-0.5 rounded-md font-mono font-bold">
               {matchingProducts.length}
@@ -297,14 +309,16 @@ export default function GlobalSearchModal({
 
           <button
             type="button"
+            role="tab"
+            aria-selected={activeFilter === 'customers'}
             onClick={() => { setActiveFilter('customers'); setSelectedIndex(0); }}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap min-h-[36px] ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap min-h-[36px] focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none ${
               activeFilter === 'customers'
                 ? 'bg-emerald-600 text-white shadow-xs'
                 : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
             }`}
           >
-            <User className="w-3.5 h-3.5" />
+            <User className="w-3.5 h-3.5" aria-hidden="true" />
             <span>العملاء</span>
             <span className="text-[10px] bg-black/10 dark:bg-white/10 px-1.5 py-0.5 rounded-md font-mono font-bold">
               {matchingCustomers.length}
@@ -313,14 +327,16 @@ export default function GlobalSearchModal({
 
           <button
             type="button"
+            role="tab"
+            aria-selected={activeFilter === 'invoices'}
             onClick={() => { setActiveFilter('invoices'); setSelectedIndex(0); }}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap min-h-[36px] ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap min-h-[36px] focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none ${
               activeFilter === 'invoices'
                 ? 'bg-emerald-600 text-white shadow-xs'
                 : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
             }`}
           >
-            <Receipt className="w-3.5 h-3.5" />
+            <Receipt className="w-3.5 h-3.5" aria-hidden="true" />
             <span>الفواتير</span>
             <span className="text-[10px] bg-black/10 dark:bg-white/10 px-1.5 py-0.5 rounded-md font-mono font-bold">
               {matchingInvoices.length}
@@ -329,7 +345,13 @@ export default function GlobalSearchModal({
         </div>
 
         {/* Results List */}
-        <div ref={listRef} className="flex-1 overflow-y-auto p-3 space-y-1.5">
+        <div
+          ref={listRef}
+          id="search-results-list"
+          role="listbox"
+          aria-label="نتائج البحث"
+          className="flex-1 overflow-y-auto p-3 space-y-1.5"
+        >
           {combinedResults.length === 0 ? (
             <div className="py-12 px-4 text-center text-slate-400 dark:text-slate-500 space-y-2">
               <Search className="w-12 h-12 mx-auto stroke-1 text-slate-300 dark:text-slate-700" />
@@ -346,9 +368,12 @@ export default function GlobalSearchModal({
                 return (
                   <div
                     key={`prod_${product.id}`}
+                    id={`search-result-${idx}`}
+                    role="option"
+                    aria-selected={isSelected}
                     onClick={() => handleSelectResult(item)}
                     onMouseEnter={() => setSelectedIndex(idx)}
-                    className={`p-3 rounded-2xl border transition cursor-pointer flex items-center justify-between gap-3 ${
+                    className={`p-3 rounded-2xl border transition cursor-pointer flex items-center justify-between gap-3 focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none ${
                       isSelected
                         ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 shadow-xs'
                         : 'bg-white dark:bg-slate-800/70 border-slate-200 dark:border-slate-700 hover:border-emerald-300'
@@ -397,9 +422,12 @@ export default function GlobalSearchModal({
                 return (
                   <div
                     key={`cust_${customer.id}`}
+                    id={`search-result-${idx}`}
+                    role="option"
+                    aria-selected={isSelected}
                     onClick={() => handleSelectResult(item)}
                     onMouseEnter={() => setSelectedIndex(idx)}
-                    className={`p-3 rounded-2xl border transition cursor-pointer flex items-center justify-between gap-3 ${
+                    className={`p-3 rounded-2xl border transition cursor-pointer flex items-center justify-between gap-3 focus-visible:ring-2 focus-visible:ring-blue-500 outline-none ${
                       isSelected
                         ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-500 shadow-xs'
                         : 'bg-white dark:bg-slate-800/70 border-slate-200 dark:border-slate-700 hover:border-blue-300'
@@ -457,9 +485,12 @@ export default function GlobalSearchModal({
                 return (
                   <div
                     key={`inv_${invoice.id}`}
+                    id={`search-result-${idx}`}
+                    role="option"
+                    aria-selected={isSelected}
                     onClick={() => handleSelectResult(item)}
                     onMouseEnter={() => setSelectedIndex(idx)}
-                    className={`p-3 rounded-2xl border transition cursor-pointer flex items-center justify-between gap-3 ${
+                    className={`p-3 rounded-2xl border transition cursor-pointer flex items-center justify-between gap-3 focus-visible:ring-2 focus-visible:ring-purple-500 outline-none ${
                       isSelected
                         ? 'bg-purple-50 dark:bg-purple-950/40 border-purple-500 shadow-xs'
                         : 'bg-white dark:bg-slate-800/70 border-slate-200 dark:border-slate-700 hover:border-purple-300'
