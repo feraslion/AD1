@@ -118,16 +118,16 @@ export class ExpenseRepository {
   static async getRequests(statusFilter?: string) {
     return await withAutoMigration(async () => {
       try {
-        const list = await db.select().from(expenseRequests).orderBy(desc(expenseRequests.createdAt));
+        // Bolt: Optimized to use database-level filtering instead of in-memory JS filtering
+        let query = db.select().from(expenseRequests).orderBy(desc(expenseRequests.createdAt));
+        if (statusFilter && statusFilter !== 'all') {
+          query = query.where(eq(expenseRequests.status, statusFilter)) as any;
+        }
+        const list = await query;
         const categories = await this.getCategories();
         const catMap = new Map(categories.map(c => [c.id, c]));
 
-        let filtered = list;
-        if (statusFilter && statusFilter !== 'all') {
-          filtered = list.filter(r => r.status === statusFilter);
-        }
-
-        return filtered.map(r => ({
+        return list.map(r => ({
           ...r,
           amount: parseFloat(r.amount || '0'),
           taxAmount: parseFloat(r.taxAmount || '0'),
