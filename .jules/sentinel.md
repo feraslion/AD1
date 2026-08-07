@@ -1,0 +1,4 @@
+## 2025-03-02 - Broken Function Level Authorization (BFLA) in ERP System Routes
+**Vulnerability:** Core system workflows, audit logs, and critical operations (like backup export and database restore) under `src/core/server/routes/v1/system.routes.ts` lacked RBAC authorization checks, allowing any authenticated user (e.g. low-privilege Cashier or Inventory roles) to download complete data dumps or overwrite database snapshots.
+**Learning:** Broken Function Level Authorization is a major vulnerability vector. While other modules (accounting, treasury, expenses) had strict `authorize` checks, the system endpoints were overlooked due to being classified as "helper utilities".
+**Prevention:** Always default to zero-trust route mapping. Every administrative route must be explicitly wrapped with the `authorize` RBAC guard matching the target role permissions (e.g., restricting data backup and recovery strictly to the 'manager' role).
