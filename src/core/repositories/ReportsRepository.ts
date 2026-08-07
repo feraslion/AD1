@@ -413,20 +413,29 @@ export class ReportsRepository {
     const targetRate = await CurrencyRepository.getHistoricalRate(targetCurrency, filter?.endDate);
     
     // Get entries & lines with optional date and currency filters
-    let entries = await db.select().from(journalEntries);
+    // Bolt: Optimized using database-level filtering for entries and batch-querying matched lines using inArray,
+    // avoiding pulling entire tables into memory and performing O(N) array filtering.
+    const conditions = [];
     if (filter?.startDate) {
-      entries = entries.filter(e => e.date >= filter.startDate!);
+      conditions.push(gte(journalEntries.date, filter.startDate));
     }
     if (filter?.endDate) {
-      entries = entries.filter(e => e.date <= filter.endDate!);
+      conditions.push(lte(journalEntries.date, filter.endDate));
     }
     if (filter?.currency && filter.currency !== 'ALL' && filter.currency !== 'SAR' && filter.currency !== baseCurrency) {
-      entries = entries.filter(e => e.currency === filter.currency);
+      conditions.push(eq(journalEntries.currency, filter.currency));
     }
 
+    let entriesQuery = db.select().from(journalEntries);
+    if (conditions.length > 0) {
+      entriesQuery = entriesQuery.where(and(...conditions)) as any;
+    }
+    const entries = await entriesQuery;
+
     const validEntryIds = new Set(entries.map(e => e.id));
-    const allLines = await db.select().from(journalLines);
-    const lines = allLines.filter(l => validEntryIds.has(l.journalEntryId));
+    const lines = validEntryIds.size > 0
+      ? await db.select().from(journalLines).where(inArray(journalLines.journalEntryId, Array.from(validEntryIds)))
+      : [];
 
     const accountStats: Record<string, { debit: number; credit: number; foreignDebit: number; foreignCredit: number }> = {};
 

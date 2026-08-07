@@ -6,7 +6,7 @@ import {
   bankReconciliations,
   accounts 
 } from '../database/schema.ts';
-import { eq, desc, and } from 'drizzle-orm';
+import { eq, desc, and, or } from 'drizzle-orm';
 import { AccountingRepository } from './AccountingRepository.ts';
 import { withAutoMigration, ensureDatabaseTables } from '../database/initSchema.ts';
 
@@ -237,13 +237,13 @@ export class TreasuryRepository {
   static async getTransactions(type?: string) {
     return await withAutoMigration(async () => {
       try {
+        // Bolt: Optimized to use database-level filtering instead of in-memory JS filtering
         let query = db.select().from(treasuryTransactions).orderBy(desc(treasuryTransactions.createdAt));
-        const list = await query;
-        let filtered = list;
         if (type) {
-          filtered = list.filter(t => t.transactionType === type);
+          query = query.where(eq(treasuryTransactions.transactionType, type)) as any;
         }
-        return filtered.map(t => ({
+        const list = await query;
+        return list.map(t => ({
           ...t,
           amount: parseFloat(t.amount || '0'),
           exchangeRate: parseFloat(t.exchangeRate || '1'),
@@ -519,15 +519,18 @@ export class TreasuryRepository {
 
   static async getUnreconciledTransactions(bankAccountId: string) {
     try {
+      // Bolt: Optimized to filter bankAccountId at the database query level
       const list = await db.select().from(treasuryTransactions)
         .where(and(
-          eq(treasuryTransactions.reconciled, 'false')
+          eq(treasuryTransactions.reconciled, 'false'),
+          or(
+            eq(treasuryTransactions.sourceId, bankAccountId),
+            eq(treasuryTransactions.destinationId, bankAccountId)
+          )
         ))
         .orderBy(desc(treasuryTransactions.date));
 
-      // Filter transactions related to this bank account (either as source or destination)
-      const filtered = list.filter(t => t.sourceId === bankAccountId || t.destinationId === bankAccountId);
-      return filtered.map(t => ({
+      return list.map(t => ({
         ...t,
         amount: parseFloat(t.amount || '0')
       }));
