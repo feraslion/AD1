@@ -118,13 +118,55 @@ export async function runSecurityRegressionTests() {
   }
   console.log('✓ PASS: Rate limiter correctly triggers HTTP 429 when max requests exceeded');
 
+  // 6. Verify System RBAC Hardening
+  console.log('\n[Test 6] Verifying System Route Authorization (RBAC RBAC on Backups)...');
+  const { authorize } = await import('../core/server/middleware/rbac.ts');
+  const backupGuard = authorize(['manager']);
+
+  // Cashier should be rejected
+  const reqCashier: any = { user: { role: 'cashier', permissions: ['pos_access'] } };
+  let cashierStatus = 0;
+  const resCashier: any = {
+    status: (code: number) => {
+      cashierStatus = code;
+      return resCashier;
+    },
+    json: () => resCashier
+  };
+  let cashierNextCalled = false;
+  backupGuard(reqCashier, resCashier, () => { cashierNextCalled = true; });
+
+  if (cashierStatus !== 403 || cashierNextCalled) {
+    throw new Error(`CRITICAL SECURITY FAILURE: Cashier was NOT rejected from accessing backup route with 403 Forbidden!`);
+  }
+  console.log('✓ PASS: Cashier role correctly rejected from Manager-restricted backup route');
+
+  // Manager should be allowed
+  const reqManager: any = { user: { role: 'manager', permissions: [] } };
+  let managerStatus = 0;
+  const resManager: any = {
+    status: (code: number) => {
+      managerStatus = code;
+      return resManager;
+    },
+    json: () => resManager
+  };
+  let managerNextCalled = false;
+  backupGuard(reqManager, resManager, () => { managerNextCalled = true; });
+
+  if (!managerNextCalled) {
+    throw new Error(`CRITICAL SECURITY FAILURE: Manager was rejected from accessing backup route!`);
+  }
+  console.log('✓ PASS: Manager role successfully bypassed security guard for backup route');
+
   console.log('\n======================================================');
   console.log('🎉 ALL SECURITY HARDENING REGRESSION TESTS PASSED!');
   console.log('======================================================\n');
+  process.exit(0);
 }
 
 // Execute tests if invoked directly
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (true) {
   runSecurityRegressionTests().catch((err) => {
     console.error('❌ SECURITY REGRESSION TEST FAILED:', err);
     process.exit(1);
