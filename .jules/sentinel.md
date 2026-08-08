@@ -1,0 +1,4 @@
+## 2026-03-05 - Production Authentication Bypass & Insecure Fallbacks
+**Vulnerability:** The inline authentication middleware in `server.ts` allowed unauthenticated requests to fall back to a master manager user (ID '001') even in production environments, presenting a major authentication bypass. Additionally, default hardcoded JWT secrets were permitted in production, risking token forgery.
+**Learning:** These fallback/default configurations were initially added to simplify development and testing environments but lacked strict environment-based constraints, allowing insecure paths to leak into production environments.
+**Prevention:** Always scope master/development bypasses to non-production environments strictly (checking `process.env.NODE_ENV !== 'production'`) and throw a fatal exception during module initialization if default/fallback credentials or keys are detected in a production build.
