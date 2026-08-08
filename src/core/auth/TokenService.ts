@@ -2,8 +2,20 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'enterprise-erp-jwt-secret-key-2026';
-const REFRESH_SECRET = process.env.REFRESH_SECRET || 'enterprise-erp-refresh-secret-key-2026';
+const DEFAULT_JWT_SECRET = 'enterprise-erp-jwt-secret-key-2026';
+const DEFAULT_REFRESH_SECRET = 'enterprise-erp-refresh-secret-key-2026';
+
+if (process.env.NODE_ENV === 'production') {
+  if (!process.env.JWT_SECRET || process.env.JWT_SECRET === DEFAULT_JWT_SECRET) {
+    throw new Error('FATAL SECURITY ERROR: JWT_SECRET environment variable must be configured with a secure non-default value in production!');
+  }
+  if (!process.env.REFRESH_SECRET || process.env.REFRESH_SECRET === DEFAULT_REFRESH_SECRET) {
+    throw new Error('FATAL SECURITY ERROR: REFRESH_SECRET environment variable must be configured with a secure non-default value in production!');
+  }
+}
+
+const JWT_SECRET = process.env.JWT_SECRET || DEFAULT_JWT_SECRET;
+const REFRESH_SECRET = process.env.REFRESH_SECRET || DEFAULT_REFRESH_SECRET;
 
 export interface TokenPayload {
   id: string;
