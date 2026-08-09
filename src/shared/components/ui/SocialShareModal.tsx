@@ -161,9 +161,10 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition"
+            aria-label="إغلاق نافذة المشاركة"
+            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none"
           >
-            <X className="w-5 h-5" />
+            <X className="w-5 h-5" aria-hidden="true" />
           </button>
         </div>
 
@@ -171,64 +172,79 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
         <div className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1">
           
           {/* Channel Selector Tabs */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 p-1.5 bg-slate-100 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700/60 text-xs font-bold">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 p-1.5 bg-slate-100 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700/60 text-xs font-bold" role="tablist" aria-label="منصات مشاركة المستندات">
             <button
               onClick={() => setActiveTab('whatsapp')}
-              className={`py-2 px-2.5 rounded-lg transition flex items-center justify-center gap-1.5 ${
+              role="tab"
+              aria-selected={activeTab === 'whatsapp'}
+              aria-label="مشاركة عبر واتساب"
+              className={`py-2 px-2.5 rounded-lg transition flex items-center justify-center gap-1.5 focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none ${
                 activeTab === 'whatsapp'
                   ? 'bg-emerald-600 text-white shadow-md'
                   : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
               }`}
             >
-              <MessageCircle className="w-4 h-4 text-emerald-300" />
+              <MessageCircle className="w-4 h-4 text-emerald-300" aria-hidden="true" />
               <span>واتساب</span>
             </button>
 
             <button
               onClick={() => setActiveTab('telegram')}
-              className={`py-2 px-2.5 rounded-lg transition flex items-center justify-center gap-1.5 ${
+              role="tab"
+              aria-selected={activeTab === 'telegram'}
+              aria-label="مشاركة عبر تلجرام"
+              className={`py-2 px-2.5 rounded-lg transition flex items-center justify-center gap-1.5 focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none ${
                 activeTab === 'telegram'
                   ? 'bg-sky-500 text-white shadow-md'
                   : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
               }`}
             >
-              <Send className="w-4 h-4 text-sky-200" />
+              <Send className="w-4 h-4 text-sky-200" aria-hidden="true" />
               <span>تلجرام</span>
             </button>
 
             <button
               onClick={() => setActiveTab('gmail')}
-              className={`py-2 px-2.5 rounded-lg transition flex items-center justify-center gap-1.5 ${
+              role="tab"
+              aria-selected={activeTab === 'gmail'}
+              aria-label="مشاركة عبر البريد الإلكتروني جيميل"
+              className={`py-2 px-2.5 rounded-lg transition flex items-center justify-center gap-1.5 focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none ${
                 activeTab === 'gmail'
                   ? 'bg-rose-600 text-white shadow-md'
                   : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
               }`}
             >
-              <Mail className="w-4 h-4 text-rose-200" />
+              <Mail className="w-4 h-4 text-rose-200" aria-hidden="true" />
               <span>جيميل</span>
             </button>
 
             <button
               onClick={() => setActiveTab('drive')}
-              className={`py-2 px-2.5 rounded-lg transition flex items-center justify-center gap-1.5 ${
+              role="tab"
+              aria-selected={activeTab === 'drive'}
+              aria-label="مشاركة وحفظ عبر جوجل درايف"
+              className={`py-2 px-2.5 rounded-lg transition flex items-center justify-center gap-1.5 focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none ${
                 activeTab === 'drive'
                   ? 'bg-amber-600 text-white shadow-md'
                   : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
               }`}
             >
-              <HardDrive className="w-4 h-4 text-amber-200" />
+              <HardDrive className="w-4 h-4 text-amber-200" aria-hidden="true" />
               <span>درايف</span>
             </button>
 
             <button
               onClick={() => setActiveTab('native')}
-              className={`col-span-2 sm:col-span-1 py-2 px-2.5 rounded-lg transition flex items-center justify-center gap-1.5 ${
+              role="tab"
+              aria-selected={activeTab === 'native'}
+              aria-label="مشاركة النظام الافتراضية للملفات"
+              className={`col-span-2 sm:col-span-1 py-2 px-2.5 rounded-lg transition flex items-center justify-center gap-1.5 focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none ${
                 activeTab === 'native'
                   ? 'bg-indigo-600 text-white shadow-md'
                   : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
               }`}
             >
-              <Share2 className="w-4 h-4 text-indigo-200" />
+              <Share2 className="w-4 h-4 text-indigo-200" aria-hidden="true" />
               <span>مشاركة النظام</span>
             </button>
           </div>
@@ -237,41 +253,44 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
           <div className="bg-slate-50 dark:bg-slate-800/50 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                <label htmlFor="customer-share-name" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   اسم المستلم / العميل:
                 </label>
                 <input
+                  id="customer-share-name"
                   type="text"
                   value={customerName}
                   onChange={e => setCustomerName(e.target.value)}
                   placeholder="أدخل اسم العميل"
-                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-800 dark:text-slate-100 focus:outline-none focus:border-emerald-500"
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-800 dark:text-slate-100 focus:outline-none focus:border-emerald-500 focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                <label htmlFor="customer-share-phone" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   رقم الواتساب / الهاتف:
                 </label>
                 <input
+                  id="customer-share-phone"
                   type="text"
                   value={phoneNumber}
                   onChange={e => setPhoneNumber(e.target.value)}
                   placeholder="05xxxxxxx أو 9665xxxxxxx"
-                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-800 dark:text-slate-100 focus:outline-none focus:border-emerald-500 text-left dir-ltr"
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-800 dark:text-slate-100 focus:outline-none focus:border-emerald-500 focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none text-left dir-ltr"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                <label htmlFor="customer-share-email" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   البريد الإلكتروني (Gmail):
                 </label>
                 <input
+                  id="customer-share-email"
                   type="email"
                   value={customerEmail}
                   onChange={e => setCustomerEmail(e.target.value)}
                   placeholder="client@gmail.com"
-                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono text-slate-800 dark:text-slate-100 focus:outline-none focus:border-emerald-500 text-left dir-ltr"
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono text-slate-800 dark:text-slate-100 focus:outline-none focus:border-emerald-500 focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none text-left dir-ltr"
                 />
               </div>
             </div>
