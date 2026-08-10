@@ -76,7 +76,12 @@ export const VirtualKeyboardModal: React.FC<VirtualKeyboardModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="virtual-keyboard-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+    >
       <div className="bg-slate-900 text-white rounded-2xl shadow-2xl border border-slate-800 w-full max-w-2xl overflow-hidden flex flex-col dir-rtl text-right">
         {/* Modal Header */}
         <div className="flex items-center justify-between p-4 bg-slate-800/80 border-b border-slate-700">
@@ -85,15 +90,16 @@ export const VirtualKeyboardModal: React.FC<VirtualKeyboardModalProps> = ({
               <Keyboard className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-bold text-sm text-white">لوحة مفاتيح الكاشير الذكية</h3>
+              <h3 id="virtual-keyboard-title" className="font-bold text-sm text-white">لوحة مفاتيح الكاشير الذكية</h3>
               <p className="text-[10px] text-slate-400">لوحة كتابة لمسية تفاعلية للغة العربية والإنجليزية (Alt+K)</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700/60 rounded-lg transition"
+            aria-label="إغلاق لوحة المفاتيح"
+            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700/60 rounded-lg transition focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-800 focus-visible:outline-none"
           >
-            <X className="w-5 h-5" />
+            <X className="w-5 h-5" aria-hidden="true" />
           </button>
         </div>
 
@@ -109,23 +115,26 @@ export const VirtualKeyboardModal: React.FC<VirtualKeyboardModalProps> = ({
             <div className="flex gap-2">
               <button
                 onClick={handleCopy}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-indigo-400 rounded-lg text-xs font-bold transition"
+                aria-label={copied ? "تم نسخ النص إلى الحافظة" : "نسخ النص إلى الحافظة"}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-indigo-400 rounded-lg text-xs font-bold transition focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 focus-visible:outline-none"
               >
-                {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                {copied ? <Check className="w-4 h-4 text-emerald-400" aria-hidden="true" /> : <Copy className="w-4 h-4" aria-hidden="true" />}
                 <span>{copied ? 'تم النسخ!' : 'نسخ النص'}</span>
               </button>
               <button
                 onClick={handleClear}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-950/80 hover:bg-rose-900 text-rose-300 rounded-lg text-xs font-bold transition"
+                aria-label="مسح النص بالكامل"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-950/80 hover:bg-rose-900 text-rose-300 rounded-lg text-xs font-bold transition focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 focus-visible:outline-none"
               >
-                <Trash2 className="w-4 h-4" />
+                <Trash2 className="w-4 h-4" aria-hidden="true" />
                 <span>مسح النص</span>
               </button>
             </div>
             {onInsertText && (
               <button
                 onClick={handleInsert}
-                className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition shadow-md shadow-indigo-900/50"
+                aria-label="إدراج النص الحالي إلى حقل الكاشير"
+                className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition shadow-md shadow-indigo-900/50 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 focus-visible:outline-none"
               >
                 إدراج ونص الكاشير
               </button>
@@ -137,16 +146,18 @@ export const VirtualKeyboardModal: React.FC<VirtualKeyboardModalProps> = ({
         <div className="p-3 bg-slate-800/40 border-b border-slate-800 flex justify-between items-center">
           <button
             onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')}
-            className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-bold transition border border-slate-700"
+            aria-label={`تغيير لغة الكيبورد. اللغة الحالية: ${language === 'ar' ? 'العربية' : 'الإنجليزية'}`}
+            className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-bold transition border border-slate-700 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-800 focus-visible:outline-none"
           >
-            <ArrowLeftRight className="w-4 h-4 text-amber-400" />
+            <ArrowLeftRight className="w-4 h-4 text-amber-400" aria-hidden="true" />
             <span>اللغة: {language === 'ar' ? 'العربية 🇸🇦' : 'English 🇬🇧'}</span>
           </button>
 
           {language === 'en' && (
             <button
               onClick={() => setIsShift(!isShift)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border ${
+              aria-label={isShift ? "إلغاء تفعيل الأحرف الكبيرة" : "تفعيل الأحرف الكبيرة"}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-800 focus-visible:outline-none ${
                 isShift ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-slate-800 text-slate-300 border-slate-700'
               }`}
             >
@@ -163,7 +174,8 @@ export const VirtualKeyboardModal: React.FC<VirtualKeyboardModalProps> = ({
               <button
                 key={n}
                 onClick={() => handleKeyPress(n)}
-                className="flex-1 max-w-[45px] h-11 bg-slate-800 hover:bg-indigo-600 text-white rounded-lg font-bold font-mono text-sm transition border border-slate-700 active:scale-95 flex items-center justify-center"
+                aria-label={language === 'ar' ? `رقم ${n}` : `Number ${n}`}
+                className="flex-1 max-w-[45px] h-11 bg-slate-800 hover:bg-indigo-600 text-white rounded-lg font-bold font-mono text-sm transition border border-slate-700 active:scale-95 flex items-center justify-center focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 focus-visible:outline-none"
               >
                 {n}
               </button>
@@ -176,7 +188,8 @@ export const VirtualKeyboardModal: React.FC<VirtualKeyboardModalProps> = ({
               <button
                 key={k}
                 onClick={() => handleKeyPress(k)}
-                className="flex-1 max-w-[48px] h-11 bg-slate-800 hover:bg-indigo-600 text-white rounded-lg font-bold text-sm transition border border-slate-700 active:scale-95 flex items-center justify-center"
+                aria-label={language === 'ar' ? `حرف ${k}` : `Letter ${isShift ? k.toUpperCase() : k}`}
+                className="flex-1 max-w-[48px] h-11 bg-slate-800 hover:bg-indigo-600 text-white rounded-lg font-bold text-sm transition border border-slate-700 active:scale-95 flex items-center justify-center focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 focus-visible:outline-none"
               >
                 {isShift && language === 'en' ? k.toUpperCase() : k}
               </button>
@@ -189,7 +202,8 @@ export const VirtualKeyboardModal: React.FC<VirtualKeyboardModalProps> = ({
               <button
                 key={k}
                 onClick={() => handleKeyPress(k)}
-                className="flex-1 max-w-[48px] h-11 bg-slate-800 hover:bg-indigo-600 text-white rounded-lg font-bold text-sm transition border border-slate-700 active:scale-95 flex items-center justify-center"
+                aria-label={language === 'ar' ? `حرف ${k}` : `Letter ${isShift ? k.toUpperCase() : k}`}
+                className="flex-1 max-w-[48px] h-11 bg-slate-800 hover:bg-indigo-600 text-white rounded-lg font-bold text-sm transition border border-slate-700 active:scale-95 flex items-center justify-center focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 focus-visible:outline-none"
               >
                 {isShift && language === 'en' ? k.toUpperCase() : k}
               </button>
@@ -202,14 +216,16 @@ export const VirtualKeyboardModal: React.FC<VirtualKeyboardModalProps> = ({
               <button
                 key={k}
                 onClick={() => handleKeyPress(k)}
-                className="flex-1 max-w-[48px] h-11 bg-slate-800 hover:bg-indigo-600 text-white rounded-lg font-bold text-sm transition border border-slate-700 active:scale-95 flex items-center justify-center"
+                aria-label={language === 'ar' ? `حرف ${k}` : `Letter ${isShift ? k.toUpperCase() : k}`}
+                className="flex-1 max-w-[48px] h-11 bg-slate-800 hover:bg-indigo-600 text-white rounded-lg font-bold text-sm transition border border-slate-700 active:scale-95 flex items-center justify-center focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 focus-visible:outline-none"
               >
                 {isShift && language === 'en' ? k.toUpperCase() : k}
               </button>
             ))}
             <button
               onClick={handleBackspace}
-              className="px-3 h-11 bg-rose-900/80 hover:bg-rose-800 text-white rounded-lg font-bold text-xs transition border border-rose-700/50 flex items-center justify-center gap-1"
+              aria-label="تراجع حذف حرف واحد"
+              className="px-3 h-11 bg-rose-900/80 hover:bg-rose-800 text-white rounded-lg font-bold text-xs transition border border-rose-700/50 flex items-center justify-center gap-1 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 focus-visible:outline-none"
             >
               تراجع ⌫
             </button>
@@ -219,16 +235,18 @@ export const VirtualKeyboardModal: React.FC<VirtualKeyboardModalProps> = ({
           <div className="flex justify-center gap-2 pt-1">
             <button
               onClick={() => handleKeyPress(' ')}
-              className="flex-1 h-11 bg-slate-800 hover:bg-indigo-600 text-white rounded-lg font-bold text-xs transition border border-slate-700 flex items-center justify-center gap-2"
+              aria-label="مسافة"
+              className="flex-1 h-11 bg-slate-800 hover:bg-indigo-600 text-white rounded-lg font-bold text-xs transition border border-slate-700 flex items-center justify-center gap-2 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 focus-visible:outline-none"
             >
-              <Space className="w-4 h-4 text-slate-400" />
+              <Space className="w-4 h-4 text-slate-400" aria-hidden="true" />
               <span>مسافة (Space)</span>
             </button>
             {['.', ',', ':', '@', '#', '&'].map(sym => (
               <button
                 key={sym}
                 onClick={() => handleKeyPress(sym)}
-                className="w-11 h-11 bg-slate-800 hover:bg-indigo-600 text-white rounded-lg font-bold text-sm transition border border-slate-700 flex items-center justify-center"
+                aria-label={`رمز ${sym}`}
+                className="w-11 h-11 bg-slate-800 hover:bg-indigo-600 text-white rounded-lg font-bold text-sm transition border border-slate-700 flex items-center justify-center focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 focus-visible:outline-none"
               >
                 {sym}
               </button>
