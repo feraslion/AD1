@@ -40,6 +40,9 @@ export const OfflineQueue = {
   },
 
   // Sync all queued invoices with the server backend API
+  // Optimized to batch-write synced state back to localStorage exactly once
+  // at the end of the synchronization cycle, avoiding O(N) blocking, synchronous
+  // JSON stringification operations within the loop.
   syncWithServer: async (
     postInvoiceApi: (inv: Invoice) => Promise<any>
   ): Promise<{ syncedCount: number; failedCount: number }> => {
@@ -48,15 +51,27 @@ export const OfflineQueue = {
 
     let syncedCount = 0;
     let failedCount = 0;
+    const syncedIds = new Set<string>();
 
     for (const inv of queue) {
       try {
         await postInvoiceApi(inv);
-        OfflineQueue.remove(inv.id);
+        syncedIds.add(inv.id);
         syncedCount++;
       } catch (err) {
         console.error(`Failed to sync invoice ${inv.id}`, err);
         failedCount++;
+      }
+    }
+
+    // Batch update localStorage exactly once at the end of the sync cycle
+    if (syncedIds.size > 0) {
+      try {
+        const current = OfflineQueue.getQueue();
+        const updated = current.filter(inv => !syncedIds.has(inv.id));
+        localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(updated));
+      } catch (e) {
+        console.error('Failed to batch update offline queue', e);
       }
     }
 
