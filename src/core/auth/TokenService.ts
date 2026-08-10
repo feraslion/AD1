@@ -2,8 +2,21 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'enterprise-erp-jwt-secret-key-2026';
-const REFRESH_SECRET = process.env.REFRESH_SECRET || 'enterprise-erp-refresh-secret-key-2026';
+const JWT_SECRET = (() => {
+  const secret = process.env.JWT_SECRET;
+  if (process.env.NODE_ENV === 'production' && (!secret || secret === 'enterprise-erp-jwt-secret-key-2026')) {
+    throw new Error('CRITICAL SECURITY ERROR: JWT_SECRET environment variable is missing or set to a default value in production!');
+  }
+  return secret || 'enterprise-erp-jwt-secret-key-2026';
+})();
+
+const REFRESH_SECRET = (() => {
+  const secret = process.env.REFRESH_SECRET;
+  if (process.env.NODE_ENV === 'production' && (!secret || secret === 'enterprise-erp-refresh-secret-key-2026')) {
+    throw new Error('CRITICAL SECURITY ERROR: REFRESH_SECRET environment variable is missing or set to a default value in production!');
+  }
+  return secret || 'enterprise-erp-refresh-secret-key-2026';
+})();
 
 export interface TokenPayload {
   id: string;
