@@ -54,6 +54,14 @@ export async function ensureDatabaseTables(force = false) {
   }
   console.log('Ensuring all database tables and schema migrations exist...');
 
+  // Probe database connection first to avoid hundreds of sequential timeouts if offline
+  try {
+    await db.execute(sql`SELECT 1`);
+  } catch (err: any) {
+    console.warn('⚠️ Database connection probe failed. SQL server is likely offline.');
+    throw new Error(`Database connection failed: ECONNREFUSED - ${err.message || err}`);
+  }
+
   try {
     await db.execute(sql`ROLLBACK`);
   } catch (_) {}
