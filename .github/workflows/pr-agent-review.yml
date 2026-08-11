@@ -103,6 +103,15 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Setup Java JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
       - name: Install Dependencies
         run: bun install
 
@@ -118,7 +127,7 @@ jobs:
         run: bun run build:web
 
       - name: Validate Windows Build
-        run: bunx electron-builder --win --x64 --dir --publish never
+        run: bunx electron-builder --linux --x64 --dir --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

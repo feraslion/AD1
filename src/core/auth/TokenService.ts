@@ -2,6 +2,17 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 
+const isProduction = process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'PROD';
+
+if (isProduction) {
+  if (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'enterprise-erp-jwt-secret-key-2026') {
+    throw new Error('CRITICAL SECURITY ERROR: JWT_SECRET environment variable must be set in production!');
+  }
+  if (!process.env.REFRESH_SECRET || process.env.REFRESH_SECRET === 'enterprise-erp-refresh-secret-key-2026') {
+    throw new Error('CRITICAL SECURITY ERROR: REFRESH_SECRET environment variable must be set in production!');
+  }
+}
+
 const JWT_SECRET = process.env.JWT_SECRET || 'enterprise-erp-jwt-secret-key-2026';
 const REFRESH_SECRET = process.env.REFRESH_SECRET || 'enterprise-erp-refresh-secret-key-2026';
 
