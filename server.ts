@@ -139,7 +139,7 @@ async function authenticate(req: Request, res: Response, next: NextFunction) {
     }
 
     // Default manager user fallback for dev/testing session
-    if (!userRecord) {
+    if (!userRecord && process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'PROD') {
       const [master] = await db.select().from(users).where(eq(users.id, '001'));
       userRecord = (master as AuthenticatedUser) || { id: '001', uid: '001', email: 'manager@system.com', name: 'عبدالرحمن (المدير العام)', role: 'manager', roleId: 'role_manager' };
     }
