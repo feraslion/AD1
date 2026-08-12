@@ -54,6 +54,14 @@ export async function ensureDatabaseTables(force = false) {
   }
   console.log('Ensuring all database tables and schema migrations exist...');
 
+  // Fail-fast database connection probe
+  try {
+    await db.execute(sql`SELECT 1`);
+  } catch (probeErr: any) {
+    const errMsg = probeErr?.message || String(probeErr);
+    throw new Error(`ECONNREFUSED: Database connection probe failed. ${errMsg}`);
+  }
+
   try {
     await db.execute(sql`ROLLBACK`);
   } catch (_) {}

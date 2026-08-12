@@ -1,19 +1,33 @@
 import { db } from '../database/index.ts';
 import { withAutoMigration } from '../database/initSchema.ts';
 import { products, categories, units, stockMoves, warehouses } from '../database/schema.ts';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, and, or, ilike } from 'drizzle-orm';
 
 export class ProductRepository {
   static async findAll(params?: { search?: string; category?: string }) {
-    let list = await db.select().from(products);
+    let query = db.select().from(products);
+    const conditions = [];
+
     if (params?.category) {
-      list = list.filter(p => p.category === params.category);
+      conditions.push(eq(products.category, params.category));
     }
+
     if (params?.search) {
-      const term = params.search.toLowerCase();
-      list = list.filter(p => p.name.toLowerCase().includes(term) || p.barcode.includes(term));
+      const term = `%${params.search}%`;
+      conditions.push(
+        or(
+          ilike(products.name, term),
+          ilike(products.barcode, term)
+        )
+      );
     }
-    return list;
+
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions)) as any;
+    }
+
+    // Performance optimization: Avoid in-memory array filtering by executing query on database-level directly
+    return await query;
   }
 
   static async findById(id: string) {
