@@ -223,6 +223,9 @@ export default function GlobalSearchModal({
     }
   };
 
+  // Build element IDs for activedescendant
+  const getResultItemId = (idx: number) => `global-search-result-item-${idx}`;
+
   return (
     <div 
       className="fixed inset-0 bg-slate-900/70 backdrop-blur-md flex items-start justify-center pt-10 sm:pt-20 px-4 z-50 animate-in fade-in duration-200"
@@ -235,10 +238,16 @@ export default function GlobalSearchModal({
       >
         {/* Search Header Bar */}
         <div className="p-4 bg-slate-50 dark:bg-slate-900/90 border-b border-slate-200 dark:border-slate-800 flex items-center gap-3">
-          <Search className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+          <Search className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" aria-hidden="true" />
           <input
             ref={inputRef}
             type="text"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={isOpen}
+            aria-controls="global-search-results-listbox"
+            aria-label="البحث الشامل بالمنتجات والعملاء والبركود وأرقام الفواتير"
+            aria-activedescendant={combinedResults.length > 0 ? getResultItemId(selectedIndex) : undefined}
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
@@ -254,18 +263,25 @@ export default function GlobalSearchModal({
             <button 
               type="button"
               onClick={onClose}
+              aria-label="إغلاق البحث الشامل"
               className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-200/80 dark:bg-slate-800 hover:bg-rose-100 dark:hover:bg-rose-950/50 text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 transition"
               title="إغلاق (ESC)"
             >
-              <X className="w-4 h-4" />
+              <X className="w-4 h-4" aria-hidden="true" />
             </button>
           </div>
         </div>
 
         {/* Filter Category Tabs */}
-        <div className="px-4 py-2.5 bg-slate-100/80 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+        <div
+          className="px-4 py-2.5 bg-slate-100/80 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 flex items-center gap-1.5 overflow-x-auto no-scrollbar"
+          role="tablist"
+          aria-label="تصفية فئات البحث"
+        >
           <button
             type="button"
+            role="tab"
+            aria-selected={activeFilter === 'all'}
             onClick={() => { setActiveFilter('all'); setSelectedIndex(0); }}
             className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap min-h-[36px] ${
               activeFilter === 'all'
@@ -281,6 +297,8 @@ export default function GlobalSearchModal({
 
           <button
             type="button"
+            role="tab"
+            aria-selected={activeFilter === 'products'}
             onClick={() => { setActiveFilter('products'); setSelectedIndex(0); }}
             className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap min-h-[36px] ${
               activeFilter === 'products'
@@ -288,7 +306,7 @@ export default function GlobalSearchModal({
                 : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
             }`}
           >
-            <Package className="w-3.5 h-3.5" />
+            <Package className="w-3.5 h-3.5" aria-hidden="true" />
             <span>المنتجات</span>
             <span className="text-[10px] bg-black/10 dark:bg-white/10 px-1.5 py-0.5 rounded-md font-mono font-bold">
               {matchingProducts.length}
@@ -297,6 +315,8 @@ export default function GlobalSearchModal({
 
           <button
             type="button"
+            role="tab"
+            aria-selected={activeFilter === 'customers'}
             onClick={() => { setActiveFilter('customers'); setSelectedIndex(0); }}
             className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap min-h-[36px] ${
               activeFilter === 'customers'
@@ -304,7 +324,7 @@ export default function GlobalSearchModal({
                 : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
             }`}
           >
-            <User className="w-3.5 h-3.5" />
+            <User className="w-3.5 h-3.5" aria-hidden="true" />
             <span>العملاء</span>
             <span className="text-[10px] bg-black/10 dark:bg-white/10 px-1.5 py-0.5 rounded-md font-mono font-bold">
               {matchingCustomers.length}
@@ -313,6 +333,8 @@ export default function GlobalSearchModal({
 
           <button
             type="button"
+            role="tab"
+            aria-selected={activeFilter === 'invoices'}
             onClick={() => { setActiveFilter('invoices'); setSelectedIndex(0); }}
             className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap min-h-[36px] ${
               activeFilter === 'invoices'
@@ -320,7 +342,7 @@ export default function GlobalSearchModal({
                 : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
             }`}
           >
-            <Receipt className="w-3.5 h-3.5" />
+            <Receipt className="w-3.5 h-3.5" aria-hidden="true" />
             <span>الفواتير</span>
             <span className="text-[10px] bg-black/10 dark:bg-white/10 px-1.5 py-0.5 rounded-md font-mono font-bold">
               {matchingInvoices.length}
@@ -329,16 +351,23 @@ export default function GlobalSearchModal({
         </div>
 
         {/* Results List */}
-        <div ref={listRef} className="flex-1 overflow-y-auto p-3 space-y-1.5">
+        <div
+          ref={listRef}
+          id="global-search-results-listbox"
+          role="listbox"
+          aria-label="نتائج البحث المتاحة"
+          className="flex-1 overflow-y-auto p-3 space-y-1.5"
+        >
           {combinedResults.length === 0 ? (
             <div className="py-12 px-4 text-center text-slate-400 dark:text-slate-500 space-y-2">
-              <Search className="w-12 h-12 mx-auto stroke-1 text-slate-300 dark:text-slate-700" />
+              <Search className="w-12 h-12 mx-auto stroke-1 text-slate-300 dark:text-slate-700" aria-hidden="true" />
               <p className="font-bold text-sm">لم يتم العثور على نتائج تطابق "{query}"</p>
               <p className="text-xs text-slate-400">جرّب البحث باسم المنتجات، الباركود، اسم العميل، أو رقم الفاتورة.</p>
             </div>
           ) : (
             combinedResults.map((item, idx) => {
               const isSelected = idx === selectedIndex;
+              const resultId = getResultItemId(idx);
 
               if (item.type === 'product') {
                 const product = item.data;
@@ -346,6 +375,9 @@ export default function GlobalSearchModal({
                 return (
                   <div
                     key={`prod_${product.id}`}
+                    id={resultId}
+                    role="option"
+                    aria-selected={isSelected}
                     onClick={() => handleSelectResult(item)}
                     onMouseEnter={() => setSelectedIndex(idx)}
                     className={`p-3 rounded-2xl border transition cursor-pointer flex items-center justify-between gap-3 ${
@@ -359,7 +391,7 @@ export default function GlobalSearchModal({
                         {product.image ? (
                           <img src={product.image} alt="" className="w-full h-full object-cover rounded-xl" />
                         ) : (
-                          <Package className="w-5 h-5" />
+                          <Package className="w-5 h-5" aria-hidden="true" />
                         )}
                       </div>
                       <div className="min-w-0 flex-1">
@@ -397,6 +429,9 @@ export default function GlobalSearchModal({
                 return (
                   <div
                     key={`cust_${customer.id}`}
+                    id={resultId}
+                    role="option"
+                    aria-selected={isSelected}
                     onClick={() => handleSelectResult(item)}
                     onMouseEnter={() => setSelectedIndex(idx)}
                     className={`p-3 rounded-2xl border transition cursor-pointer flex items-center justify-between gap-3 ${
@@ -407,7 +442,7 @@ export default function GlobalSearchModal({
                   >
                     <div className="flex items-center gap-3 min-w-0 flex-1">
                       <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 flex items-center justify-center shrink-0">
-                        <User className="w-5 h-5" />
+                        <User className="w-5 h-5" aria-hidden="true" />
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
@@ -457,6 +492,9 @@ export default function GlobalSearchModal({
                 return (
                   <div
                     key={`inv_${invoice.id}`}
+                    id={resultId}
+                    role="option"
+                    aria-selected={isSelected}
                     onClick={() => handleSelectResult(item)}
                     onMouseEnter={() => setSelectedIndex(idx)}
                     className={`p-3 rounded-2xl border transition cursor-pointer flex items-center justify-between gap-3 ${
@@ -467,7 +505,7 @@ export default function GlobalSearchModal({
                   >
                     <div className="flex items-center gap-3 min-w-0 flex-1">
                       <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 flex items-center justify-center shrink-0">
-                        <Receipt className="w-5 h-5" />
+                        <Receipt className="w-5 h-5" aria-hidden="true" />
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
