@@ -6,7 +6,7 @@ import {
   bankReconciliations,
   accounts 
 } from '../database/schema.ts';
-import { eq, desc, and } from 'drizzle-orm';
+import { eq, desc, and, or } from 'drizzle-orm';
 import { AccountingRepository } from './AccountingRepository.ts';
 import { withAutoMigration, ensureDatabaseTables } from '../database/initSchema.ts';
 
@@ -521,13 +521,15 @@ export class TreasuryRepository {
     try {
       const list = await db.select().from(treasuryTransactions)
         .where(and(
-          eq(treasuryTransactions.reconciled, 'false')
+          eq(treasuryTransactions.reconciled, 'false'),
+          or(
+            eq(treasuryTransactions.sourceId, bankAccountId),
+            eq(treasuryTransactions.destinationId, bankAccountId)
+          )
         ))
         .orderBy(desc(treasuryTransactions.date));
 
-      // Filter transactions related to this bank account (either as source or destination)
-      const filtered = list.filter(t => t.sourceId === bankAccountId || t.destinationId === bankAccountId);
-      return filtered.map(t => ({
+      return list.map(t => ({
         ...t,
         amount: parseFloat(t.amount || '0')
       }));

@@ -1,29 +1,35 @@
 import { db } from '../database/index.ts';
 import { invoices, invoiceItems, customers, products } from '../database/schema.ts';
-import { eq, desc, inArray, like, or } from 'drizzle-orm';
+import { eq, desc, inArray, and, or, ilike } from 'drizzle-orm';
 import { CustomerRepository } from './CustomerRepository.ts';
 import { ProductRepository } from './ProductRepository.ts';
 
 export class InvoiceRepository {
   static async findAll(params?: { search?: string; customerId?: string; status?: string }) {
-    let query = db.select().from(invoices).orderBy(desc(invoices.createdAt));
-    let list = await query;
+    const conditions = [];
 
     if (params?.search) {
-      const term = params.search.toLowerCase();
-      list = list.filter(inv => 
-        inv.invoiceNumber.toLowerCase().includes(term) ||
-        inv.customerName?.toLowerCase().includes(term)
+      const term = `%${params.search}%`;
+      conditions.push(
+        or(
+          ilike(invoices.invoiceNumber, term),
+          ilike(invoices.customerName, term)
+        )
       );
     }
 
     if (params?.customerId) {
-      list = list.filter(inv => inv.customerId === params.customerId);
+      conditions.push(eq(invoices.customerId, params.customerId));
     }
 
     if (params?.status && params.status !== 'all') {
-      list = list.filter(inv => inv.status === params.status);
+      conditions.push(eq(invoices.status, params.status));
     }
+
+    const list = await (conditions.length > 0
+      ? db.select().from(invoices).where(and(...conditions)).orderBy(desc(invoices.createdAt))
+      : db.select().from(invoices).orderBy(desc(invoices.createdAt))
+    );
 
     const invoiceIds = list.map(i => i.id);
     const allItems = invoiceIds.length > 0
