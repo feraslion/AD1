@@ -129,17 +129,22 @@ export default function BarcodeLabelModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="barcode-modal-title"
+      className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 overflow-y-auto"
+    >
       <div className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-4xl overflow-hidden shadow-2xl flex flex-col max-h-[92vh]">
         
         {/* Header */}
         <div className="bg-slate-800/95 p-4 px-6 border-b border-slate-700/80 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-amber-500/10 text-amber-400 rounded-xl border border-amber-500/20">
-              <Printer className="w-6 h-6" />
+              <Printer className="w-6 h-6" aria-hidden="true" />
             </div>
             <div>
-              <h2 className="font-black text-white text-base sm:text-lg flex items-center gap-2">
+              <h2 id="barcode-modal-title" className="font-black text-white text-base sm:text-lg flex items-center gap-2">
                 <span>مصمم وطابعة ملصقات الباركود الذكية</span>
                 <span className="px-2 py-0.5 bg-amber-500/20 text-amber-300 text-xs font-bold rounded-lg border border-amber-500/30">
                   JsBarcode Engine
@@ -151,10 +156,12 @@ export default function BarcodeLabelModal({
             </div>
           </div>
           <button 
+            type="button"
             onClick={onClose} 
-            className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition"
+            aria-label="إغلاق"
+            className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
           >
-            <X className="w-5 h-5" />
+            <X className="w-5 h-5" aria-hidden="true" />
           </button>
         </div>
 
@@ -297,9 +304,10 @@ export default function BarcodeLabelModal({
                   <button
                     type="button"
                     onClick={() => setPrintCount(prev => Math.max(1, prev - 1))}
-                    className="p-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition"
+                    aria-label="إنقاص عدد النسخ"
+                    className="p-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
                   >
-                    <Minus className="w-4 h-4" />
+                    <Minus className="w-4 h-4" aria-hidden="true" />
                   </button>
                   <input
                     type="number"
@@ -312,9 +320,10 @@ export default function BarcodeLabelModal({
                   <button
                     type="button"
                     onClick={() => setPrintCount(prev => prev + 1)}
-                    className="p-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition"
+                    aria-label="زيادة عدد النسخ"
+                    className="p-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
                   >
-                    <Plus className="w-4 h-4" />
+                    <Plus className="w-4 h-4" aria-hidden="true" />
                   </button>
                 </div>
 
