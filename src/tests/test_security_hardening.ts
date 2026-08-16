@@ -1,5 +1,6 @@
 import { TokenService } from '../core/auth/TokenService.ts';
 import { authenticate, requireRole, requirePermission } from '../core/server/middleware/auth.ts';
+import { authorize } from '../core/server/middleware/rbac.ts';
 import { JournalEngine } from '../core/services/JournalEngine.ts';
 import { defaultRateLimiter, strictRateLimiter } from '../core/server/middleware/rateLimiter.ts';
 
@@ -117,6 +118,43 @@ export async function runSecurityRegressionTests() {
     throw new Error(`CRITICAL SECURITY FAILURE: Rate limiter did not trigger HTTP 429 on limit breach! Got: ${lastStatus}`);
   }
   console.log('✓ PASS: Rate limiter correctly triggers HTTP 429 when max requests exceeded');
+
+  // 6. Verify RBAC Enforcement on System/Administrative Endpoints
+  console.log('\n[Test 6] Verifying RBAC Enforcement on Administrative Routes...');
+  const rbacGuard = authorize(['manager']);
+
+  let rbacStatus = 0;
+  const cashierReq: any = {
+    user: { id: '004', name: 'Cashier', role: 'cashier', permissions: ['pos_access'] }
+  };
+  const mockRbacRes: any = {
+    status: (code: number) => {
+      rbacStatus = code;
+      return mockRbacRes;
+    },
+    json: () => mockRbacRes
+  };
+  let rbacNextCalled = false;
+
+  rbacGuard(cashierReq, mockRbacRes, () => { rbacNextCalled = true; });
+
+  if (rbacStatus !== 403 || rbacNextCalled) {
+    throw new Error(`CRITICAL SECURITY FAILURE: Unauthorized role 'cashier' was NOT rejected with 403! Status: ${rbacStatus}`);
+  }
+
+  // Verify Manager role access
+  rbacStatus = 0;
+  rbacNextCalled = false;
+  const managerReq: any = {
+    user: { id: '001', name: 'Manager', role: 'manager', permissions: ['manage_users'] }
+  };
+
+  rbacGuard(managerReq, mockRbacRes, () => { rbacNextCalled = true; });
+
+  if (!rbacNextCalled || rbacStatus !== 0) {
+    throw new Error(`CRITICAL SECURITY FAILURE: Authorized role 'manager' was denied access! Status: ${rbacStatus}`);
+  }
+  console.log('✓ PASS: RBAC middleware correctly rejects unauthorized roles (403) and allows authorized roles');
 
   console.log('\n======================================================');
   console.log('🎉 ALL SECURITY HARDENING REGRESSION TESTS PASSED!');
