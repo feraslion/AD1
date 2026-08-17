@@ -4,59 +4,284 @@
 @theme {
   --font-sans: "Cairo", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --color-ink: #17202a;
+  --color-paper: #f6f7f4;
+  --color-coral: #ff6b5f;
+  --color-teal: #16a596;
 }
 
+:root {
+  --app-ink: #17202a;
+  --app-ink-soft: #273443;
+  --app-paper: #f6f7f4;
+  --app-card: #ffffff;
+  --app-muted: #718096;
+  --app-line: #e5e9e4;
+  --app-coral: #ff6b5f;
+  --app-teal: #16a596;
+  --app-yellow: #f3bd3b;
+  --app-shadow: 0 18px 50px rgba(23, 32, 42, .07);
+  --app-radius: 20px;
+}
+
+* { box-sizing: border-box; }
+html { background: var(--app-paper); }
 body {
+  margin: 0;
+  min-width: 320px;
   font-family: var(--font-sans);
   direction: rtl;
   text-align: right;
-  background-color: #f1f5f9;
+  color: var(--app-ink);
+  background: var(--app-paper);
+  -webkit-font-smoothing: antialiased;
+}
+button, input, select, textarea { font-family: inherit; }
+button { cursor: pointer; }
+::selection { color: #fff; background: var(--app-coral); }
+
+/* AD1 2026 visual shell */
+.app-shell {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 80% -10%, rgba(255, 107, 95, .10), transparent 28rem),
+    var(--app-paper) !important;
+  color: var(--app-ink) !important;
+}
+.app-topbar {
+  height: 78px !important;
+  padding-inline: clamp(18px, 4vw, 56px) !important;
+  background: rgba(255,255,255,.84) !important;
+  border-bottom: 1px solid rgba(229,233,228,.9) !important;
+  box-shadow: 0 8px 28px rgba(23,32,42,.04) !important;
+  backdrop-filter: blur(18px);
+  z-index: 30;
+}
+.app-topbar > div:first-child > span {
+  width: 44px !important;
+  height: 44px !important;
+  border: 0 !important;
+  border-radius: 15px !important;
+  color: #fff !important;
+  background: linear-gradient(135deg, var(--app-coral), #ff9580) !important;
+  box-shadow: 0 8px 18px rgba(255,107,95,.24) !important;
+}
+.app-topbar h1 { letter-spacing: -.03em; color: var(--app-ink) !important; }
+.app-topbar button[class*="bg-slate-100"] {
+  background: #f4f6f2 !important;
+  border-color: transparent !important;
+  border-radius: 14px !important;
+  min-height: 40px;
+}
+.app-topbar button[class*="bg-slate-100"] kbd { background: #fff !important; border-color: var(--app-line) !important; }
+.app-sidebar {
+  width: 276px !important;
+  background: var(--app-ink) !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: 14px 0 38px rgba(23,32,42,.08) !important;
+  position: relative;
+  overflow: hidden;
+}
+.app-sidebar::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 210px;
+  background: radial-gradient(circle at 20% 0%, rgba(255,107,95,.32), transparent 65%);
+  pointer-events: none;
+}
+.app-sidebar > div:first-child { position: relative; background: transparent !important; border-color: rgba(255,255,255,.10) !important; }
+.app-sidebar > div:first-child > div:first-child {
+  background: linear-gradient(135deg, var(--app-coral), #ff9a83) !important;
+  border: 0 !important;
+  border-radius: 17px !important;
+  box-shadow: 0 13px 25px rgba(255,107,95,.24) !important;
+}
+.app-sidebar nav { position: relative; padding-inline: 16px !important; }
+.app-sidebar nav button {
+  min-height: 46px;
+  margin-bottom: 5px;
+  padding-inline: 16px !important;
+  border-radius: 14px !important;
+  border: 1px solid transparent !important;
+  color: #aab5c0 !important;
+  transition: transform .18s cubic-bezier(.23,1,.32,1), background .18s, color .18s, border-color .18s;
+}
+.app-sidebar nav button:hover {
+  transform: translateX(-3px);
+  color: #fff !important;
+  background: rgba(255,255,255,.07) !important;
+}
+.app-sidebar nav button[class*="bg-emerald-600"],
+.app-sidebar nav button[class*="bg-rose-600"] {
+  color: #fff !important;
+  background: linear-gradient(100deg, rgba(255,107,95,.22), rgba(255,255,255,.07)) !important;
+  border-color: rgba(255,107,95,.38) !important;
+  box-shadow: inset -3px 0 var(--app-coral), 0 8px 20px rgba(0,0,0,.12);
+}
+.app-sidebar nav button[class*="bg-emerald-600"] svg,
+.app-sidebar nav button[class*="bg-rose-600"] svg { color: #ff9888 !important; }
+.app-sidebar > div:last-child { background: rgba(0,0,0,.18) !important; border-color: rgba(255,255,255,.10) !important; }
+.app-main {
+  padding: clamp(18px, 3vw, 38px) !important;
+  background: transparent !important;
+}
+.app-main > * { animation: app-fade-up .35s cubic-bezier(.23,1,.32,1) both; }
+
+/* Shared surfaces across modules */
+.app-main .bg-white,
+.app-main [class*="bg-white"] {
+  border-color: var(--app-line) !important;
+}
+.app-main .rounded-xl, .app-main .rounded-2xl, .app-main .rounded-3xl {
+  border-radius: var(--app-radius) !important;
+}
+.app-main .shadow, .app-main .shadow-sm, .app-main .shadow-md, .app-main .shadow-lg, .app-main .shadow-xl {
+  box-shadow: var(--app-shadow) !important;
+}
+.app-main table thead { background: #f5f7f4 !important; }
+.app-main table tbody tr { transition: background .16s; }
+.app-main table tbody tr:hover { background: #fff8f6 !important; }
+.app-main input:focus, .app-main select:focus, .app-main textarea:focus {
+  outline: 3px solid rgba(255,107,95,.14) !important;
+  border-color: var(--app-coral) !important;
+}
+.app-main button[class*="bg-emerald-600"], .app-main button[class*="bg-blue-600"] {
+  background: var(--app-coral) !important;
+  border-color: transparent !important;
+  box-shadow: 0 8px 16px rgba(255,107,95,.18) !important;
+}
+.app-main button[class*="bg-emerald-600"]:hover, .app-main button[class*="bg-blue-600"]:hover { background: #ef5b51 !important; }
+.app-main button[class*="text-emerald-600"], .app-main button[class*="text-blue-600"] { color: var(--app-coral) !important; }
+
+@keyframes app-fade-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 767px) {
+  .app-topbar { height: 68px !important; padding-inline: 14px !important; }
+  .app-sidebar { width: 100% !important; border-radius: 0 0 24px 24px !important; }
+  .app-sidebar nav { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 5px; }
+  .app-sidebar nav button { margin-bottom: 0; font-size: 11px !important; }
+  .app-main { padding: 14px !important; }
 }
 
-/* Custom scrollbar for modern POS */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
+::-webkit-scrollbar { width: 7px; height: 7px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd4cf; border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: #9eada4; }
 
-/* Print-specific style for thermal printer (80mm / 58mm) */
 @media print {
-  @page {
-    margin: 0;
-    size: auto;
-  }
-  body {
-    background-color: #ffffff !important;
-    margin: 0 !important;
-    padding: 0 !important;
-  }
-  body * {
-    visibility: hidden !important;
-  }
-  #thermal-receipt-print, #thermal-receipt-print * {
-    visibility: visible !important;
-  }
-  #thermal-receipt-print {
-    position: absolute !important;
-    left: 0 !important;
-    top: 0 !important;
-    margin: 0 auto !important;
-    padding: 10px !important;
-    border: none !important;
-    box-shadow: none !important;
-    direction: rtl !important;
-    width: 100% !important;
-    max-width: 80mm !important;
-  }
+  @page { margin: 0; size: auto; }
+  body { background: #fff !important; margin: 0 !important; padding: 0 !important; }
+  body * { visibility: hidden !important; }
+  #thermal-receipt-print, #thermal-receipt-print * { visibility: visible !important; }
+  #thermal-receipt-print { position: absolute !important; left: 0 !important; top: 0 !important; margin: 0 auto !important; padding: 10px !important; border: none !important; box-shadow: none !important; direction: rtl !important; width: 100% !important; max-width: 80mm !important; }
 }
 
+/* Entry experience: a distinct, confident first screen */
+#login-screen {
+  position: relative;
+  min-height: 100vh !important;
+  overflow: hidden;
+  padding: clamp(20px, 5vw, 64px) !important;
+  background: var(--app-ink) !important;
+  isolation: isolate;
+}
+#login-screen::before,
+#login-screen::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  border-radius: 999px;
+  filter: blur(2px);
+}
+#login-screen::before {
+  width: 46vw; height: 46vw; min-width: 360px; min-height: 360px;
+  top: -22vw; right: -10vw;
+  background: radial-gradient(circle, rgba(255,107,95,.52), rgba(255,107,95,0) 68%);
+}
+#login-screen::after {
+  width: 38vw; height: 38vw; min-width: 300px; min-height: 300px;
+  bottom: -20vw; left: -8vw;
+  background: radial-gradient(circle, rgba(22,165,150,.30), rgba(22,165,150,0) 68%);
+}
+#login-screen > div {
+  position: relative;
+  max-width: 1020px !important;
+  min-height: min(650px, calc(100vh - 80px));
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 430px);
+  gap: 0 !important;
+  padding: 0 !important;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.14) !important;
+  border-radius: 28px !important;
+  background: rgba(255,255,255,.95) !important;
+  box-shadow: 0 30px 90px rgba(0,0,0,.28) !important;
+}
+#login-screen > div::before {
+  content: "إدارة أوضح. قرارات أسرع.";
+  display: flex;
+  align-items: flex-end;
+  padding: 48px;
+  color: #fff;
+  font-size: clamp(30px, 4vw, 54px);
+  line-height: 1.18;
+  font-weight: 800;
+  letter-spacing: -.06em;
+  text-align: right;
+  white-space: pre-line;
+  background: linear-gradient(145deg, rgba(23,32,42,.98), rgba(39,52,67,.94)), radial-gradient(circle at 20% 20%, rgba(255,107,95,.5), transparent 45%);
+}
+#login-screen > div > *:not(:first-child) { grid-column: 2; }
+#login-screen > div > div:first-child {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: start;
+  margin: 0 !important;
+  padding: 46px 42px 18px !important;
+}
+#login-screen > div > div:first-child > div:first-child {
+  width: 62px !important; height: 62px !important;
+  margin: 0 0 18px auto !important;
+  border-radius: 20px !important;
+  background: linear-gradient(135deg, var(--app-coral), #ff9a83) !important;
+  box-shadow: 0 14px 26px rgba(255,107,95,.25) !important;
+}
+#login-screen > div > div:first-child h1 { font-size: 22px !important; color: var(--app-ink) !important; letter-spacing: -.05em; }
+#login-screen > div > div:first-child p { color: var(--app-muted) !important; letter-spacing: .04em; }
+#login-screen > div > div:nth-child(2),
+#login-screen > div > div:nth-child(3),
+#login-screen > div > form,
+#login-screen > div > div:nth-child(5),
+#login-screen > div > div:nth-child(6) {
+  grid-column: 2;
+  margin-inline: 42px;
+}
+#login-screen > div > div:nth-child(2) {
+  background: #f3f5f2 !important;
+  border: 1px solid var(--app-line) !important;
+  border-radius: 14px !important;
+}
+#login-screen > div button[class*="bg-emerald-600"],
+#login-screen > div form button[type="submit"] {
+  background: var(--app-coral) !important;
+  box-shadow: 0 10px 20px rgba(255,107,95,.2) !important;
+}
+#login-screen > div button[class*="bg-emerald-600"]:hover,
+#login-screen > div form button[type="submit"]:hover { background: #ef5b51 !important; }
+#login-screen > div input,
+#login-screen > div select {
+  background: #f7f8f6 !important;
+  border-color: var(--app-line) !important;
+  border-radius: 13px !important;
+  min-height: 46px;
+}
+#login-screen > div input:focus,
+#login-screen > div select:focus { background: #fff !important; outline: 3px solid rgba(255,107,95,.14) !important; border-color: var(--app-coral) !important; }
+#login-screen > div > div:last-child { color: var(--app-muted) !important; }
+@media (max-width: 800px) {
+  #login-screen > div { display: block !important; min-height: auto; max-width: 480px !important; }
+  #login-screen > div::before { display: none; }
+  #login-screen > div > div:first-child { padding: 34px 28px 16px !important; }
+  #login-screen > div > div:nth-child(2), #login-screen > div > div:nth-child(3), #login-screen > div > form, #login-screen > div > div:nth-child(5), #login-screen > div > div:nth-child(6) { margin-inline: 28px; }
+}

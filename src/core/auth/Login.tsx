@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { StoreSettings } from '../../types';
-import { Lock, ShieldAlert, KeyRound, ArrowRightLeft, RefreshCw, Mail, Key, Send, CheckCircle2, ShieldCheck, UserCheck, UserPlus, Flame, Shield } from 'lucide-react';
+import { Lock, ShieldAlert, KeyRound, ArrowRightLeft, RefreshCw, Mail, Key, Send, CheckCircle2, ShieldCheck, UserCheck, UserPlus, Flame, Shield, Server } from 'lucide-react';
 import { UserService } from '../../services/api';
 import { PermissionService } from '../permissions/PermissionService';
 import { signUpWithFirebase } from './firebase';
-import { resolveApiUrl } from '../api/client';
+import { getConfiguredApiBaseUrl, resolveApiUrl, setConfiguredApiBaseUrl } from '../api/client';
 
 interface LoginProps {
   onLoginSuccess: (user: { name: string; role: string; code: string; roleId?: string; token?: string; isVerified?: boolean }) => void;
@@ -27,7 +27,7 @@ export default function Login({ onLoginSuccess, settings }: LoginProps) {
   const [signupEmail, setSignupEmail] = useState('');
   const [signupPassword, setSignupPassword] = useState('');
   const [signupRole, setSignupRole] = useState<'manager' | 'accountant' | 'inventory' | 'cashier'>('cashier');
-  const [signupPin, setSignupPin] = useState('1234');
+  const [signupPin, setSignupPin] = useState('');
   const [useFirebaseAuth, setUseFirebaseAuth] = useState(true);
   const [signupSuccessMsg, setSignupSuccessMsg] = useState('');
   
@@ -41,38 +41,26 @@ export default function Login({ onLoginSuccess, settings }: LoginProps) {
 
   const [error, setError] = useState('');
   const [authInProgress, setAuthInProgress] = useState(false);
+  const [showServerSetup, setShowServerSetup] = useState(false);
+  const [serverUrlInput, setServerUrlInput] = useState(() => getConfiguredApiBaseUrl());
 
   useEffect(() => {
     UserService.getUsers()
       .then(res => {
-        const mapped = res.map((u: any) => {
-          let empPin = '1234';
-          if (u.id === '001') empPin = '1111';
-          else if (u.id === '002') empPin = '2222';
-          else if (u.id === '003') empPin = '3333';
-          else if (u.id === '004') empPin = '4444';
-          
-          return {
-            ...u,
-            pin: empPin,
-            code: u.id,
-            color: u.role === 'manager' ? 'bg-indigo-50 border-indigo-200 text-indigo-700' :
-                   u.role === 'accountant' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
-                   u.role === 'inventory' ? 'bg-amber-50 border-amber-200 text-amber-700' :
-                   'bg-blue-50 border-blue-200 text-blue-700'
-          };
-        });
+        const mapped = res.map((u: any) => ({
+          ...u,
+          code: u.id,
+          color: u.role === 'manager' ? 'bg-indigo-50 border-indigo-200 text-indigo-700' :
+                 u.role === 'accountant' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
+                 u.role === 'inventory' ? 'bg-amber-50 border-amber-200 text-amber-700' :
+                 'bg-blue-50 border-blue-200 text-blue-700'
+        }));
         setEmployees(mapped);
       })
       .catch(err => {
-        console.error('Error fetching employees, falling back to static list:', err);
-        const staticList = [
-          { id: '001', code: '001', email: 'manager@system.com', name: 'عبدالرحمن (المدير العام)', role: 'manager', pin: '1111' },
-          { id: '002', code: '002', email: 'accountant@system.com', name: 'ياسر (المحاسب المالي)', role: 'accountant', pin: '2222' },
-          { id: '003', code: '003', email: 'inventory@system.com', name: 'أنس (أمين المستودع)', role: 'inventory', pin: '3333' },
-          { id: '004', code: '004', email: 'cashier@system.com', name: 'أحمد (موظف الكاشير)', role: 'cashier', pin: '4444' }
-        ];
-        setEmployees(staticList);
+        console.error('Error fetching employees:', err);
+        setEmployees([]);
+        setError('تعذر تحميل الموظفين. تحقق من عنوان خادم AD1 واتصاله بالإنترنت.');
       })
       .finally(() => {
         setLoading(false);
@@ -134,50 +122,7 @@ export default function Login({ onLoginSuccess, settings }: LoginProps) {
       }
 
       if (!backendAvailable) {
-        // Offline fallback: verify against static user list
-        const targetUser = employees.find((u: any) => {
-          if (payload.code) return u.code === payload.code;
-          if (payload.email) return u.email === payload.email;
-          return false;
-        });
-
-        if (!targetUser) {
-          throw new Error('المستخدم غير موجود في قائمة الموظفين');
-        }
-
-        // Verify PIN or password locally
-        if (payload.pin) {
-          const expectedPin = targetUser.pin || '1234';
-          if (payload.pin !== expectedPin) {
-            throw new Error('رمز PIN الذي أدخلته غير صحيح');
-          }
-        } else if (payload.password) {
-          // In offline mode, accept the password as-is (no hash check)
-        } else {
-          throw new Error('يرجى إدخال رمز PIN أو كلمة المرور');
-        }
-
-        // Generate offline session tokens
-        const offlineToken = 'offline_' + btoa(JSON.stringify({ id: targetUser.id, role: targetUser.role, ts: Date.now() }));
-        const offlineRefreshToken = 'offline_refresh_' + btoa(JSON.stringify({ id: targetUser.id, ts: Date.now() }));
-
-        localStorage.setItem('erp_refresh_token', offlineRefreshToken);
-
-        const sessionUser = {
-          id: targetUser.id,
-          name: targetUser.name,
-          role: targetUser.role,
-          code: targetUser.code || targetUser.id,
-          roleId: targetUser.roleId || null,
-          email: targetUser.email,
-          permissions: [],
-          token: offlineToken,
-          isVerified: true
-        };
-
-        PermissionService.setCurrentUser(sessionUser);
-        onLoginSuccess(sessionUser);
-        return;
+        throw new Error('تعذر الوصول إلى خادم AD1. افتح إعداد الخادم وأدخل عنوان خادم متاح قبل تسجيل الدخول.');
       }
 
       // Store tokens
@@ -331,36 +276,10 @@ export default function Login({ onLoginSuccess, settings }: LoginProps) {
       }
 
       if (!res.ok || !data || !data.success) {
-        // Real API rejection → surface the actual error
         if (data && data.success === false) {
           throw new Error(data.error || 'فشل إنشاء حساب موظف جديد');
         }
-        // Backend unreachable → register locally (offline mode)
-        const localId = String(employees.length + 1).padStart(3, '0');
-        const localUser = {
-          id: localId,
-          code: localId,
-          email: signupEmail,
-          name: signupName,
-          role: signupRole,
-          pin: signupPin || '1234',
-          color: signupRole === 'manager' ? 'bg-indigo-50 border-indigo-200 text-indigo-700' :
-                 signupRole === 'accountant' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
-                 signupRole === 'inventory' ? 'bg-amber-50 border-amber-200 text-amber-700' :
-                 'bg-blue-50 border-blue-200 text-blue-700'
-        };
-        setEmployees(prev => [...prev, localUser]);
-        setSignupSuccessMsg('تم إنشاء حساب الموظف محلياً (وضع عدم الاتصال)! يمكنك الآن تسجيل الدخول.');
-        setTimeout(() => {
-          setEmailInput(signupEmail);
-          setPasswordInput(signupPassword);
-          setLoginMode('password');
-          setSignupSuccessMsg('');
-          setSignupName('');
-          setSignupEmail('');
-          setSignupPassword('');
-        }, 2000);
-        return;
+        throw new Error('تعذر الوصول إلى خادم AD1. احفظ عنوان الخادم الصحيح ثم أعد المحاولة.');
       }
 
       setSignupSuccessMsg('تم إنشاء حساب الموظف بنجاح ومزامنته مع Firebase Auth! يمكنك الآن تسجيل الدخول.');
@@ -369,7 +288,6 @@ export default function Login({ onLoginSuccess, settings }: LoginProps) {
       UserService.getUsers().then(usersRes => {
         const mapped = usersRes.map((u: any) => ({
           ...u,
-          pin: u.pin || '1234',
           code: u.id,
           color: u.role === 'manager' ? 'bg-indigo-50 border-indigo-200 text-indigo-700' :
                  u.role === 'accountant' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
@@ -397,6 +315,17 @@ export default function Login({ onLoginSuccess, settings }: LoginProps) {
     }
   };
 
+  const handleSaveServerUrl = () => {
+    try {
+      setConfiguredApiBaseUrl(serverUrlInput);
+      setShowServerSetup(false);
+      setError('');
+      window.location.reload();
+    } catch (err: any) {
+      setError(err.message || 'تعذر حفظ عنوان الخادم');
+    }
+  };
+
   const handleClear = () => {
     setPin('');
     setError('');
@@ -417,6 +346,36 @@ export default function Login({ onLoginSuccess, settings }: LoginProps) {
           </div>
           <h1 className="text-lg sm:text-xl font-black text-slate-800 tracking-tight">{settings.name}</h1>
           <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">نظام المصادقة وحماية المؤسسات المتقدم (Enterprise JWT)</p>
+        </div>
+
+        <div className="border border-slate-200 rounded-2xl bg-slate-50/80 p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Server className="w-4 h-4 text-slate-500" />
+              <span className="text-xs font-bold text-slate-700">اتصال خادم AD1</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowServerSetup(!showServerSetup)}
+              className="text-xs font-bold text-rose-600 hover:text-rose-700"
+            >
+              {showServerSetup ? 'إخفاء' : 'إعداد الخادم'}
+            </button>
+          </div>
+          {showServerSetup && (
+            <div className="mt-3 space-y-2">
+              <input
+                type="url"
+                dir="ltr"
+                value={serverUrlInput}
+                onChange={(e) => setServerUrlInput(e.target.value)}
+                placeholder="https://api.example.com"
+                className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-300"
+              />
+              <p className="text-[10px] leading-5 text-slate-500">أدخل عنوان الخادم الذي يمكن للهاتف الوصول إليه. لا تستخدم localhost لأنه يشير إلى الهاتف نفسه.</p>
+              <button type="button" onClick={handleSaveServerUrl} className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition">حفظ وإعادة الاتصال</button>
+            </div>
+          )}
         </div>
 
         {/* Auth Mode Toggle Tabs */}
@@ -516,7 +475,7 @@ export default function Login({ onLoginSuccess, settings }: LoginProps) {
                   maxLength={4}
                   value={signupPin}
                   onChange={(e) => setSignupPin(e.target.value)}
-                  placeholder="1234"
+                  placeholder="••••"
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600 text-center"
                 />
               </div>
@@ -587,7 +546,7 @@ export default function Login({ onLoginSuccess, settings }: LoginProps) {
                 type="text"
                 value={emailInput}
                 onChange={(e) => setEmailInput(e.target.value)}
-                placeholder="manager@system.com"
+                placeholder="name@company.com"
                 className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-slate-900"
                 required
               />
@@ -645,6 +604,12 @@ export default function Login({ onLoginSuccess, settings }: LoginProps) {
             </div>
 
             <div className="grid grid-cols-1 gap-2.5 max-h-[280px] overflow-y-auto pr-1">
+              {employees.length === 0 && (
+                <div className="p-4 text-center rounded-2xl border border-dashed border-slate-300 bg-slate-50">
+                  <p className="text-xs font-bold text-slate-600">لا توجد حسابات متاحة للعرض.</p>
+                  <p className="text-[10px] text-slate-400 mt-1">تحقق من اتصال الخادم أو أنشئ حسابًا جديدًا بعد إعداد الخادم.</p>
+                </div>
+              )}
               {employees.map(emp => (
                 <button
                   key={emp.code}
@@ -665,7 +630,7 @@ export default function Login({ onLoginSuccess, settings }: LoginProps) {
                       </span>
                     </div>
                   </div>
-                  <span className="text-[10px] font-bold text-slate-400 font-mono">PIN: {emp.pin}</span>
+                  <span className="text-[10px] font-bold text-slate-400">رمز دخول آمن</span>
                 </button>
               ))}
             </div>

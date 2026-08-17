@@ -147,6 +147,14 @@ export async function ensureDatabaseTables(force = false) {
       company_id TEXT,
       branch_id TEXT,
       role_id TEXT,
+      password_hash TEXT,
+      pin TEXT,
+      is_email_verified BOOLEAN DEFAULT FALSE,
+      email_verification_token TEXT,
+      email_verification_expires TIMESTAMP,
+      reset_password_token TEXT,
+      reset_password_expires TIMESTAMP,
+      is_active BOOLEAN DEFAULT TRUE,
       created_at TIMESTAMP DEFAULT NOW(),
       updated_at TIMESTAMP DEFAULT NOW()
     );
@@ -1021,7 +1029,16 @@ export async function ensureDatabaseTables(force = false) {
     }
 
     if (tbl === 'users') {
-      alterSql += `, ADD COLUMN IF NOT EXISTS role_id TEXT`;
+      alterSql += `,
+        ADD COLUMN IF NOT EXISTS role_id TEXT,
+        ADD COLUMN IF NOT EXISTS password_hash TEXT,
+        ADD COLUMN IF NOT EXISTS pin TEXT,
+        ADD COLUMN IF NOT EXISTS is_email_verified BOOLEAN DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS email_verification_token TEXT,
+        ADD COLUMN IF NOT EXISTS email_verification_expires TIMESTAMP,
+        ADD COLUMN IF NOT EXISTS reset_password_token TEXT,
+        ADD COLUMN IF NOT EXISTS reset_password_expires TIMESTAMP,
+        ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE`;
     }
 
     await execSql(sql.raw(alterSql), `${tbl}_columns`);

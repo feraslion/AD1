@@ -477,9 +477,9 @@ export default function App() {
   }
 
   return (
-    <div className={`min-h-screen transition-colors duration-200 ${darkMode ? 'dark bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-800'} flex flex-col antialiased`}>
+    <div className={`app-shell min-h-screen transition-colors duration-200 ${darkMode ? 'dark bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-800'} flex flex-col antialiased`}>
       {/* Upper Navigation Header bar */}
-      <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-4 sm:px-8 shadow-sm text-slate-800 dark:text-slate-100 transition-colors">
+      <header className="app-topbar h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-4 sm:px-8 shadow-sm text-slate-800 dark:text-slate-100 transition-colors">
         <div className="flex items-center gap-3">
           <span className="text-2xl w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-lg flex items-center justify-center border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
             {settings.logo && (settings.logo.startsWith('http') || settings.logo.startsWith('/') || settings.logo.startsWith('data:image')) ? (
@@ -731,7 +731,7 @@ export default function App() {
       {/* Main Content Layout with sidebar */}
       <div className="flex-1 flex flex-col md:flex-row">
         {/* Sidebar Navigation Panel */}
-        <aside className="w-full md:w-64 bg-[#1e293b] text-white flex flex-col border-l border-slate-700 shadow-xl md:min-h-[calc(100vh-64px)]">
+        <aside className="app-sidebar w-full md:w-64 bg-[#1e293b] text-white flex flex-col border-l border-slate-700 shadow-xl md:min-h-[calc(100vh-64px)]">
           {/* Quick Stats sidebar header */}
           <div className="p-5 flex flex-col items-center border-b border-slate-700 mb-4 bg-slate-900/20 text-center">
             <div className="w-12 h-12 bg-emerald-500 rounded-xl flex items-center justify-center mb-2.5 text-2xl font-bold shadow-lg shadow-emerald-500/20 text-white overflow-hidden">
@@ -960,7 +960,7 @@ export default function App() {
         </aside>
 
         {/* Main interactive viewport container */}
-        <main className="flex-1 p-4 sm:p-6 overflow-y-auto">
+        <main className="app-main flex-1 p-4 sm:p-6 overflow-y-auto">
           {activeTab === 'dashboard' && (
             <ProtectedRoute user={currentUser} module="dashboard" onNavigateToAllowed={(m) => setActiveTab(m === 'sales' ? 'pos' : m)} onLogout={handleLogout}>
               <Dashboard

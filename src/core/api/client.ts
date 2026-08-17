@@ -11,30 +11,38 @@ export interface ApiResponse<T = any> {
   timestamp?: string;
 }
 
+// Android must connect to a reachable server address; localhost points to the phone itself.
+const API_BASE_URL_STORAGE_KEY = 'ad1_api_base_url';
+
+export const getConfiguredApiBaseUrl = (): string => {
+  if (typeof window === 'undefined') return '';
+  const metaEnv = (import.meta as any)?.env;
+  return String(
+    localStorage.getItem(API_BASE_URL_STORAGE_KEY) ||
+    (window as any).VITE_API_BASE_URL ||
+    metaEnv?.VITE_API_BASE_URL ||
+    ''
+  ).trim().replace(/\/$/, '');
+};
+
+export const setConfiguredApiBaseUrl = (value: string): void => {
+  const normalized = value.trim().replace(/\/$/, '');
+  if (normalized && !/^https?:\/\//i.test(normalized)) {
+    throw new Error('أدخل عنوان خادم كاملًا يبدأ بـ http:// أو https://');
+  }
+  if (normalized) localStorage.setItem(API_BASE_URL_STORAGE_KEY, normalized);
+  else localStorage.removeItem(API_BASE_URL_STORAGE_KEY);
+};
+
+export const hasConfiguredApiBaseUrl = (): boolean => Boolean(getConfiguredApiBaseUrl());
+
 // Helper to resolve absolute or relative API URLs
 export const resolveApiUrl = (url: string): string => {
-  if (!url) return url;
-  if (url.startsWith('http://') || url.startsWith('https://')) return url;
-
-  let baseUrl = '';
-  if (typeof window !== 'undefined') {
-    const metaEnv = (import.meta as any)?.env;
-    if ((window as any).VITE_API_BASE_URL) {
-      baseUrl = (window as any).VITE_API_BASE_URL;
-    } else if (metaEnv && metaEnv.VITE_API_BASE_URL) {
-      baseUrl = metaEnv.VITE_API_BASE_URL;
-    } else if (window.location.protocol === 'file:' || window.location.protocol === 'capacitor:') {
-      baseUrl = 'http://localhost:3000';
-    }
-  }
-
-  if (baseUrl) {
-    const cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
-    const cleanUrl = url.startsWith('/') ? url : `/${url}`;
-    return `${cleanBase}${cleanUrl}`;
-  }
-
-  return url;
+  if (!url || url.startsWith('http://') || url.startsWith('https://')) return url;
+  const baseUrl = getConfiguredApiBaseUrl();
+  if (!baseUrl) return url;
+  const cleanUrl = url.startsWith('/') ? url : `/${url}`;
+  return `${baseUrl}${cleanUrl}`;
 };
 
 // Helper to retrieve auth token headers
@@ -128,6 +136,21 @@ export const apiClient = {
     const method = options.method || 'GET';
     const start = Date.now();
     const targetUrl = resolveApiUrl(url);
+    const isNativeShell = typeof window !== 'undefined' && (
+      window.location.protocol === 'file:' ||
+      window.location.protocol === 'capacitor:' ||
+      (window.location.hostname === 'localhost' &&
+        window.location.port === '' &&
+        Boolean((window as any).Capacitor))
+    );
+
+    if (isNativeShell && url.startsWith('/api/') && !hasConfiguredApiBaseUrl()) {
+      throw new AppError(
+        'لم يتم إعداد عنوان خادم AD1. افتح إعداد الخادم في شاشة الدخول وأدخل عنوانًا يمكن للهاتف الوصول إليه.',
+        'SERVER_ERROR',
+        503
+      );
+    }
     
     logger.debug('APIClient', `Outgoing Request: ${method} ${targetUrl}`);
 

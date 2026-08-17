@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { db } from '../../database/index.ts';
 import { users, userSessions, roles, permissions, rolePermissions } from '../../database/schema.ts';
-import { eq, and, gt } from 'drizzle-orm';
+import { eq, and, gt, sql } from 'drizzle-orm';
 import { TokenService } from '../../auth/TokenService.ts';
 import { AuthenticatedRequest, ROLE_DEFAULT_PERMISSIONS, authenticate, requireRole } from '../middleware/auth.ts';
 
@@ -46,32 +46,22 @@ authRouter.post('/login', async (req: Request, res: Response) => {
       });
     }
 
-    // Verify Password if provided
-    if (password && (userRecord as any).passwordHash) {
+    // Verify credentials only against values stored for this user; no static credentials exist.
+    if (password) {
+      if (!(userRecord as any).passwordHash) {
+        return res.status(401).json({ success: false, error: 'لم تُهيأ كلمة مرور لهذا الحساب بعد' });
+      }
       const isPasswordValid = await TokenService.comparePassword(password, (userRecord as any).passwordHash);
       if (!isPasswordValid) {
-        return res.status(401).json({
-          success: false,
-          error: 'كلمة المرور التي أدخلتها غير صحيحة'
-        });
+        return res.status(401).json({ success: false, error: 'كلمة المرور التي أدخلتها غير صحيحة' });
       }
     } else if (pin) {
-      // PIN check (support DB user.pin or static default PINs)
-      let expectedPin = (userRecord as any).pin;
-      if (!expectedPin) {
-        if (userRecord.id === '001') expectedPin = '1111';
-        else if (userRecord.id === '002') expectedPin = '2222';
-        else if (userRecord.id === '003') expectedPin = '3333';
-        else if (userRecord.id === '004') expectedPin = '4444';
-        else expectedPin = '1234';
+      const expectedPin = (userRecord as any).pin;
+      if (!expectedPin || pin !== expectedPin) {
+        return res.status(401).json({ success: false, error: 'رمز PIN الذي أدخلته غير صحيح' });
       }
-
-      if (pin !== expectedPin) {
-        return res.status(401).json({
-          success: false,
-          error: 'رمز PIN الذي أدخلته غير صحيح'
-        });
-      }
+    } else {
+      return res.status(400).json({ success: false, error: 'أدخل كلمة المرور أو رمز PIN' });
     }
 
     // Load User Permissions
@@ -164,11 +154,14 @@ authRouter.post('/register', async (req: Request, res: Response) => {
   try {
     const { email, name, password, role, pin } = req.body;
 
-    if (!email || !name) {
+    if (!email || !name || !password || !pin || !role) {
       return res.status(400).json({
         success: false,
-        error: 'البريد الإلكتروني والاسم مطلوبة'
+        error: 'الاسم والبريد وكلمة المرور ورمز PIN والدور مطلوبة'
       });
+    }
+    if (!/^\d{4,8}$/.test(pin)) {
+      return res.status(400).json({ success: false, error: 'رمز PIN يجب أن يحتوي من 4 إلى 8 أرقام' });
     }
 
     // Check if email exists
@@ -181,18 +174,21 @@ authRouter.post('/register', async (req: Request, res: Response) => {
     }
 
     const userId = 'usr_' + Date.now();
-    const passwordHash = password ? await TokenService.hashPassword(password) : null;
+    const passwordHash = await TokenService.hashPassword(password);
     const verificationToken = TokenService.generateRandomToken(24);
-    const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+    const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const userCount = await db.select({ count: sql<number>`count(*)` }).from(users);
+    const isFirstUser = Number(userCount[0]?.count || 0) === 0;
+    const requestedRole = role === 'manager' || role === 'accountant' || role === 'inventory' || role === 'cashier' ? role : 'cashier';
 
     await db.insert(users).values({
       id: userId,
       uid: userId,
       email,
       name,
-      role: role || 'cashier',
+      role: isFirstUser ? 'manager' : requestedRole,
       passwordHash,
-      pin: pin || '1234',
+      pin: pin,
       isEmailVerified: false,
       emailVerificationToken: verificationToken,
       emailVerificationExpires: verificationExpires,
@@ -207,7 +203,7 @@ authRouter.post('/register', async (req: Request, res: Response) => {
         id: userId,
         email,
         name,
-        role: role || 'cashier',
+        role: isFirstUser ? 'manager' : requestedRole,
         isEmailVerified: false
       },
       verificationToken

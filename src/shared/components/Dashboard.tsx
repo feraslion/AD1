@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Invoice, Product, StoreSettings } from '../../types';
-import { TrendingUp, ShoppingBag, AlertTriangle, FileText, Landmark, Users, Clock, ArrowLeft, RefreshCw, ChevronDown, ChevronUp, Check, Calendar, CheckSquare, Square, Plus, Trash2, ListTodo, CheckCircle2 } from 'lucide-react';
+import { TrendingUp, ShoppingBag, AlertTriangle, FileText, Landmark, Users, Clock, ArrowLeft, RefreshCw, ChevronDown, ChevronUp, Check, Calendar, CheckSquare, Square, Plus, Trash2, ListTodo, CheckCircle2, PackageSearch, Warehouse, ReceiptText, BarChart3, Wallet, Truck, Settings2 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import StatCard from './ui/StatCard';
 
@@ -195,6 +195,45 @@ export default function Dashboard({ invoices, products, settings, onNavigate, sy
           </button>
         </div>
       </div>
+
+      {/* First-page module launcher */}
+      <section className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-slate-200">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2 mb-5">
+          <div>
+            <p className="text-[11px] font-extrabold tracking-[.14em] text-rose-500 uppercase">مساحات العمل</p>
+            <h3 className="font-black text-slate-800 text-lg mt-1">إلى أين تريد أن تبدأ اليوم؟</h3>
+          </div>
+          <p className="text-xs text-slate-400">اختر الوحدة المناسبة للوصول المباشر إلى أدواتها.</p>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
+          {[
+            { label: 'نقطة البيع', hint: 'بيع سريع وفواتير', tab: 'pos', icon: ShoppingBag, tone: 'bg-rose-50 text-rose-600 group-hover:bg-rose-500' },
+            { label: 'المنتجات', hint: 'الكتالوج والأسعار', tab: 'products', icon: PackageSearch, tone: 'bg-amber-50 text-amber-600 group-hover:bg-amber-500' },
+            { label: 'المخزون', hint: 'الأرصدة والحركات', tab: 'inventory', icon: Warehouse, tone: 'bg-teal-50 text-teal-600 group-hover:bg-teal-500' },
+            { label: 'الفواتير', hint: 'المبيعات والضرائب', tab: 'invoices', icon: ReceiptText, tone: 'bg-blue-50 text-blue-600 group-hover:bg-blue-500' },
+            { label: 'المشتريات', hint: 'الموردون والطلبات', tab: 'purchases', icon: Truck, tone: 'bg-violet-50 text-violet-600 group-hover:bg-violet-500' },
+            { label: 'العملاء', hint: 'الأرصدة والعلاقات', tab: 'customers', icon: Users, tone: 'bg-pink-50 text-pink-600 group-hover:bg-pink-500' },
+            { label: 'الحسابات', hint: 'القيود والأستاذ', tab: 'accounting', icon: Landmark, tone: 'bg-slate-100 text-slate-700 group-hover:bg-slate-700' },
+            { label: 'الخزينة', hint: 'النقد والبنوك', tab: 'treasury', icon: Wallet, tone: 'bg-emerald-50 text-emerald-600 group-hover:bg-emerald-500' },
+            { label: 'التقارير', hint: 'مؤشرات وقرارات', tab: 'reports', icon: BarChart3, tone: 'bg-indigo-50 text-indigo-600 group-hover:bg-indigo-500' },
+            { label: 'الإعدادات', hint: 'النظام والضريبة', tab: 'settings', icon: Settings2, tone: 'bg-orange-50 text-orange-600 group-hover:bg-orange-500' },
+          ].map(({ label, hint, tab, icon: Icon, tone }) => (
+            <button
+              key={tab}
+              onClick={() => onNavigate(tab)}
+              className="group flex items-center gap-3 p-3.5 bg-slate-50/80 hover:bg-white border border-slate-100 hover:border-rose-200 rounded-2xl text-right transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+            >
+              <span className={`w-10 h-10 shrink-0 rounded-xl flex items-center justify-center transition-colors ${tone} group-hover:text-white`}>
+                <Icon className="w-5 h-5" />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-xs font-black text-slate-800 truncate">{label}</span>
+                <span className="block text-[10px] text-slate-400 mt-0.5 truncate">{hint}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>
 
       {/* Main stats grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

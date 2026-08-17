@@ -370,46 +370,6 @@ export default function Settings({
           </div>
         </div>
 
-        {/* Sector Database Loader */}
-        <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
-          <h3 className="font-extrabold text-slate-800 text-base">💾 تهيئة البيانات وتحميل كتل الأنشطة</h3>
-          <p className="text-xs text-slate-400">تحميل بيانات تجريبية فورية مخصصة للنشاط التجاري المناسب</p>
-
-          <div className="space-y-2">
-            <button
-              onClick={() => handleDemoLoad('supermarket')}
-              className="w-full p-3 bg-slate-50 hover:bg-emerald-50 border border-slate-100 hover:border-emerald-200 rounded-xl text-right flex justify-between items-center transition"
-            >
-              <span className="text-xs font-bold text-slate-700">🛒 سوبرماركت ومواد غذائية</span>
-              <span className="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded font-extrabold">EAN-13 باركود</span>
-            </button>
-
-            <button
-              onClick={() => handleDemoLoad('pharmacy')}
-              className="w-full p-3 bg-slate-50 hover:bg-emerald-50 border border-slate-100 hover:border-emerald-200 rounded-xl text-right flex justify-between items-center transition"
-            >
-              <span className="text-xs font-bold text-slate-700">💊 صيدلية وعناية طبية</span>
-              <span className="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded font-extrabold">باركود عالمي</span>
-            </button>
-
-            <button
-              onClick={() => handleDemoLoad('cafe')}
-              className="w-full p-3 bg-slate-50 hover:bg-emerald-50 border border-slate-100 hover:border-emerald-200 rounded-xl text-right flex justify-between items-center transition"
-            >
-              <span className="text-xs font-bold text-slate-700">☕ مقهى وكافيه ومشروبات</span>
-              <span className="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded font-extrabold">أكواد قصيرة</span>
-            </button>
-
-            <button
-              onClick={() => handleDemoLoad('gold')}
-              className="w-full p-3 bg-slate-50 hover:bg-emerald-50 border border-slate-100 hover:border-emerald-200 rounded-xl text-right flex justify-between items-center transition"
-            >
-              <span className="text-xs font-bold text-slate-700">💍 مجوهرات ومحلات الذهب</span>
-              <span className="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded font-extrabold">جرام وعيار</span>
-            </button>
-          </div>
-        </div>
-
         {/* Backup and restore */}
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
           <h3 className="font-extrabold text-slate-800 text-base">💾 أمان قاعدة البيانات والنسخ الاحتياطي</h3>
