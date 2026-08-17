@@ -55,17 +55,22 @@ export default function BarcodeScannerModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="barcode-scanner-modal-title"
+      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+    >
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] border border-slate-100">
         
         {/* Header */}
         <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-blue-600/30 rounded-xl border border-blue-400/30 text-blue-400">
-              <Scan className="w-6 h-6 animate-pulse" />
+              <Scan className="w-6 h-6 animate-pulse" aria-hidden="true" />
             </div>
             <div>
-              <h3 className="font-bold text-lg flex items-center gap-2">
+              <h3 id="barcode-scanner-modal-title" className="font-bold text-lg flex items-center gap-2">
                 وحدة أجهزة القارئ الضوئي (USB / Bluetooth)
                 <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full">
                   متصل ومتأهب ⚡
@@ -78,45 +83,52 @@ export default function BarcodeScannerModal({
           </div>
           <button 
             onClick={onClose}
-            className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-700/50 transition-colors"
+            aria-label="إغلاق الشاشة"
+            className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-700/50 transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:outline-none"
           >
-            <X className="w-5 h-5" />
+            <X className="w-5 h-5" aria-hidden="true" />
           </button>
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex border-b border-slate-100 bg-slate-50 px-5 pt-3 gap-2">
+        <div className="flex border-b border-slate-100 bg-slate-50 px-5 pt-3 gap-2" role="tablist" aria-label="تبويبات الممسحة الضوئية">
           <button
+            role="tab"
+            aria-selected={activeTab === 'scanner'}
             onClick={() => setActiveTab('scanner')}
-            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-t-xl transition-all ${
+            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-t-xl transition-all focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none ${
               activeTab === 'scanner'
                 ? 'bg-white text-blue-600 border-t-2 border-blue-600 shadow-sm'
                 : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'
             }`}
           >
-            <Zap className="w-4 h-4" />
+            <Zap className="w-4 h-4" aria-hidden="true" />
             المسح اليدوي واللايزر
           </button>
           <button
+            role="tab"
+            aria-selected={activeTab === 'history'}
             onClick={() => setActiveTab('history')}
-            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-t-xl transition-all ${
+            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-t-xl transition-all focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none ${
               activeTab === 'history'
                 ? 'bg-white text-blue-600 border-t-2 border-blue-600 shadow-sm'
                 : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'
             }`}
           >
-            <History className="w-4 h-4" />
+            <History className="w-4 h-4" aria-hidden="true" />
             سجل عمليات المسح ({scanHistory.length})
           </button>
           <button
+            role="tab"
+            aria-selected={activeTab === 'settings'}
             onClick={() => setActiveTab('settings')}
-            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-t-xl transition-all ${
+            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-t-xl transition-all focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none ${
               activeTab === 'settings'
                 ? 'bg-white text-blue-600 border-t-2 border-blue-600 shadow-sm'
                 : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'
             }`}
           >
-            <Settings className="w-4 h-4" />
+            <Settings className="w-4 h-4" aria-hidden="true" />
             إعدادات الحساسية والأصوات
           </button>
         </div>
@@ -133,7 +145,7 @@ export default function BarcodeScannerModal({
                 <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 rounded-2xl p-4 text-white shadow-lg flex items-center justify-between gap-3 border border-blue-700/50">
                   <div className="flex items-center gap-3">
                     <div className="p-3 bg-blue-500/20 border border-blue-400/30 rounded-2xl text-blue-300">
-                      <Camera className="w-7 h-7 animate-pulse" />
+                      <Camera className="w-7 h-7 animate-pulse" aria-hidden="true" />
                     </div>
                     <div>
                       <h4 className="font-bold text-sm text-white flex items-center gap-2">
@@ -153,9 +165,9 @@ export default function BarcodeScannerModal({
                       onClose();
                       onOpenCameraScanner();
                     }}
-                    className="px-4 py-2.5 bg-blue-500 hover:bg-blue-600 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center gap-1.5 shrink-0"
+                    className="px-4 py-2.5 bg-blue-500 hover:bg-blue-600 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center gap-1.5 shrink-0 focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:outline-none"
                   >
-                    <Camera className="w-4 h-4" />
+                    <Camera className="w-4 h-4" aria-hidden="true" />
                     تشغيل الكاميرا
                   </button>
                 </div>
@@ -178,25 +190,26 @@ export default function BarcodeScannerModal({
 
               {/* Manual Input Form */}
               <form onSubmit={handleManualSubmit} className="space-y-2">
-                <label className="block text-xs font-bold text-slate-700">
+                <label htmlFor="manual-barcode-input" className="block text-xs font-bold text-slate-700">
                   إدخال الباركود أو الكود يدوياً (أو تجربة القارئ):
                 </label>
                 <div className="flex gap-2">
                   <div className="relative flex-1">
                     <input
+                      id="manual-barcode-input"
                       ref={inputRef}
                       data-scanner-input="true"
                       type="text"
                       value={manualBarcode}
                       onChange={(e) => setManualBarcode(e.target.value)}
                       placeholder="امسح هنا باللايزر أو أدخل رقم الباركود..."
-                      className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                      className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus-visible:outline-none transition-all"
                     />
-                    <Scan className="w-5 h-5 text-slate-400 absolute left-3 top-3.5" />
+                    <Scan className="w-5 h-5 text-slate-400 absolute left-3 top-3.5" aria-hidden="true" />
                   </div>
                   <button
                     type="submit"
-                    className="px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 shrink-0"
+                    className="px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 shrink-0 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
                   >
                     إرسال وقراءة
                   </button>
@@ -235,7 +248,7 @@ export default function BarcodeScannerModal({
               {/* Electronic Scale Test Example */}
               <div className="bg-amber-50/60 border border-amber-200 rounded-xl p-4 space-y-2">
                 <div className="flex items-center gap-2 text-amber-900 font-bold text-xs">
-                  <Scale className="w-4 h-4 text-amber-600" />
+                  <Scale className="w-4 h-4 text-amber-600" aria-hidden="true" />
                   ميزة باركود الميزان الإلكتروني (EAN-13 Scale Barcode):
                 </div>
                 <p className="text-[11px] text-amber-800 leading-relaxed">
@@ -397,7 +410,7 @@ export default function BarcodeScannerModal({
           </span>
           <button
             onClick={onClose}
-            className="px-5 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl shadow transition-all"
+            className="px-5 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl shadow transition-all focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
           >
             إغلاق
           </button>
