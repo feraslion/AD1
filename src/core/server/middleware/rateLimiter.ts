@@ -14,7 +14,7 @@ interface ClientRequestRecord {
 const clientStore = new Map<string, ClientRequestRecord>();
 
 // Cleanup stale client records periodically
-setInterval(() => {
+const cleanupTimer = setInterval(() => {
   const now = Date.now();
   for (const [ip, record] of clientStore.entries()) {
     if (now > record.resetTime) {
@@ -22,6 +22,10 @@ setInterval(() => {
     }
   }
 }, 60 * 1000);
+
+if (cleanupTimer && typeof cleanupTimer.unref === 'function') {
+  cleanupTimer.unref();
+}
 
 export function createRateLimiter(options: RateLimitOptions) {
   const { windowMs, max, message = 'تم تجاوز الحد الأقصى للطلبات. الرجاء المحاولة مرة أخرى لاحقاً.' } = options;
