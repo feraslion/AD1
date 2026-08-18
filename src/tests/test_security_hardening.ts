@@ -56,6 +56,24 @@ export async function runSecurityRegressionTests() {
   }
   console.log('✓ PASS: Invalid Bearer token correctly rejected with HTTP 401');
 
+  // 2b. Verify User ID Bearer Token Authentication Bypass Rejection
+  console.log('\n[Test 2b] Verifying User ID Bearer token bypass attempt rejection...');
+  const mockReqUserIdToken: any = {
+    headers: { authorization: 'Bearer 001' },
+    ip: '127.0.0.1',
+    socket: { remoteAddress: '127.0.0.1' }
+  };
+  statusCode = 0;
+  responseData = null;
+  nextCalled = false;
+
+  await authenticate(mockReqUserIdToken, mockRes, mockNext);
+
+  if (statusCode !== 401 || mockReqUserIdToken.user) {
+    throw new Error(`CRITICAL SECURITY FAILURE: Raw user ID Bearer token bypass attempt was NOT rejected with 401! Code: ${statusCode}`);
+  }
+  console.log('✓ PASS: User ID Bearer token bypass attempt correctly rejected with HTTP 401');
+
   // 3. Verify JWT Expiration and Token Generation
   console.log('\n[Test 3] Verifying JWT Token Generation & Expiration...');
   const testPayload = {
@@ -125,8 +143,10 @@ export async function runSecurityRegressionTests() {
 
 // Execute tests if invoked directly
 if (import.meta.url === `file://${process.argv[1]}`) {
-  runSecurityRegressionTests().catch((err) => {
-    console.error('❌ SECURITY REGRESSION TEST FAILED:', err);
-    process.exit(1);
-  });
+  runSecurityRegressionTests()
+    .then(() => process.exit(0))
+    .catch((err) => {
+      console.error('❌ SECURITY REGRESSION TEST FAILED:', err);
+      process.exit(1);
+    });
 }
