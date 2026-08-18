@@ -1,6 +1,6 @@
 import { db } from '../database/index.ts';
 import { customers, invoices, payments, salesInvoices } from '../database/schema.ts';
-import { eq, like, or, and, gte, lte, desc } from 'drizzle-orm';
+import { eq, like, or, and, gte, lte, desc, inArray } from 'drizzle-orm';
 
 export class CustomerRepository {
   static async findAll(params?: { search?: string; type?: string; status?: string; page?: number; limit?: number }) {
@@ -221,14 +221,33 @@ export class CustomerRepository {
     const allCustomers = await db.select().from(customers);
     const now = new Date().getTime();
 
+    // Filter debtor customers with balance > 0
+    const debtorCustomers = allCustomers.filter(c => parseFloat(c.balance || '0') > 0);
+    if (debtorCustomers.length === 0) return [];
+
+    const debtorCustomerIds = debtorCustomers.map(c => c.id);
+
+    // Performance Optimization (Bolt ⚡):
+    // Batch fetch all invoices for debtor customers in a single O(1) query using inArray,
+    // avoiding N+1 queries in the loop.
+    const allDebtorInvoices = await db.select().from(invoices).where(inArray(invoices.customerId, debtorCustomerIds));
+
+    // Group invoices by customerId for O(1) lookup
+    const invoicesByCustomerMap = new Map<string, typeof invoices.$inferSelect[]>();
+    for (const inv of allDebtorInvoices) {
+      if (!inv.customerId) continue;
+      const custInvs = invoicesByCustomerMap.get(inv.customerId) || [];
+      custInvs.push(inv);
+      invoicesByCustomerMap.set(inv.customerId, custInvs);
+    }
+
     const result = [];
 
-    for (const c of allCustomers) {
+    for (const c of debtorCustomers) {
       const bal = parseFloat(c.balance || '0');
       const limit = parseFloat(c.creditLimit || '5000');
-      if (bal <= 0) continue; // Skip non-debtor customers in aging breakdown
 
-      const invs = await this.getCustomerInvoices(c.id);
+      const invs = invoicesByCustomerMap.get(c.id) || [];
       
       let curr0_30 = 0;
       let days31_60 = 0;
