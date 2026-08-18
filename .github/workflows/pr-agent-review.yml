@@ -117,8 +117,8 @@ jobs:
       - name: Validate Web Build
         run: bun run build:web
 
-      - name: Validate Windows Build
-        run: bunx electron-builder --win --x64 --dir --publish never
+      - name: Validate Linux Desktop Build
+        run: bunx electron-builder --linux --x64 --dir --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
