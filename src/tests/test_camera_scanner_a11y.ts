@@ -62,10 +62,8 @@ function runCameraScannerA11yTest() {
 
   if (passedCount === assertions.length) {
     console.log(`\n🎉 All ${assertions.length} accessibility assertions passed successfully!`);
-    process.exit(0);
   } else {
-    console.error(`\n💥 ${assertions.length - passedCount} assertion(s) failed.`);
-    process.exit(1);
+    throw new Error(`💥 ${assertions.length - passedCount} assertion(s) failed in CameraBarcodeScanner accessibility test.`);
   }
 }
 
