@@ -228,16 +228,20 @@ export default function CameraBarcodeScanner({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4">
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col border border-slate-100 animate-fade-in max-h-[92vh]">
-        
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="camera-modal-title"
+        className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col border border-slate-100 animate-fade-in max-h-[92vh]"
+      >
         {/* Header */}
         <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-blue-950 text-white p-4 sm:p-5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-blue-500/20 border border-blue-400/30 rounded-2xl text-blue-400">
-              <Camera className="w-6 h-6 animate-pulse" />
+              <Camera className="w-6 h-6 animate-pulse" aria-hidden="true" />
             </div>
             <div>
-              <h3 className="font-bold text-base sm:text-lg flex items-center gap-2">
+              <h3 id="camera-modal-title" className="font-bold text-base sm:text-lg flex items-center gap-2">
                 ماسح كاميرا الجهاز
                 <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-sans">
                   مباشر HD 📷
@@ -250,9 +254,10 @@ export default function CameraBarcodeScanner({
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-slate-800/80 transition"
+            aria-label="إغلاق نافذة الكاميرا"
+            className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-slate-800/80 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
           >
-            <X className="w-5 h-5" />
+            <X className="w-5 h-5" aria-hidden="true" />
           </button>
         </div>
 
@@ -261,11 +266,12 @@ export default function CameraBarcodeScanner({
           
           {/* Camera Selection Dropdown */}
           <div className="flex items-center gap-1.5 flex-1 min-w-[200px]">
-            <Camera className="w-4 h-4 text-slate-500 shrink-0" />
+            <Camera className="w-4 h-4 text-slate-500 shrink-0" aria-hidden="true" />
             <select
               value={selectedCameraId}
               onChange={(e) => setSelectedCameraId(e.target.value)}
-              className="w-full bg-white border border-slate-300 text-slate-800 text-xs font-semibold rounded-xl px-2.5 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"
+              aria-label="اختر الكاميرا"
+              className="w-full bg-white border border-slate-300 text-slate-800 text-xs font-semibold rounded-xl px-2.5 py-1.5 focus:ring-2 focus:ring-blue-500 focus-visible:ring-2 focus-visible:ring-blue-500 outline-none"
             >
               {cameras.map((cam) => (
                 <option key={cam.id} value={cam.id}>
@@ -280,14 +286,16 @@ export default function CameraBarcodeScanner({
             {torchSupported && (
               <button
                 onClick={toggleTorch}
-                className={`p-2 rounded-xl border font-bold flex items-center gap-1 transition ${
+                aria-label="تفعيل فلاش الكاميرا"
+                aria-pressed={torchOn}
+                className={`p-2 rounded-xl border font-bold flex items-center gap-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
                   torchOn 
                     ? 'bg-amber-500 text-white border-amber-600 shadow-md' 
                     : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
                 }`}
                 title="تفعيل فلاش الكاميرا"
               >
-                <Flashlight className="w-4 h-4" />
+                <Flashlight className="w-4 h-4" aria-hidden="true" />
                 <span className="text-[11px] hidden sm:inline">الكشاف</span>
               </button>
             )}
@@ -295,14 +303,16 @@ export default function CameraBarcodeScanner({
             {/* Sound Toggle */}
             <button
               onClick={() => setSoundEnabled(!soundEnabled)}
-              className={`p-2 rounded-xl border font-bold flex items-center gap-1 transition ${
+              aria-label={soundEnabled ? 'إيقاف التنبيه الصوتي' : 'تفعيل التنبيه الصوتي'}
+              aria-pressed={soundEnabled}
+              className={`p-2 rounded-xl border font-bold flex items-center gap-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
                 soundEnabled 
                   ? 'bg-blue-50 text-blue-600 border-blue-200' 
                   : 'bg-slate-200 text-slate-500 border-slate-300'
               }`}
               title="صوت التنبيه عند القراءة"
             >
-              {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+              {soundEnabled ? <Volume2 className="w-4 h-4" aria-hidden="true" /> : <VolumeX className="w-4 h-4" aria-hidden="true" />}
             </button>
           </div>
 
@@ -341,7 +351,7 @@ export default function CameraBarcodeScanner({
           {cameraError && (
             <div className="absolute inset-0 bg-slate-900/95 p-6 flex flex-col items-center justify-center text-center text-white space-y-4">
               <div className="p-3 bg-rose-500/20 rounded-full text-rose-400 border border-rose-500/30">
-                <AlertCircle className="w-8 h-8" />
+                <AlertCircle className="w-8 h-8" aria-hidden="true" />
               </div>
               <p className="text-sm font-bold text-rose-300 max-w-sm leading-relaxed">{cameraError}</p>
               
@@ -349,16 +359,18 @@ export default function CameraBarcodeScanner({
                 <button
                   type="button"
                   onClick={requestCameraAccess}
-                  className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition shadow-md"
+                  aria-label="طلب الإذن أو إعادة المحاولة"
+                  className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
                 >
-                  <RefreshCw className="w-4 h-4" />
+                  <RefreshCw className="w-4 h-4" aria-hidden="true" />
                   طلب الإذن / إعادة المحاولة
                 </button>
 
                 <button
                   type="button"
                   onClick={() => window.open(window.location.href, '_blank')}
-                  className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl font-bold text-xs transition"
+                  aria-label="فتح التطبيق بتبويب مستقل"
+                  className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl font-bold text-xs transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
                 >
                   فتح التطبيق بتبويب مستقل ↗
                 </button>
@@ -404,7 +416,8 @@ export default function CameraBarcodeScanner({
           <div className="flex justify-end gap-2 pt-1">
             <button
               onClick={onClose}
-              className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition shadow-md"
+              aria-label="إغلاق الكاميرا"
+              className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
             >
               إغلاق الكاميرا
             </button>
