@@ -29,9 +29,19 @@ export class PurchaseRepository {
       const supplierList = await db.select().from(suppliers).catch(() => []);
       const suppliersMap = new Map((supplierList || []).map(s => [s.id, s]));
 
+      // Group items by requestId for O(1) Map lookup instead of O(N*M) nested filtering
+      const itemsByRequestId = new Map<string, any[]>();
+      for (const item of itemsList) {
+        let list = itemsByRequestId.get(item.requestId);
+        if (!list) {
+          list = [];
+          itemsByRequestId.set(item.requestId, list);
+        }
+        list.push(item);
+      }
+
       return reqList.map(req => {
-        const rItems = itemsList
-          .filter(item => item.requestId === req.id)
+        const rItems = (itemsByRequestId.get(req.id) || [])
           .map(i => ({
             ...i,
             estimatedPrice: parseFloat(i.estimatedPrice || '0'),
@@ -200,9 +210,19 @@ export class PurchaseRepository {
     const suppliersMap = new Map(supplierList.map(s => [s.id, s]));
     const productsMap = new Map(productList.map(p => [p.id, p]));
 
+    // Group items by purchaseId for O(1) Map lookup instead of O(N*M) nested filtering
+    const itemsByPurchaseId = new Map<string, any[]>();
+    for (const item of itemsList) {
+      let list = itemsByPurchaseId.get(item.purchaseId);
+      if (!list) {
+        list = [];
+        itemsByPurchaseId.set(item.purchaseId, list);
+      }
+      list.push(item);
+    }
+
     return purchaseList.map(pur => {
-      const pItems = itemsList
-        .filter(item => item.purchaseId === pur.id)
+      const pItems = (itemsByPurchaseId.get(pur.id) || [])
         .map(i => ({
           ...i,
           productName: productsMap.get(i.productId)?.name || i.productId,
