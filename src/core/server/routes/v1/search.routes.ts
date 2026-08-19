@@ -46,7 +46,7 @@ router.get('/', async (req: AuthenticatedRequest, res: Response) => {
     const normPattern = `%${normalizedQ}%`;
 
     const userPerms = req.user?.permissions || [];
-    const isManager = !req.user || req.user.role === 'manager' || req.user.role === 'admin';
+    const isManager = req.user?.role === 'manager' || req.user?.role === 'admin';
 
     // Permissions check per module
     const canViewProducts = isManager || userPerms.some(p => ['inventory.view', 'manage_inventory', 'pos_access', 'sales.view'].includes(p));
