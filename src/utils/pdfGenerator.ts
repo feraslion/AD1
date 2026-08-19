@@ -4,6 +4,19 @@ import { Invoice, StoreSettings } from '../types';
 import { generateZatcaQrDataUrl } from './zatca';
 
 /**
+ * Safely escape HTML characters in user-controlled strings to prevent DOM XSS
+ */
+export function escapeHtml(str: unknown): string {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+/**
  * Professional PDF Generator for Invoices (ZATCA Compliant)
  */
 export async function downloadInvoicePDF(
@@ -67,11 +80,11 @@ export async function downloadInvoicePDF(
                 : `<div style="width: 60px; height: 60px; background: #0284c7; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: bold; border-radius: 8px;">🏬</div>`
             }
             <div>
-              <h1 style="margin: 0; font-size: 22px; font-weight: 900; color: #0f172a;">${settings.name}</h1>
-              <p style="margin: 4px 0 0; font-size: 12px; color: #64748b; font-weight: 600;">${settings.address || 'المملكة العربية السعودية'}</p>
-              <p style="margin: 2px 0 0; font-size: 12px; color: #64748b;">هاتف: ${settings.phone || 'غير محدد'}</p>
+              <h1 style="margin: 0; font-size: 22px; font-weight: 900; color: #0f172a;">${escapeHtml(settings.name)}</h1>
+              <p style="margin: 4px 0 0; font-size: 12px; color: #64748b; font-weight: 600;">${escapeHtml(settings.address || 'المملكة العربية السعودية')}</p>
+              <p style="margin: 2px 0 0; font-size: 12px; color: #64748b;">هاتف: ${escapeHtml(settings.phone || 'غير محدد')}</p>
               <div style="margin-top: 6px; display: inline-block; background: #f0f9ff; color: #0369a1; border: 1px solid #bae6fd; padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 800;">
-                الرقم الضريبي VAT: <span style="font-family: monospace;">${settings.taxNumber}</span>
+                الرقم الضريبي VAT: <span style="font-family: monospace;">${escapeHtml(settings.taxNumber)}</span>
               </div>
             </div>
           </div>
@@ -81,7 +94,7 @@ export async function downloadInvoicePDF(
               ${invoice.status === 'returned' ? 'فاتورة مرتجع مبيعات' : 'فاتورة ضريبية مبسطة'}
             </div>
             <div style="font-size: 12px; color: #475569; font-weight: bold; margin-bottom: 2px;">
-              رقم الفاتورة: <span style="font-family: monospace; font-size: 14px; color: #0284c7;">${invoice.invoiceNumber}</span>
+              رقم الفاتورة: <span style="font-family: monospace; font-size: 14px; color: #0284c7;">${escapeHtml(invoice.invoiceNumber)}</span>
             </div>
             <div style="font-size: 11px; color: #64748b;">التاريخ: ${formattedDate}</div>
           </div>
@@ -91,12 +104,12 @@ export async function downloadInvoicePDF(
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; background: #f8fafc; padding: 12px 16px; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 12px;">
           <div>
             <div style="color: #64748b; font-size: 11px; font-weight: bold;">بيانات العميل:</div>
-            <div style="font-weight: 800; font-size: 13px; color: #0f172a; margin-top: 2px;">${invoice.customerName || 'عميل نقدي عام'}</div>
-            ${invoice.taxNumber ? `<div style="font-size: 11px; color: #475569; margin-top: 2px;">الرقم الضريبي للعميل: <span style="font-family: monospace;">${invoice.taxNumber}</span></div>` : ''}
+            <div style="font-weight: 800; font-size: 13px; color: #0f172a; margin-top: 2px;">${escapeHtml(invoice.customerName || 'عميل نقدي عام')}</div>
+            ${invoice.taxNumber ? `<div style="font-size: 11px; color: #475569; margin-top: 2px;">الرقم الضريبي للعميل: <span style="font-family: monospace;">${escapeHtml(invoice.taxNumber)}</span></div>` : ''}
           </div>
           <div>
             <div style="color: #64748b; font-size: 11px; font-weight: bold;">معلومات العملية:</div>
-            <div style="font-weight: 700; color: #334155; margin-top: 2px;">الكاشير المسؤول: <span style="color: #0f172a;">${invoice.cashierName}</span></div>
+            <div style="font-weight: 700; color: #334155; margin-top: 2px;">الكاشير المسؤول: <span style="color: #0f172a;">${escapeHtml(invoice.cashierName)}</span></div>
             <div style="font-weight: 700; color: #334155; margin-top: 2px;">طريقة السداد: <span style="color: #0284c7; font-weight: 800;">${paymentMethodLabel}</span></div>
           </div>
         </div>
@@ -120,12 +133,12 @@ export async function downloadInvoicePDF(
                 (item, idx) => `
               <tr style="border-bottom: 1px solid #e2e8f0; background: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
                 <td style="padding: 10px; font-weight: bold; color: #64748b; font-family: monospace;">${idx + 1}</td>
-                <td style="padding: 10px; font-weight: 800; color: #0f172a;">${item.productName}</td>
+                <td style="padding: 10px; font-weight: 800; color: #0f172a;">${escapeHtml(item.productName)}</td>
                 <td style="padding: 10px; text-align: center; font-weight: 800; font-family: monospace; font-size: 13px;">${item.quantity}</td>
-                <td style="padding: 10px; text-align: left; font-family: monospace;">${item.price.toFixed(2)} ${settings.currency}</td>
+                <td style="padding: 10px; text-align: left; font-family: monospace;">${item.price.toFixed(2)} ${escapeHtml(settings.currency)}</td>
                 <td style="padding: 10px; text-align: left; font-family: monospace; color: #64748b;">${settings.taxRate || 15}%</td>
-                <td style="padding: 10px; text-align: left; font-family: monospace; color: #d97706;">${item.taxAmount ? item.taxAmount.toFixed(2) : (item.total * (settings.taxRate / 115)).toFixed(2)} ${settings.currency}</td>
-                <td style="padding: 10px; text-align: left; font-weight: 900; font-family: monospace; color: #0284c7;">${item.total.toFixed(2)} ${settings.currency}</td>
+                <td style="padding: 10px; text-align: left; font-family: monospace; color: #d97706;">${item.taxAmount ? item.taxAmount.toFixed(2) : (item.total * (settings.taxRate / 115)).toFixed(2)} ${escapeHtml(settings.currency)}</td>
+                <td style="padding: 10px; text-align: left; font-weight: 900; font-family: monospace; color: #0284c7;">${item.total.toFixed(2)} ${escapeHtml(settings.currency)}</td>
               </tr>
             `
               )
@@ -186,16 +199,16 @@ export async function downloadInvoicePDF(
     // Thermal Receipt Style PDF
     container.innerHTML = `
       <div style="padding: 12px; border: 1px solid #cbd5e1; font-family: monospace; font-size: 12px; text-align: center;">
-        <h2 style="margin: 0; font-size: 16px; font-weight: 900;">${settings.name}</h2>
-        <p style="margin: 2px 0; font-size: 10px; color: #475569;">${settings.address}</p>
-        <p style="margin: 2px 0; font-size: 10px; font-weight: bold;">الرقم الضريبي: ${settings.taxNumber}</p>
+        <h2 style="margin: 0; font-size: 16px; font-weight: 900;">${escapeHtml(settings.name)}</h2>
+        <p style="margin: 2px 0; font-size: 10px; color: #475569;">${escapeHtml(settings.address)}</p>
+        <p style="margin: 2px 0; font-size: 10px; font-weight: bold;">الرقم الضريبي: ${escapeHtml(settings.taxNumber)}</p>
         <div style="border-bottom: 1px dashed #000; margin: 8px 0;"></div>
         
         <div style="text-align: right; font-size: 11px; line-height: 1.5;">
-          <div><b>رقم الفاتورة:</b> ${invoice.invoiceNumber}</div>
+          <div><b>رقم الفاتورة:</b> ${escapeHtml(invoice.invoiceNumber)}</div>
           <div><b>التاريخ:</b> ${formattedDate}</div>
-          <div><b>العميل:</b> ${invoice.customerName || 'عميل نقدي'}</div>
-          <div><b>الكاشير:</b> ${invoice.cashierName}</div>
+          <div><b>العميل:</b> ${escapeHtml(invoice.customerName || 'عميل نقدي')}</div>
+          <div><b>الكاشير:</b> ${escapeHtml(invoice.cashierName)}</div>
         </div>
         <div style="border-bottom: 1px solid #000; margin: 8px 0;"></div>
 
@@ -210,7 +223,7 @@ export async function downloadInvoicePDF(
           <tbody>
             ${invoice.items.map(it => `
               <tr style="border-bottom: 1px dashed #ccc;">
-                <td>${it.productName}</td>
+                <td>${escapeHtml(it.productName)}</td>
                 <td style="text-align: center;">${it.quantity}</td>
                 <td style="text-align: left;">${it.total.toFixed(2)}</td>
               </tr>
@@ -220,10 +233,10 @@ export async function downloadInvoicePDF(
         <div style="border-bottom: 1px dashed #000; margin: 8px 0;"></div>
 
         <div style="text-align: right; font-size: 11px; line-height: 1.6;">
-          <div>قبل الضريبة: ${invoice.totalWithoutTax.toFixed(2)} ${settings.currency}</div>
-          <div>ضريبة (${settings.taxRate}%): ${invoice.taxAmount.toFixed(2)} ${settings.currency}</div>
+          <div>قبل الضريبة: ${invoice.totalWithoutTax.toFixed(2)} ${escapeHtml(settings.currency)}</div>
+          <div>ضريبة (${settings.taxRate}%): ${invoice.taxAmount.toFixed(2)} ${escapeHtml(settings.currency)}</div>
           <div style="font-size: 13px; font-weight: 900; margin-top: 4px; border-top: 1px solid #000; padding-top: 4px;">
-            الإجمالي: ${invoice.grandTotal.toFixed(2)} ${settings.currency}
+            الإجمالي: ${invoice.grandTotal.toFixed(2)} ${escapeHtml(settings.currency)}
           </div>
         </div>
         
