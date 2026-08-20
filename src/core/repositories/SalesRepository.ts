@@ -46,11 +46,23 @@ export class SalesRepository {
       ? await db.select().from(invoiceItems).where(inArray(invoiceItems.invoiceId, invoiceIds))
       : [];
 
+    // Performance optimization: Pre-group invoice items by invoice ID in an in-memory Map lookup table
+    // to eliminate O(N*M) nested array filtering during parent-child record mapping.
+    const itemsByInvoiceId = new Map<string, typeof itemsList>();
+    for (const item of itemsList) {
+      let group = itemsByInvoiceId.get(item.invoiceId);
+      if (!group) {
+        group = [];
+        itemsByInvoiceId.set(item.invoiceId, group);
+      }
+      group.push(item);
+    }
+
     const mapped = invoiceList.map(inv => ({
       id: inv.id,
       invoiceNumber: inv.invoiceNumber,
       date: inv.date,
-      items: itemsList.filter(item => item.invoiceId === inv.id).map(item => ({
+      items: (itemsByInvoiceId.get(inv.id) || []).map(item => ({
         id: item.id,
         productId: item.productId,
         productName: item.productName,
@@ -389,6 +401,18 @@ export class SalesRepository {
       ? await db.select().from(quotationItems).where(inArray(quotationItems.quotationId, qIds))
       : [];
 
+    // Performance optimization: Pre-group quotation items by quotation ID in an in-memory Map lookup table
+    // to eliminate O(N*M) nested array filtering during parent-child record mapping.
+    const itemsByQuotationId = new Map<string, typeof allItems>();
+    for (const item of allItems) {
+      let group = itemsByQuotationId.get(item.quotationId);
+      if (!group) {
+        group = [];
+        itemsByQuotationId.set(item.quotationId, group);
+      }
+      group.push(item);
+    }
+
     return list.map(q => ({
       id: q.id,
       quotationNumber: q.quotationNumber,
@@ -404,7 +428,7 @@ export class SalesRepository {
       exchangeRate: parseFloat(q.exchangeRate || '1.0'),
       status: q.status || 'draft',
       notes: q.notes || undefined,
-      items: allItems.filter(item => item.quotationId === q.id).map(item => ({
+      items: (itemsByQuotationId.get(q.id) || []).map(item => ({
         id: item.id,
         productId: item.productId,
         productName: item.productName,
@@ -464,6 +488,18 @@ export class SalesRepository {
       ? await db.select().from(salesOrderItems).where(inArray(salesOrderItems.orderId, oIds))
       : [];
 
+    // Performance optimization: Pre-group sales order items by order ID in an in-memory Map lookup table
+    // to eliminate O(N*M) nested array filtering during parent-child record mapping.
+    const itemsByOrderId = new Map<string, typeof allItems>();
+    for (const item of allItems) {
+      let group = itemsByOrderId.get(item.orderId);
+      if (!group) {
+        group = [];
+        itemsByOrderId.set(item.orderId, group);
+      }
+      group.push(item);
+    }
+
     return list.map(o => ({
       id: o.id,
       orderNumber: o.orderNumber,
@@ -480,7 +516,7 @@ export class SalesRepository {
       exchangeRate: parseFloat(o.exchangeRate || '1.0'),
       status: o.status || 'confirmed',
       notes: o.notes || undefined,
-      items: allItems.filter(item => item.orderId === o.id).map(item => ({
+      items: (itemsByOrderId.get(o.id) || []).map(item => ({
         id: item.id,
         productId: item.productId,
         productName: item.productName,
