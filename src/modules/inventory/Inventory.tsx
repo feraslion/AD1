@@ -612,24 +612,27 @@ export default function Inventory({
                                 setLedgerProdId(p.id);
                                 setActiveSubTab('ledger');
                               }}
-                              className="p-1.5 hover:bg-slate-100 text-slate-600 rounded-lg transition"
+                              className="p-1.5 hover:bg-slate-100 text-slate-600 rounded-lg transition focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none"
                               title="دفتر استاد الصنف"
+                              aria-label={`دفتر استاد الصنف: ${p.name}`}
                             >
-                              <History className="w-4 h-4" />
+                              <History className="w-4 h-4" aria-hidden="true" />
                             </button>
                             <button
                               onClick={() => handleOpenEdit(p)}
-                              className="p-1.5 hover:bg-slate-100 text-slate-600 rounded-lg transition"
+                              className="p-1.5 hover:bg-slate-100 text-slate-600 rounded-lg transition focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none"
                               title="تعديل"
+                              aria-label={`تعديل المنتج: ${p.name}`}
                             >
-                              <Edit2 className="w-4 h-4" />
+                              <Edit2 className="w-4 h-4" aria-hidden="true" />
                             </button>
                             <button
                               onClick={() => onDeleteProduct(p.id)}
-                              className="p-1.5 hover:bg-rose-50 text-rose-600 rounded-lg transition"
+                              className="p-1.5 hover:bg-rose-50 text-rose-600 rounded-lg transition focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:outline-none"
                               title="حذف"
+                              aria-label={`حذف المنتج: ${p.name}`}
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="w-4 h-4" aria-hidden="true" />
                             </button>
                           </div>
                         </td>
@@ -792,9 +795,10 @@ export default function Inventory({
               </div>
               <button
                 onClick={fetchStockMoves}
-                className="p-1.5 text-slate-500 hover:bg-slate-100 rounded-lg text-xs font-bold flex items-center gap-1 transition"
+                className="p-1.5 text-slate-500 hover:bg-slate-100 rounded-lg text-xs font-bold flex items-center gap-1 transition focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none"
+                aria-label="تحديث سجل الحركات المخزنية"
               >
-                <RefreshCw className="w-3.5 h-3.5" />
+                <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
                 <span>تحديث</span>
               </button>
             </div>
@@ -897,16 +901,20 @@ export default function Inventory({
                         setWhLocation(wh.location || '');
                         setShowWhModal(true);
                       }}
-                      className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition"
+                      className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none"
+                      aria-label={`تعديل المستودع: ${wh.name}`}
+                      title="تعديل المستودع"
                     >
-                      <Edit2 className="w-4 h-4" />
+                      <Edit2 className="w-4 h-4" aria-hidden="true" />
                     </button>
                     {wh.id !== 'wh_main' && (
                       <button
                         onClick={() => handleDeleteWh(wh.id)}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:outline-none"
+                        aria-label={`حذف المستودع: ${wh.name}`}
+                        title="حذف المستودع"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="w-4 h-4" aria-hidden="true" />
                       </button>
                     )}
                   </div>
@@ -1517,7 +1525,13 @@ export default function Inventory({
               <h3 className="font-extrabold text-slate-800 text-base">
                 {editingWh ? 'تعديل بيانات المستودع' : 'إضافة مستودع جديد'}
               </h3>
-              <button onClick={() => setShowWhModal(false)} className="text-slate-400 hover:text-slate-600">✕</button>
+              <button
+                onClick={() => setShowWhModal(false)}
+                className="text-slate-400 hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none rounded-lg p-1"
+                aria-label="إغلاق النافذة"
+              >
+                ✕
+              </button>
             </div>
 
             <form onSubmit={handleWhSubmit} className="space-y-4">
@@ -1584,7 +1598,13 @@ export default function Inventory({
               <h3 className="font-extrabold text-slate-800 text-base">
                 {editingProduct ? 'تعديل بيانات الصنف' : 'إضافة صنف جديد'}
               </h3>
-              <button onClick={() => setShowProductModal(false)} className="text-slate-400 hover:text-slate-600">✕</button>
+              <button
+                onClick={() => setShowProductModal(false)}
+                className="text-slate-400 hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none rounded-lg p-1"
+                aria-label="إغلاق النافذة"
+              >
+                ✕
+              </button>
             </div>
 
             <form onSubmit={handleProductSubmit} className="space-y-4">
