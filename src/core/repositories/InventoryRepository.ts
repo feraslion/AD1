@@ -425,23 +425,10 @@ export class InventoryRepository {
     };
   }
 
-  private static calculateFifoValuationForProduct(productId: string, stock: number, avgCost: number, productMoves: any[]) {
+  private static calculateFifoValuationForProduct(productId: string, stock: number, avgCost: number, inwardMoves: any[]) {
     if (stock <= 0) {
       return { fifoUnitCost: avgCost, fifoTotalValue: 0 };
     }
-
-    // Inward moves for FIFO are purchase, initial, or positive adjustment
-    const inwardMoves = productMoves.filter(m => 
-      m.productId === productId && (
-        m.type === 'purchase' || 
-        m.type === 'initial' || 
-        (m.type === 'adjustment' && m.toWarehouseId)
-      )
-    ).sort((a, b) => {
-      const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-      return tB - tA; // Newest first
-    });
 
     let remainingQty = stock;
     let fifoTotalValue = 0;
@@ -470,12 +457,38 @@ export class InventoryRepository {
     const allProducts = await db.select().from(products);
     const allMoves = await db.select().from(stockMoves);
 
+    // Performance Optimization:
+    // Pre-group and pre-sort inward stock moves by productId in O(M log M) time
+    // instead of repeatedly filtering and sorting all moves for every product in O(N * M log M).
+    const inwardMovesByProduct = new Map<string, any[]>();
+    for (const m of allMoves) {
+      const isInward = m.type === 'purchase' || m.type === 'initial' || (m.type === 'adjustment' && m.toWarehouseId);
+      if (!isInward || !m.productId) continue;
+
+      let list = inwardMovesByProduct.get(m.productId);
+      if (!list) {
+        list = [];
+        inwardMovesByProduct.set(m.productId, list);
+      }
+      list.push(m);
+    }
+
+    // Pre-sort each product's inward moves by createdAt descending (newest first)
+    for (const moves of inwardMovesByProduct.values()) {
+      moves.sort((a, b) => {
+        const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return tB - tA;
+      });
+    }
+
     const valuationItems = allProducts.map(p => {
       const stock = parseFloat(p.stock || '0');
       const avgCost = parseFloat(p.purchasePrice || '0');
       const sellingPrice = parseFloat(p.price || '0');
 
-      const { fifoUnitCost, fifoTotalValue } = this.calculateFifoValuationForProduct(p.id, stock, avgCost, allMoves);
+      const productInwardMoves = inwardMovesByProduct.get(p.id) || [];
+      const { fifoUnitCost, fifoTotalValue } = this.calculateFifoValuationForProduct(p.id, stock, avgCost, productInwardMoves);
 
       const wacTotalValue = Math.round((stock * avgCost) * 100) / 100;
       const selectedTotalCostValue = method === 'fifo' ? fifoTotalValue : wacTotalValue;
