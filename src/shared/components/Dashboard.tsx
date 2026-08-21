@@ -188,10 +188,11 @@ export default function Dashboard({ invoices, products, settings, onNavigate, sy
 
           <button 
             onClick={onForceSync}
-            className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition"
+            aria-label="تحديث البيانات والمزامنة"
+            className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
             title="تحديث البيانات والمزامنة"
           >
-            <RefreshCw className="w-4 h-4" />
+            <RefreshCw className="w-4 h-4" aria-hidden="true" />
           </button>
         </div>
       </div>
@@ -299,10 +300,11 @@ export default function Dashboard({ invoices, products, settings, onNavigate, sy
             <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
               <button 
                 onClick={() => setIsLowStockExpanded(!isLowStockExpanded)}
-                className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
+                aria-expanded={isLowStockExpanded}
+                className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
               >
                 <span>{isLowStockExpanded ? 'إخفاء التفاصيل' : 'تفاصيل المنتجات وإعادة التعبئة'}</span>
-                {isLowStockExpanded ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
+                {isLowStockExpanded ? <ChevronUp className="w-4 h-4 text-slate-500" aria-hidden="true" /> : <ChevronDown className="w-4 h-4 text-slate-500" aria-hidden="true" />}
               </button>
               <button 
                 onClick={() => onNavigate('inventory')}
@@ -353,12 +355,13 @@ export default function Dashboard({ invoices, products, settings, onNavigate, sy
                             <input 
                               type="number" 
                               placeholder="إضافة كمية" 
+                              aria-label={`كمية التعبئة لـ ${p.name}`}
                               value={qtyVal}
                               onChange={(e) => {
                                 const val = e.target.value;
                                 setReplenishQty(prev => ({ ...prev, [p.id]: val }));
                               }}
-                              className="w-24 px-2 py-1.5 text-xs border border-slate-200 rounded-lg text-center font-bold focus:outline-none focus:ring-1 focus:ring-red-500 bg-white"
+                              className="w-24 px-2 py-1.5 text-xs border border-slate-200 rounded-lg text-center font-bold focus:outline-none focus:ring-2 focus:ring-red-500 bg-white"
                             />
                           </div>
 
@@ -641,10 +644,11 @@ export default function Dashboard({ invoices, products, settings, onNavigate, sy
               />
               <button
                 type="submit"
-                className="p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition shadow-sm flex items-center justify-center shrink-0"
+                aria-label="إضافة المهمة"
+                className="p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition shadow-sm flex items-center justify-center shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                 title="إضافة المهمة"
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="w-4 h-4" aria-hidden="true" />
               </button>
             </form>
 
@@ -668,13 +672,16 @@ export default function Dashboard({ invoices, products, settings, onNavigate, sy
                   >
                     <button
                       type="button"
+                      role="checkbox"
+                      aria-checked={todo.completed}
+                      aria-label={`تحديد مهمة: ${todo.text}`}
                       onClick={() => handleToggleTodo(todo.id)}
-                      className="flex items-center gap-2.5 text-right flex-1 min-w-0"
+                      className="flex items-center gap-2.5 text-right flex-1 min-w-0 rounded-lg p-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                     >
                       {todo.completed ? (
-                        <CheckSquare className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                        <CheckSquare className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" aria-hidden="true" />
                       ) : (
-                        <Square className="w-4 h-4 text-slate-400 dark:text-slate-500 shrink-0" />
+                        <Square className="w-4 h-4 text-slate-400 dark:text-slate-500 shrink-0" aria-hidden="true" />
                       )}
                       <span
                         className={`text-xs font-bold truncate ${
@@ -690,10 +697,11 @@ export default function Dashboard({ invoices, products, settings, onNavigate, sy
                     <button
                       type="button"
                       onClick={() => handleDeleteTodo(todo.id)}
-                      className="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg transition shrink-0 opacity-80 hover:opacity-100"
+                      aria-label={`حذف المهمة: ${todo.text}`}
+                      className="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg transition shrink-0 opacity-80 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
                       title="حذف المهمة"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
                     </button>
                   </div>
                 ))
@@ -707,9 +715,9 @@ export default function Dashboard({ invoices, products, settings, onNavigate, sy
               <button
                 type="button"
                 onClick={handleClearCompleted}
-                className="text-[11px] font-bold text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 transition flex items-center gap-1"
+                className="text-[11px] font-bold text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 transition flex items-center gap-1 rounded-lg px-1.5 py-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
               >
-                <Trash2 className="w-3 h-3" />
+                <Trash2 className="w-3 h-3" aria-hidden="true" />
                 تنظيف المهام المكتملة
               </button>
             </div>
