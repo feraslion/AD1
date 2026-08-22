@@ -95,10 +95,21 @@ export class AccountingRepository {
     // Find all details for foreign accounts or where transactions were posted in currencyCode
     const allDetails = await db.select().from(journalDetails).where(eq(journalDetails.currency, currencyCode));
 
+    // Bolt optimization: Pre-group journal details by accountId into an in-memory Map table to reduce complexity from O(N * M) to O(N + M)
+    const detailsByAccount = new Map<string, typeof allDetails>();
+    for (const d of allDetails) {
+      let list = detailsByAccount.get(d.accountId);
+      if (!list) {
+        list = [];
+        detailsByAccount.set(d.accountId, list);
+      }
+      list.push(d);
+    }
+
     const revaluedAccountsMap = new Map<string, { account: any; currentBaseBal: number; foreignBal: number; newBaseBal: number; difference: number }>();
 
     for (const acc of allAccounts) {
-      const accDetails = allDetails.filter(d => d.accountId === acc.id);
+      const accDetails = detailsByAccount.get(acc.id) || [];
       if (accDetails.length === 0 && acc.currency !== currencyCode) continue;
 
       const totalForeignDebit = accDetails.reduce((s, d) => s + parseFloat(d.foreignDebit || '0'), 0);
@@ -371,8 +382,19 @@ export class AccountingRepository {
         allDetails = allDetails.filter(d => d.currency === filterCurrency);
       }
 
+      // Bolt optimization: Pre-group journal details by accountId into an in-memory Map lookup table to avoid O(N * M) array scan bottleneck
+      const detailsByAccount = new Map<string, typeof allDetails>();
+      for (const d of allDetails) {
+        let list = detailsByAccount.get(d.accountId);
+        if (!list) {
+          list = [];
+          detailsByAccount.set(d.accountId, list);
+        }
+        list.push(d);
+      }
+
       const trialBalanceRows = allAccounts.map(acc => {
-        const accDetails = allDetails.filter(d => d.accountId === acc.id);
+        const accDetails = detailsByAccount.get(acc.id) || [];
         const totalDebit = accDetails.reduce((sum, d) => sum + parseFloat(d.debit || '0'), 0);
         const totalCredit = accDetails.reduce((sum, d) => sum + parseFloat(d.credit || '0'), 0);
         const totalForeignDebit = accDetails.reduce((sum, d) => sum + parseFloat(d.foreignDebit || '0'), 0);
