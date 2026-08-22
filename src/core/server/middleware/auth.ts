@@ -83,12 +83,6 @@ export async function authenticate(req: AuthenticatedRequest, res: Response, nex
             statusCode: 401
           });
         }
-      } else {
-        // 2. Fallback: code/PIN login user lookup (e.g. Bearer 001 for legacy cashier code access)
-        const [u] = await db.select().from(users).where(eq(users.id, token));
-        if (u && (u as any).isActive !== false && !(u as any).isDeleted) {
-          userRecord = u;
-        }
       }
     }
 
