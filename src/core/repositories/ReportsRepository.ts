@@ -506,8 +506,11 @@ export class ReportsRepository {
     let financingInflows = 0;
     let financingOutflows = 0;
 
+    // Performance Optimization: Pre-build Map lookup for accounts to eliminate O(L * A) linear search overhead in loop
+    const accountMap = new Map(allAccounts.map(acc => [acc.id, acc]));
+
     lines.forEach(l => {
-      const acc = allAccounts.find(a => a.id === l.accountId);
+      const acc = accountMap.get(l.accountId);
       const debit = Number(l.debit) || 0;
       const credit = Number(l.credit) || 0;
 
