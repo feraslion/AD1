@@ -140,8 +140,7 @@ authRouter.post('/login', async (req: Request, res: Response) => {
     console.error('Error during login:', error);
     return res.status(500).json({
       success: false,
-      error: 'حدث خطأ في الخادم أثناء تسجيل الدخول',
-      details: error.message
+      error: 'حدث خطأ في الخادم أثناء تسجيل الدخول'
     });
   }
 });
@@ -212,8 +211,7 @@ authRouter.post('/register', async (req: Request, res: Response) => {
     console.error('Error in registration:', error);
     return res.status(500).json({
       success: false,
-      error: 'فشل في تسجيل المستخدم الجديد',
-      details: error.message
+      error: 'فشل في تسجيل المستخدم الجديد'
     });
   }
 });
@@ -302,8 +300,7 @@ authRouter.post('/refresh', async (req: Request, res: Response) => {
     console.error('Error refreshing token:', error);
     return res.status(500).json({
       success: false,
-      error: 'فشل تجديد الجلسة',
-      details: error.message
+      error: 'فشل تجديد الجلسة'
     });
   }
 });
@@ -332,10 +329,10 @@ authRouter.post('/logout', async (req: Request, res: Response) => {
       message: 'تم تسجيل الخروج وإلغاء الجلسة بنجاح'
     });
   } catch (error: any) {
+    console.error('Error logging out:', error);
     return res.status(500).json({
       success: false,
-      error: 'فشل تسجيل الخروج',
-      details: error.message
+      error: 'فشل تسجيل الخروج'
     });
   }
 });
@@ -385,10 +382,10 @@ authRouter.get('/sessions', async (req: AuthenticatedRequest, res: Response) => 
       sessions: sessionsList
     });
   } catch (error: any) {
+    console.error('Error fetching sessions:', error);
     return res.status(500).json({
       success: false,
-      error: 'فشل في استرجاع الجلسات',
-      details: error.message
+      error: 'فشل في استرجاع الجلسات'
     });
   }
 });
@@ -414,10 +411,10 @@ authRouter.delete('/sessions/:id', async (req: AuthenticatedRequest, res: Respon
       message: 'تم إلغاء الجلسة المحددة بنجاح'
     });
   } catch (error: any) {
+    console.error('Error revoking session:', error);
     return res.status(500).json({
       success: false,
-      error: 'فشل إلغاء الجلسة',
-      details: error.message
+      error: 'فشل إلغاء الجلسة'
     });
   }
 });
@@ -459,10 +456,10 @@ authRouter.post('/forgot-password', async (req: Request, res: Response) => {
       message: 'تم إنشاء رمز تعيين كلمة المرور بنجاح وترتيب إرساله.'
     });
   } catch (error: any) {
+    console.error('Error in forgot-password:', error);
     return res.status(500).json({
       success: false,
-      error: 'فشل في طلب إعادة تعيين كلمة المرور',
-      details: error.message
+      error: 'فشل في طلب إعادة تعيين كلمة المرور'
     });
   }
 });
@@ -507,10 +504,10 @@ authRouter.post('/reset-password', async (req: Request, res: Response) => {
       message: 'تم تغيير كلمة المرور بنجاح. يمكنك الآن تسجيل الدخول بكلمة المرور الجديدة.'
     });
   } catch (error: any) {
+    console.error('Error resetting password:', error);
     return res.status(500).json({
       success: false,
-      error: 'فشل في إعادة تعيين كلمة المرور',
-      details: error.message
+      error: 'فشل في إعادة تعيين كلمة المرور'
     });
   }
 });
@@ -543,10 +540,10 @@ authRouter.post('/send-verification-email', async (req: AuthenticatedRequest, re
       verificationToken
     });
   } catch (error: any) {
+    console.error('Error sending verification email:', error);
     return res.status(500).json({
       success: false,
-      error: 'فشل في طلب تأكيد البريد الإلكتروني',
-      details: error.message
+      error: 'فشل في طلب تأكيد البريد الإلكتروني'
     });
   }
 });
@@ -586,10 +583,10 @@ authRouter.post('/verify-email', async (req: Request, res: Response) => {
       message: 'تم تأكيد البريد الإلكتروني بنجاح!'
     });
   } catch (error: any) {
+    console.error('Error verifying email:', error);
     return res.status(500).json({
       success: false,
-      error: 'فشل في تأكيد البريد الإلكتروني',
-      details: error.message
+      error: 'فشل في تأكيد البريد الإلكتروني'
     });
   }
 });
