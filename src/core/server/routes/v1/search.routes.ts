@@ -149,8 +149,7 @@ router.get('/', async (req: AuthenticatedRequest, res: Response) => {
     console.error('[GlobalSearch Error]:', error);
     return res.status(500).json({
       success: false,
-      error: 'حدث خطأ أثناء إجراء البحث الشامل',
-      details: error?.message || error
+      error: 'حدث خطأ أثناء إجراء البحث الشامل'
     });
   }
 });
