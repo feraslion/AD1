@@ -257,6 +257,7 @@ export default function GlobalSearchModal({
             aria-expanded={combinedResults.length > 0}
             aria-autocomplete="list"
             aria-controls="global-search-results"
+            aria-activedescendant={combinedResults[selectedIndex] ? `search-option-${selectedIndex}` : undefined}
             className="flex-1 bg-transparent border-none text-slate-800 dark:text-slate-100 placeholder-slate-400 font-bold text-sm sm:text-base focus:outline-none focus:ring-0"
           />
           <div className="flex items-center gap-2 shrink-0">
@@ -371,6 +372,7 @@ export default function GlobalSearchModal({
                 return (
                   <div
                     key={`prod_${product.id}`}
+                    id={`search-option-${idx}`}
                     role="option"
                     aria-selected={isSelected}
                     onClick={() => handleSelectResult(item)}
@@ -424,6 +426,7 @@ export default function GlobalSearchModal({
                 return (
                   <div
                     key={`cust_${customer.id}`}
+                    id={`search-option-${idx}`}
                     role="option"
                     aria-selected={isSelected}
                     onClick={() => handleSelectResult(item)}
@@ -486,6 +489,7 @@ export default function GlobalSearchModal({
                 return (
                   <div
                     key={`inv_${invoice.id}`}
+                    id={`search-option-${idx}`}
                     role="option"
                     aria-selected={isSelected}
                     onClick={() => handleSelectResult(item)}

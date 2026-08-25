@@ -28,6 +28,7 @@ function runGlobalSearchA11yTests() {
   console.assert(code.includes('aria-expanded='), 'Missing input aria-expanded');
   console.assert(code.includes('aria-autocomplete="list"'), 'Missing input aria-autocomplete');
   console.assert(code.includes('aria-controls="global-search-results"'), 'Missing input aria-controls');
+  console.assert(code.includes('aria-activedescendant='), 'Missing input aria-activedescendant binding');
   console.log('✔ Test 3 Passed: Search input control possesses complete ARIA annotations.');
 
   // Test 4: Close button ARIA label and focus styles
@@ -46,6 +47,7 @@ function runGlobalSearchA11yTests() {
   console.assert(code.includes('id="global-search-results"'), 'Missing listbox ID');
   console.assert(code.includes('role="listbox"'), 'Missing role="listbox"');
   console.assert(code.includes('role="option"'), 'Missing role="option" on search result items');
+  console.assert(code.includes('id={`search-option-${idx}`}'), 'Missing id on search result items for activedescendant');
   console.assert(code.includes('aria-selected={isSelected}'), 'Missing aria-selected on search result items');
   console.log('✔ Test 6 Passed: Results container and option items feature listbox semantics.');
 
