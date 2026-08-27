@@ -506,8 +506,11 @@ export class ReportsRepository {
     let financingInflows = 0;
     let financingOutflows = 0;
 
+    // Optimized: Pre-build account lookup map to replace O(L x A) array scanning inside loop with O(1) Map lookup
+    const accountMap = new Map(allAccounts.map(a => [a.id, a]));
+
     lines.forEach(l => {
-      const acc = allAccounts.find(a => a.id === l.accountId);
+      const acc = accountMap.get(l.accountId);
       const debit = Number(l.debit) || 0;
       const credit = Number(l.credit) || 0;
 
