@@ -1,3 +1,7 @@
 ## 2025-03-01 - Arabic-First RTL Layout Focus and Navigation Alignment
 **Learning:** In Arabic-first RTL (Right-to-Left) POS interfaces, standard keyboard navigation paths (such as `ArrowLeft` and `ArrowRight`) can easily feel counter-intuitive if they are mapped to LTR assumptions. In a true RTL catalog grid, `ArrowRight` should move to the previous item (visually left-wards), while `ArrowLeft` should move to the next item (visually right-wards). Unlabeled icon buttons (such as cart deletions, quantity steps, and toggle states) present a significant accessibility barrier to screen-reader users who rely on screen narration.
 **Action:** Always map arrow-key grid navigation in RTL to mirror the visual flow of the text direction. Always provide explicit `aria-label` attributes to any icon-only button and mark decorative icons inside buttons with `aria-hidden="true"`.
+
+## 2025-03-02 - Tabbed Modal ARIA Controls and Tabpanel Matching
+**Learning:** In multi-mode tabbed modals (e.g. calculator, search filters, barcode modal), specifying `aria-controls` on tab elements requires a strictly matching `role="tabpanel"` element with `id` and `aria-labelledby` attributes for every tab mode. Missing standard mode panels create dangling `aria-controls` references in screen readers.
+**Action:** Ensure every tab mode, including default/standard modes, renders a corresponding `role="tabpanel"` container with matching `id` and `aria-labelledby="tab-id"`.

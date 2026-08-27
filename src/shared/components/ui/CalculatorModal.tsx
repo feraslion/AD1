@@ -139,16 +139,21 @@ export const CalculatorModal: React.FC<CalculatorModalProps> = ({ isOpen, onClos
   const changeVal = cashGivenVal - numVal;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="calculator-modal-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+    >
       <div className="bg-slate-900 text-white rounded-2xl shadow-2xl border border-slate-800 w-full max-w-sm overflow-hidden flex flex-col dir-rtl text-right">
         {/* Modal Header */}
         <div className="flex items-center justify-between p-4 bg-slate-800/80 border-b border-slate-700">
           <div className="flex items-center gap-2">
             <div className="p-2 bg-emerald-500/20 text-emerald-400 rounded-lg">
-              <Calculator className="w-5 h-5" />
+              <Calculator className="w-5 h-5" aria-hidden="true" />
             </div>
             <div>
-              <h3 className="font-bold text-sm text-white">آلة حاسبة المحاسبة والـ POS</h3>
+              <h3 id="calculator-modal-title" className="font-bold text-sm text-white">آلة حاسبة المحاسبة والـ POS</h3>
               <p className="text-[10px] text-slate-400">حسابات سريعة والضريبة 15% (اختصار Alt+C)</p>
             </div>
           </div>
@@ -185,9 +190,11 @@ export const CalculatorModal: React.FC<CalculatorModalProps> = ({ isOpen, onClos
         {/* Mode Tabs */}
         <div className="flex border-b border-slate-800 text-xs bg-slate-900/50" role="tablist" aria-label="أنماط الحاسبة">
           <button
+            id="calc-tab-standard"
             onClick={() => setCalcMode('standard')}
             role="tab"
             aria-selected={calcMode === 'standard'}
+            aria-controls="calc-panel-standard"
             className={`flex-1 py-2 font-bold text-center border-b-2 transition focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none ${
               calcMode === 'standard' ? 'border-emerald-500 text-emerald-400 bg-slate-800/40' : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
@@ -195,9 +202,11 @@ export const CalculatorModal: React.FC<CalculatorModalProps> = ({ isOpen, onClos
             الحاسبة القياسية
           </button>
           <button
+            id="calc-tab-vat"
             onClick={() => setCalcMode('vat')}
             role="tab"
             aria-selected={calcMode === 'vat'}
+            aria-controls="calc-panel-vat"
             className={`flex-1 py-2 font-bold text-center border-b-2 transition focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none ${
               calcMode === 'vat' ? 'border-emerald-500 text-emerald-400 bg-slate-800/40' : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
@@ -205,9 +214,11 @@ export const CalculatorModal: React.FC<CalculatorModalProps> = ({ isOpen, onClos
             ضريبة VAT 15% والخصومات
           </button>
           <button
+            id="calc-tab-change"
             onClick={() => setCalcMode('change')}
             role="tab"
             aria-selected={calcMode === 'change'}
+            aria-controls="calc-panel-change"
             className={`flex-1 py-2 font-bold text-center border-b-2 transition focus-visible:ring-2 focus-visible:ring-emerald-500 outline-none ${
               calcMode === 'change' ? 'border-emerald-500 text-emerald-400 bg-slate-800/40' : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
@@ -217,8 +228,22 @@ export const CalculatorModal: React.FC<CalculatorModalProps> = ({ isOpen, onClos
         </div>
 
         {/* Mode-Specific Panel */}
+        {calcMode === 'standard' && (
+          <div
+            id="calc-panel-standard"
+            role="tabpanel"
+            aria-labelledby="calc-tab-standard"
+            className="hidden"
+          />
+        )}
+
         {calcMode === 'vat' && (
-          <div className="p-3 bg-slate-800/40 border-b border-slate-800 grid grid-cols-2 gap-2 text-xs">
+          <div
+            id="calc-panel-vat"
+            role="tabpanel"
+            aria-labelledby="calc-tab-vat"
+            className="p-3 bg-slate-800/40 border-b border-slate-800 grid grid-cols-2 gap-2 text-xs"
+          >
             <button
               onClick={handleAddVat}
               aria-label="إضافة خمسة عشر بالمئة ضريبة القيمة المضافة"
@@ -250,7 +275,12 @@ export const CalculatorModal: React.FC<CalculatorModalProps> = ({ isOpen, onClos
         )}
 
         {calcMode === 'change' && (
-          <div className="p-3 bg-slate-800/40 border-b border-slate-800 space-y-2 text-xs">
+          <div
+            id="calc-panel-change"
+            role="tabpanel"
+            aria-labelledby="calc-tab-change"
+            className="p-3 bg-slate-800/40 border-b border-slate-800 space-y-2 text-xs"
+          >
             <div className="flex justify-between items-center text-slate-300">
               <span>المبلغ المطلوبة فاتورته:</span>
               <span className="font-bold text-emerald-400 font-mono">{numVal.toFixed(2)} ر.س</span>
