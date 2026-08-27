@@ -1,9 +1,12 @@
 import { Router } from 'express';
 import { ReportsRepository } from '../../../repositories/ReportsRepository.ts';
+import { authorize } from '../../middleware/rbac.ts';
 
 const router = Router();
 
-router.get('/sales', async (req, res, next) => {
+const reportAuth = authorize(['manager', 'accountant', 'view_reports']);
+
+router.get('/sales', reportAuth, async (req, res, next) => {
   try {
     const filter = {
       startDate: req.query.startDate as string,
@@ -16,7 +19,7 @@ router.get('/sales', async (req, res, next) => {
   }
 });
 
-router.get('/purchases', async (req, res, next) => {
+router.get('/purchases', reportAuth, async (req, res, next) => {
   try {
     const filter = {
       startDate: req.query.startDate as string,
@@ -29,7 +32,7 @@ router.get('/purchases', async (req, res, next) => {
   }
 });
 
-router.get('/inventory', async (req, res, next) => {
+router.get('/inventory', reportAuth, async (req, res, next) => {
   try {
     const report = await ReportsRepository.getInventoryReport();
     res.json({ success: true, data: report });
@@ -38,7 +41,7 @@ router.get('/inventory', async (req, res, next) => {
   }
 });
 
-router.get('/customers', async (req, res, next) => {
+router.get('/customers', reportAuth, async (req, res, next) => {
   try {
     const report = await ReportsRepository.getCustomerReport();
     res.json({ success: true, data: report });
@@ -47,7 +50,7 @@ router.get('/customers', async (req, res, next) => {
   }
 });
 
-router.get('/suppliers', async (req, res, next) => {
+router.get('/suppliers', reportAuth, async (req, res, next) => {
   try {
     const report = await ReportsRepository.getSupplierReport();
     res.json({ success: true, data: report });
@@ -56,7 +59,7 @@ router.get('/suppliers', async (req, res, next) => {
   }
 });
 
-router.get('/profit', async (req, res, next) => {
+router.get('/profit', reportAuth, async (req, res, next) => {
   try {
     const filter = {
       startDate: req.query.startDate as string,
@@ -69,7 +72,7 @@ router.get('/profit', async (req, res, next) => {
   }
 });
 
-router.get('/financial-statements', async (req, res, next) => {
+router.get('/financial-statements', reportAuth, async (req, res, next) => {
   try {
     const filter = {
       startDate: req.query.startDate as string,
