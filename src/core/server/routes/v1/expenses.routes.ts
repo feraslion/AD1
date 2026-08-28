@@ -5,7 +5,7 @@ import { AuthenticatedRequest } from '../../middleware/auth.ts';
 
 const router = Router();
 
-router.get('/categories', async (req, res, next) => {
+router.get('/categories', authorize(['manager', 'accountant', 'cashier']), async (req, res, next) => {
   try {
     const list = await ExpenseRepository.getCategories();
     res.json({ success: true, data: list });
@@ -32,7 +32,7 @@ router.delete('/categories/:id', authorize(['manager']), async (req, res, next) 
   }
 });
 
-router.get('/requests', async (req, res, next) => {
+router.get('/requests', authorize(['manager', 'accountant', 'cashier']), async (req, res, next) => {
   try {
     const statusFilter = req.query.status as string;
     const list = await ExpenseRepository.getRequests(statusFilter);
@@ -42,7 +42,7 @@ router.get('/requests', async (req, res, next) => {
   }
 });
 
-router.post('/requests', async (req, res, next) => {
+router.post('/requests', authorize(['manager', 'accountant', 'cashier']), async (req, res, next) => {
   try {
     const item = await ExpenseRepository.createRequest(req.body);
     res.json({ success: true, data: item });
@@ -80,7 +80,7 @@ router.post('/requests/:id/pay', authorize(['manager', 'accountant', 'cashier'])
   }
 });
 
-router.get('/reports', async (req, res, next) => {
+router.get('/reports', authorize(['manager', 'accountant', 'view_reports']), async (req, res, next) => {
   try {
     const reports = await ExpenseRepository.getExpenseReports();
     res.json({ success: true, data: reports });
