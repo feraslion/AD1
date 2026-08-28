@@ -506,8 +506,11 @@ export class ReportsRepository {
     let financingInflows = 0;
     let financingOutflows = 0;
 
+    // Optimized: Pre-index accounts into an in-memory Map to eliminate O(L x A) linear searches inside line iteration
+    const accountMap = new Map(allAccounts.map(a => [a.id, a]));
+
     lines.forEach(l => {
-      const acc = allAccounts.find(a => a.id === l.accountId);
+      const acc = accountMap.get(l.accountId);
       const debit = Number(l.debit) || 0;
       const credit = Number(l.credit) || 0;
 
