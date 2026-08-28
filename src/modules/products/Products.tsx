@@ -278,44 +278,45 @@ export default function Products({ settings, onNavigateToInventory }: ProductsPr
         <div className="flex flex-wrap items-center gap-2.5">
           <button
             onClick={() => { setEditingProduct(null); setShowProductModal(true); }}
-            className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm rounded-xl transition-all shadow-md flex items-center gap-2"
+            className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm rounded-xl transition-all shadow-md flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-4 h-4" aria-hidden="true" />
             <span>إضافة منتج جديد</span>
           </button>
 
           <button
             onClick={() => setShowCategoriesModal(true)}
-            className="px-3.5 py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-200 font-bold text-xs sm:text-sm rounded-xl transition-all border border-slate-600 flex items-center gap-2"
+            className="px-3.5 py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-200 font-bold text-xs sm:text-sm rounded-xl transition-all border border-slate-600 flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
           >
-            <Layers className="w-4 h-4 text-emerald-400" />
+            <Layers className="w-4 h-4 text-emerald-400" aria-hidden="true" />
             <span>التصنيفات ({categories.length})</span>
           </button>
 
           <button
             onClick={() => setShowUnitsModal(true)}
-            className="px-3.5 py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-200 font-bold text-xs sm:text-sm rounded-xl transition-all border border-slate-600 flex items-center gap-2"
+            className="px-3.5 py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-200 font-bold text-xs sm:text-sm rounded-xl transition-all border border-slate-600 flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
           >
-            <Scale className="w-4 h-4 text-cyan-400" />
+            <Scale className="w-4 h-4 text-cyan-400" aria-hidden="true" />
             <span>الوحدات ({units.length})</span>
           </button>
 
           {products.length > 0 && (
             <button
               onClick={() => handleOpenBarcode(products[0])}
-              className="px-3.5 py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-200 font-bold text-xs sm:text-sm rounded-xl transition-all border border-slate-600 flex items-center gap-2"
+              className="px-3.5 py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-200 font-bold text-xs sm:text-sm rounded-xl transition-all border border-slate-600 flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
             >
-              <Barcode className="w-4 h-4 text-amber-400" />
+              <Barcode className="w-4 h-4 text-amber-400" aria-hidden="true" />
               <span>طابعة الباركود</span>
             </button>
           )}
 
           <button
             onClick={fetchData}
-            className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl border border-slate-700 transition-all"
+            aria-label="تحديث البيانات"
+            className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl border border-slate-700 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
             title="تحديث البيانات"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-emerald-400' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-emerald-400' : ''}`} aria-hidden="true" />
           </button>
         </div>
       </div>
@@ -494,9 +495,10 @@ export default function Products({ settings, onNavigateToInventory }: ProductsPr
             {searchTerm && (
               <button
                 onClick={() => setSearchTerm('')}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                aria-label="مسح حقل البحث"
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 rounded-md p-0.5"
               >
-                <X className="w-4 h-4" />
+                <X className="w-4 h-4" aria-hidden="true" />
               </button>
             )}
           </div>
@@ -546,10 +548,11 @@ export default function Products({ settings, onNavigateToInventory }: ProductsPr
             </select>
             <button
               onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
-              className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-all"
+              aria-label="تغيير اتجاه الترتيب"
+              className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               title="تغيير الاتجاه"
             >
-              <ArrowUpDown className="w-3.5 h-3.5" />
+              <ArrowUpDown className="w-3.5 h-3.5" aria-hidden="true" />
             </button>
           </div>
 
@@ -798,34 +801,38 @@ export default function Products({ settings, onNavigateToInventory }: ProductsPr
                         <div className="flex items-center justify-center gap-1.5">
                           <button
                             onClick={() => handleOpenHistory(p)}
-                            className="p-1.5 bg-slate-700/80 hover:bg-slate-600 text-blue-400 rounded-lg transition-all"
+                            aria-label={`سجل حركة المنتج ${p.name}`}
+                            className="p-1.5 bg-slate-700/80 hover:bg-slate-600 text-blue-400 rounded-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                             title="سجل حركة المنتج"
                           >
-                            <History className="w-4 h-4" />
+                            <History className="w-4 h-4" aria-hidden="true" />
                           </button>
 
                           <button
                             onClick={() => handleOpenBarcode(p)}
-                            className="p-1.5 bg-slate-700/80 hover:bg-slate-600 text-amber-400 rounded-lg transition-all"
+                            aria-label={`طباعة باركود ${p.name}`}
+                            className="p-1.5 bg-slate-700/80 hover:bg-slate-600 text-amber-400 rounded-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                             title="طباعة الباركود"
                           >
-                            <Printer className="w-4 h-4" />
+                            <Printer className="w-4 h-4" aria-hidden="true" />
                           </button>
 
                           <button
                             onClick={() => { setEditingProduct(p); setShowProductModal(true); }}
-                            className="p-1.5 bg-slate-700/80 hover:bg-slate-600 text-emerald-400 rounded-lg transition-all"
+                            aria-label={`تعديل بيانات ${p.name}`}
+                            className="p-1.5 bg-slate-700/80 hover:bg-slate-600 text-emerald-400 rounded-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                             title="تعديل البيانات"
                           >
-                            <Edit2 className="w-4 h-4" />
+                            <Edit2 className="w-4 h-4" aria-hidden="true" />
                           </button>
 
                           <button
                             onClick={() => handleDeleteProduct(p.id, p.name)}
-                            className="p-1.5 bg-slate-700/80 hover:bg-rose-600 text-rose-400 hover:text-white rounded-lg transition-all"
+                            aria-label={`حذف المنتج ${p.name}`}
+                            className="p-1.5 bg-slate-700/80 hover:bg-rose-600 text-rose-400 hover:text-white rounded-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                             title="حذف المنتج"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="w-4 h-4" aria-hidden="true" />
                           </button>
                         </div>
                       </td>
@@ -922,37 +929,41 @@ export default function Products({ settings, onNavigateToInventory }: ProductsPr
                 <div className="pt-2 border-t border-slate-700/60 flex items-center justify-between gap-1">
                   <button
                     onClick={() => handleOpenHistory(p)}
-                    className="p-2 bg-slate-700/70 hover:bg-slate-600 text-blue-400 rounded-xl text-xs font-bold transition-all flex items-center gap-1"
+                    aria-label={`سجل حركة المنتج ${p.name}`}
+                    className="p-2 bg-slate-700/70 hover:bg-slate-600 text-blue-400 rounded-xl text-xs font-bold transition-all flex items-center gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                     title="سجل حركة المنتج"
                   >
-                    <History className="w-3.5 h-3.5" />
+                    <History className="w-3.5 h-3.5" aria-hidden="true" />
                     <span className="hidden sm:inline">السجل</span>
                   </button>
 
                   <button
                     onClick={() => handleOpenBarcode(p)}
-                    className="p-2 bg-slate-700/70 hover:bg-slate-600 text-amber-400 rounded-xl text-xs font-bold transition-all flex items-center gap-1"
+                    aria-label={`طباعة باركود ${p.name}`}
+                    className="p-2 bg-slate-700/70 hover:bg-slate-600 text-amber-400 rounded-xl text-xs font-bold transition-all flex items-center gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                     title="طباعة الباركود"
                   >
-                    <Printer className="w-3.5 h-3.5" />
+                    <Printer className="w-3.5 h-3.5" aria-hidden="true" />
                     <span className="hidden sm:inline">باركود</span>
                   </button>
 
                   <button
                     onClick={() => { setEditingProduct(p); setShowProductModal(true); }}
-                    className="p-2 bg-slate-700/70 hover:bg-slate-600 text-emerald-400 rounded-xl text-xs font-bold transition-all flex items-center gap-1"
+                    aria-label={`تعديل المنتج ${p.name}`}
+                    className="p-2 bg-slate-700/70 hover:bg-slate-600 text-emerald-400 rounded-xl text-xs font-bold transition-all flex items-center gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                     title="تعديل المنتج"
                   >
-                    <Edit2 className="w-3.5 h-3.5" />
+                    <Edit2 className="w-3.5 h-3.5" aria-hidden="true" />
                     <span className="hidden sm:inline">تعديل</span>
                   </button>
 
                   <button
                     onClick={() => handleDeleteProduct(p.id, p.name)}
-                    className="p-2 bg-slate-700/70 hover:bg-rose-600 text-rose-400 hover:text-white rounded-xl transition-all"
+                    aria-label={`حذف ${p.name}`}
+                    className="p-2 bg-slate-700/70 hover:bg-rose-600 text-rose-400 hover:text-white rounded-xl transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                     title="حذف"
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
+                    <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
                   </button>
                 </div>
               </div>
