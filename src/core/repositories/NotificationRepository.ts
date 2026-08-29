@@ -1,6 +1,6 @@
 import { db } from '../database/index.ts';
-import { products, customers, suppliers } from '../database/schema.ts';
-import { lte, gte, eq } from 'drizzle-orm';
+import { products, customers } from '../database/schema.ts';
+import { lte, gte, gt, and } from 'drizzle-orm';
 
 export interface SystemNotification {
   id: string;
@@ -16,14 +16,14 @@ export interface SystemNotification {
 let notificationStore: SystemNotification[] = [];
 
 export class NotificationRepository {
+  /**
+   * Generates low stock notifications.
+   * Performance Optimization: Pushes filtering down to the SQL database level (where stock <= minStock)
+   * instead of loading all products into memory and running Array.prototype.filter.
+   */
   static async generateStockAlerts(): Promise<SystemNotification[]> {
     try {
-      const allProducts = await db.select().from(products);
-      const lowStockProds = allProducts.filter(p => {
-        const stock = Number(p.stock) || 0;
-        const minStock = Number(p.minStock) || 5;
-        return stock <= minStock;
-      });
+      const lowStockProds = await db.select().from(products).where(lte(products.stock, products.minStock));
 
       const alerts: SystemNotification[] = lowStockProds.map(p => ({
         id: `notif_stock_${p.id}`,
@@ -43,14 +43,19 @@ export class NotificationRepository {
     }
   }
 
+  /**
+   * Generates credit limit breach notifications for customers.
+   * Performance Optimization: Pushes filtering down to the SQL database level (where creditLimit > 0 and balance >= creditLimit)
+   * instead of loading all customers into memory and running Array.prototype.filter.
+   */
   static async generateCreditLimitAlerts(): Promise<SystemNotification[]> {
     try {
-      const allCusts = await db.select().from(customers);
-      const overLimit = allCusts.filter(c => {
-        const bal = Number(c.balance) || 0;
-        const limit = Number(c.creditLimit) || 0;
-        return limit > 0 && bal >= limit;
-      });
+      const overLimit = await db.select().from(customers).where(
+        and(
+          gt(customers.creditLimit, '0'),
+          gte(customers.balance, customers.creditLimit)
+        )
+      );
 
       const alerts: SystemNotification[] = overLimit.map(c => ({
         id: `notif_credit_${c.id}`,
