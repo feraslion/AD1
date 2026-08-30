@@ -30,9 +30,19 @@ export class InvoiceRepository {
       ? await db.select().from(invoiceItems).where(inArray(invoiceItems.invoiceId, invoiceIds))
       : [];
 
+    // Performance Optimization (Bolt): Pre-group invoice items by invoiceId into an in-memory Map lookup.
+    // This reduces parent-child record assembly complexity from O(N * M) nested array filtering to O(N + M).
+    const itemsByInvoiceId = new Map<string, typeof allItems>();
+    for (const item of allItems) {
+      if (!item.invoiceId) continue;
+      const existingItems = itemsByInvoiceId.get(item.invoiceId) || [];
+      existingItems.push(item);
+      itemsByInvoiceId.set(item.invoiceId, existingItems);
+    }
+
     return list.map(inv => ({
       ...inv,
-      items: allItems.filter(item => item.invoiceId === inv.id)
+      items: itemsByInvoiceId.get(inv.id) || []
     }));
   }
 
