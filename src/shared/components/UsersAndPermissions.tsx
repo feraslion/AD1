@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { UserService } from '../../services/api';
-import { Save, Plus, ShieldCheck, Users, Key, Trash2, Edit2, CheckSquare, Square, RefreshCw, AlertCircle } from 'lucide-react';
+import { Save, Plus, ShieldCheck, Users, Key, Trash2, Edit2, CheckSquare, Square, RefreshCw, AlertCircle, X } from 'lucide-react';
 
 interface User {
   id: string;
@@ -54,6 +54,18 @@ export default function UsersAndPermissions() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  // Handle Escape key listener for open modals
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showUserModal) setShowUserModal(false);
+        if (showRoleModal) setShowRoleModal(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showUserModal, showRoleModal]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -232,9 +244,10 @@ export default function UsersAndPermissions() {
         </div>
         <button
           onClick={fetchData}
-          className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition flex items-center gap-2 border border-slate-700 hover:text-white"
+          aria-label="تحديث مصفوفة الصلاحيات"
+          className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition flex items-center gap-2 border border-slate-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
         >
-          <RefreshCw className="w-4 h-4" />
+          <RefreshCw className="w-4 h-4" aria-hidden="true" />
           <span>تحديث مصفوفة الصلاحيات</span>
         </button>
       </div>
@@ -247,10 +260,12 @@ export default function UsersAndPermissions() {
       )}
 
       {/* Primary Sub-Tabs */}
-      <div className="flex border-b border-slate-200">
+      <div className="flex border-b border-slate-200" role="tablist" aria-label="تنقل أقسام إدارة المستخدمين والصلاحيات">
         <button
+          role="tab"
+          aria-selected={activeSubTab === 'users'}
           onClick={() => setActiveSubTab('users')}
-          className={`py-3 px-6 font-extrabold text-sm transition-all flex items-center gap-2 border-b-2 ${
+          className={`py-3 px-6 font-extrabold text-sm transition-all flex items-center gap-2 border-b-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 rounded-t-lg ${
             activeSubTab === 'users'
               ? 'border-emerald-600 text-emerald-600'
               : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -260,8 +275,10 @@ export default function UsersAndPermissions() {
           <span>إدارة الموظفين والمستخدمين ({usersList.length})</span>
         </button>
         <button
+          role="tab"
+          aria-selected={activeSubTab === 'roles'}
           onClick={() => setActiveSubTab('roles')}
-          className={`py-3 px-6 font-extrabold text-sm transition-all flex items-center gap-2 border-b-2 ${
+          className={`py-3 px-6 font-extrabold text-sm transition-all flex items-center gap-2 border-b-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 rounded-t-lg ${
             activeSubTab === 'roles'
               ? 'border-emerald-600 text-emerald-600'
               : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -336,18 +353,20 @@ export default function UsersAndPermissions() {
                       <div className="flex justify-center items-center gap-2">
                         <button
                           onClick={() => handleOpenUserModal(u)}
-                          className="p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-slate-100 rounded-lg transition"
+                          aria-label={`تعديل الموظف ${u.name}`}
+                          className="p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-slate-100 rounded-lg transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                           title="تعديل الموظف"
                         >
-                          <Edit2 className="w-4 h-4" />
+                          <Edit2 className="w-4 h-4" aria-hidden="true" />
                         </button>
                         <button
                           onClick={() => handleDeleteUser(u.id)}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-slate-100 rounded-lg transition"
+                          aria-label={`حذف الموظف ${u.name}`}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-slate-100 rounded-lg transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
                           title="حذف الموظف"
                           disabled={u.id === '001'}
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 className="w-4 h-4" aria-hidden="true" />
                         </button>
                       </div>
                     </td>
@@ -389,18 +408,20 @@ export default function UsersAndPermissions() {
                     <div className="flex gap-1.5">
                       <button
                         onClick={() => handleOpenRoleModal(r)}
-                        className="p-1.5 text-slate-500 hover:text-emerald-600 bg-white hover:bg-slate-100 rounded-lg border border-slate-200 shadow-sm transition"
+                        aria-label={`تعديل الدور ${r.name}`}
+                        className="p-1.5 text-slate-500 hover:text-emerald-600 bg-white hover:bg-slate-100 rounded-lg border border-slate-200 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                         title="تعديل الدور والصلاحيات"
                       >
-                        <Edit2 className="w-3.5 h-3.5" />
+                        <Edit2 className="w-3.5 h-3.5" aria-hidden="true" />
                       </button>
                       <button
                         onClick={() => handleDeleteRole(r.id)}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 bg-white hover:bg-slate-100 rounded-lg border border-slate-200 shadow-sm transition"
+                        aria-label={`حذف الدور ${r.name}`}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 bg-white hover:bg-slate-100 rounded-lg border border-slate-200 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
                         title="حذف الدور"
                         disabled={['role_manager', 'role_accountant', 'role_inventory', 'role_cashier'].includes(r.id)}
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
                       </button>
                     </div>
                   </div>
@@ -432,17 +453,24 @@ export default function UsersAndPermissions() {
 
       {/* ==================== USER FORM MODAL ==================== */}
       {showUserModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="user-modal-title"
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+        >
           <div className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-md w-full overflow-hidden text-right">
             <div className="bg-slate-900 p-4 border-b border-slate-800 text-white flex justify-between items-center">
-              <h3 className="font-black text-sm sm:text-base">
+              <h3 id="user-modal-title" className="font-black text-sm sm:text-base">
                 {editingUser ? '✏️ تعديل بيانات الموظف والصلاحيات' : '👤 إضافة موظف جديد لـ ERP'}
               </h3>
               <button 
+                type="button"
                 onClick={() => setShowUserModal(false)}
-                className="text-slate-400 hover:text-white font-bold"
+                aria-label="إغلاق"
+                className="text-slate-400 hover:text-white p-1 rounded-lg transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               >
-                ×
+                <X className="w-5 h-5" aria-hidden="true" />
               </button>
             </div>
 
@@ -507,17 +535,24 @@ export default function UsersAndPermissions() {
 
       {/* ==================== ROLE FORM MODAL (RBAC MASTER MATRIX) ==================== */}
       {showRoleModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="role-modal-title"
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+        >
           <div className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-2xl w-full overflow-hidden text-right flex flex-col max-h-[90vh]">
             <div className="bg-slate-900 p-4 border-b border-slate-800 text-white flex justify-between items-center shrink-0">
-              <h3 className="font-black text-sm sm:text-base">
+              <h3 id="role-modal-title" className="font-black text-sm sm:text-base">
                 {editingRole ? '✏️ تعديل الدور ومصفوفة الصلاحيات' : '🔑 تسجيل دور جديد ومصفوفة صلاحياته'}
               </h3>
               <button 
+                type="button"
                 onClick={() => setShowRoleModal(false)}
-                className="text-slate-400 hover:text-white font-bold"
+                aria-label="إغلاق"
+                className="text-slate-400 hover:text-white p-1 rounded-lg transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               >
-                ×
+                <X className="w-5 h-5" aria-hidden="true" />
               </button>
             </div>
 
