@@ -1,4 +1,4 @@
-import { describe, test, expect } from 'bun:test';
+declare const process: any;
 
 // Mock data structures matching treasuryTransactions table schema
 interface TreasuryTx {
@@ -42,7 +42,9 @@ function filterUnreconciledTransactions(list: TreasuryTx[], bankAccountId: strin
   }));
 }
 
-describe('TreasuryRepository Performance & Logic Unit Tests', () => {
+async function runTreasuryPerformanceTests() {
+  console.log('=== Running Treasury Performance & Unit Tests ===');
+
   const mockTransactions: TreasuryTx[] = [
     {
       id: 'tx_1',
@@ -106,34 +108,37 @@ describe('TreasuryRepository Performance & Logic Unit Tests', () => {
     }
   ];
 
-  test('getTransactions filters correctly by type when provided', () => {
-    const deposits = filterTransactions(mockTransactions, 'deposit');
-    expect(deposits.length).toBe(2);
-    expect(deposits.every(t => t.transactionType === 'deposit')).toBe(true);
-    expect(deposits[0].amount).toBe(1000);
+  // Test 1: getTransactions by type
+  const deposits = filterTransactions(mockTransactions, 'deposit');
+  if (deposits.length !== 2 || !deposits.every(t => t.transactionType === 'deposit') || deposits[0].amount !== 1000) {
+    throw new Error('Test 1 failed: getTransactions deposit filter');
+  }
 
-    const withdrawals = filterTransactions(mockTransactions, 'withdrawal');
-    expect(withdrawals.length).toBe(1);
-    expect(withdrawals[0].id).toBe('tx_2');
-    expect(withdrawals[0].amount).toBe(250);
-  });
+  const withdrawals = filterTransactions(mockTransactions, 'withdrawal');
+  if (withdrawals.length !== 1 || withdrawals[0].id !== 'tx_2' || withdrawals[0].amount !== 250) {
+    throw new Error('Test 1 failed: getTransactions withdrawal filter');
+  }
 
-  test('getTransactions returns all items formatted when no type is provided', () => {
-    const all = filterTransactions(mockTransactions);
-    expect(all.length).toBe(4);
-    expect(typeof all[0].amount).toBe('number');
-    expect(typeof all[0].reconciled).toBe('boolean');
-  });
+  // Test 2: getTransactions without type filter
+  const all = filterTransactions(mockTransactions);
+  if (all.length !== 4 || typeof all[0].amount !== 'number' || typeof all[0].reconciled !== 'boolean') {
+    throw new Error('Test 2 failed: getTransactions overall formatting');
+  }
 
-  test('getUnreconciledTransactions filters only unreconciled transactions for given bankAccountId', () => {
-    const unreconciledBankMain = filterUnreconciledTransactions(mockTransactions, 'bank_main');
-    // tx_1: unreconciled, destinationId = bank_main -> included
-    // tx_2: reconciled=true -> excluded
-    // tx_3: unreconciled, destinationId = bank_main -> included
-    // tx_4: source/dest not bank_main -> excluded
-    expect(unreconciledBankMain.length).toBe(2);
-    const ids = unreconciledBankMain.map(t => t.id);
-    expect(ids).toContain('tx_1');
-    expect(ids).toContain('tx_3');
-  });
+  // Test 3: getUnreconciledTransactions for bankAccountId
+  const unreconciledBankMain = filterUnreconciledTransactions(mockTransactions, 'bank_main');
+  if (unreconciledBankMain.length !== 2) {
+    throw new Error(`Test 3 failed: expected 2 unreconciled bank_main transactions, got ${unreconciledBankMain.length}`);
+  }
+  const ids = unreconciledBankMain.map(t => t.id);
+  if (!ids.includes('tx_1') || !ids.includes('tx_3')) {
+    throw new Error('Test 3 failed: unreconciled bank_main transaction IDs mismatch');
+  }
+
+  console.log('✔ All Treasury Repository Logic & Performance Tests Passed!');
+}
+
+runTreasuryPerformanceTests().catch(err => {
+  console.error('Test Failed:', err);
+  process.exit(1);
 });
