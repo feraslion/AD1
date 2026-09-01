@@ -4,7 +4,7 @@ import { authorize } from '../../middleware/rbac.ts';
 
 const router = Router();
 
-router.get('/requests', async (req, res, next) => {
+router.get('/requests', authorize(['manager', 'inventory', 'accountant']), async (req, res, next) => {
   try {
     const requests = await PurchaseRepository.findAllPurchaseRequests();
     res.json({ success: true, data: requests });
@@ -31,7 +31,7 @@ router.post('/requests/:id/convert-order', authorize(['manager', 'inventory', 'a
   }
 });
 
-router.get('/', async (req, res, next) => {
+router.get('/', authorize(['manager', 'inventory', 'accountant']), async (req, res, next) => {
   try {
     const list = await PurchaseRepository.findAllPurchases();
     res.json({ success: true, data: list });
