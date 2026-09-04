@@ -4,7 +4,7 @@ import { authorize } from '../../middleware/rbac.ts';
 
 const router = Router();
 
-router.get('/cashboxes', async (req, res, next) => {
+router.get('/cashboxes', authorize(['manager', 'accountant', 'cashier']), async (req, res, next) => {
   try {
     const list = await TreasuryRepository.getCashboxes();
     res.json({ success: true, data: list });
@@ -31,7 +31,7 @@ router.delete('/cashboxes/:id', authorize(['manager']), async (req, res, next) =
   }
 });
 
-router.get('/bank-accounts', async (req, res, next) => {
+router.get('/bank-accounts', authorize(['manager', 'accountant']), async (req, res, next) => {
   try {
     const list = await TreasuryRepository.getBankAccounts();
     res.json({ success: true, data: list });
@@ -58,7 +58,7 @@ router.delete('/bank-accounts/:id', authorize(['manager']), async (req, res, nex
   }
 });
 
-router.get('/transactions', async (req, res, next) => {
+router.get('/transactions', authorize(['manager', 'accountant', 'cashier']), async (req, res, next) => {
   try {
     const type = req.query.type as string;
     const list = await TreasuryRepository.getTransactions(type);
@@ -95,7 +95,7 @@ router.post('/transfers', authorize(['manager', 'accountant']), async (req, res,
   }
 });
 
-router.get('/reconciliations/:bankAccountId', async (req, res, next) => {
+router.get('/reconciliations/:bankAccountId', authorize(['manager', 'accountant']), async (req, res, next) => {
   try {
     const list = await TreasuryRepository.getBankReconciliations(req.params.bankAccountId);
     res.json({ success: true, data: list });
@@ -104,7 +104,7 @@ router.get('/reconciliations/:bankAccountId', async (req, res, next) => {
   }
 });
 
-router.get('/unreconciled/:bankAccountId', async (req, res, next) => {
+router.get('/unreconciled/:bankAccountId', authorize(['manager', 'accountant']), async (req, res, next) => {
   try {
     const list = await TreasuryRepository.getUnreconciledTransactions(req.params.bankAccountId);
     res.json({ success: true, data: list });
