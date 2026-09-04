@@ -393,54 +393,64 @@ export default function Invoices({ invoices, settings, customers = [], products 
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex flex-wrap gap-2 bg-slate-100 p-1.5 rounded-xl text-xs font-bold w-full md:w-auto">
+        <div role="tablist" aria-label="أقسام دورة المبيعات" className="flex flex-wrap gap-2 bg-slate-100 p-1.5 rounded-xl text-xs font-bold w-full md:w-auto">
           <button
+            role="tab"
+            aria-selected={activeSubTab === 'invoices'}
             onClick={() => setActiveSubTab('invoices')}
-            className={`px-3.5 py-2 rounded-lg transition flex items-center gap-1.5 ${
+            className={`px-3.5 py-2 rounded-lg transition flex items-center gap-1.5 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none ${
               activeSubTab === 'invoices' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <FileText className="w-4 h-4" />
+            <FileText className="w-4 h-4" aria-hidden="true" />
             <span>الفواتير الضريبية ({invoices.length})</span>
           </button>
 
           <button
+            role="tab"
+            aria-selected={activeSubTab === 'quotations'}
             onClick={() => setActiveSubTab('quotations')}
-            className={`px-3.5 py-2 rounded-lg transition flex items-center gap-1.5 ${
+            className={`px-3.5 py-2 rounded-lg transition flex items-center gap-1.5 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none ${
               activeSubTab === 'quotations' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <Send className="w-4 h-4" />
+            <Send className="w-4 h-4" aria-hidden="true" />
             <span>عروض الأسعار ({quotationsList.length})</span>
           </button>
 
           <button
+            role="tab"
+            aria-selected={activeSubTab === 'salesOrders'}
             onClick={() => setActiveSubTab('salesOrders')}
-            className={`px-3.5 py-2 rounded-lg transition flex items-center gap-1.5 ${
+            className={`px-3.5 py-2 rounded-lg transition flex items-center gap-1.5 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none ${
               activeSubTab === 'salesOrders' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-4 h-4" aria-hidden="true" />
             <span>أوامر المبيعات ({salesOrdersList.length})</span>
           </button>
 
           <button
+            role="tab"
+            aria-selected={activeSubTab === 'payments'}
             onClick={() => setActiveSubTab('payments')}
-            className={`px-3.5 py-2 rounded-lg transition flex items-center gap-1.5 ${
+            className={`px-3.5 py-2 rounded-lg transition flex items-center gap-1.5 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none ${
               activeSubTab === 'payments' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <CreditCard className="w-4 h-4" />
+            <CreditCard className="w-4 h-4" aria-hidden="true" />
             <span>تحصيل سندات الدفع</span>
           </button>
 
           <button
+            role="tab"
+            aria-selected={activeSubTab === 'currencies'}
             onClick={() => setActiveSubTab('currencies')}
-            className={`px-3.5 py-2 rounded-lg transition flex items-center gap-1.5 ${
+            className={`px-3.5 py-2 rounded-lg transition flex items-center gap-1.5 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none ${
               activeSubTab === 'currencies' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <Coins className="w-4 h-4 text-amber-500" />
+            <Coins className="w-4 h-4 text-amber-500" aria-hidden="true" />
             <span>العملات والأسعار</span>
           </button>
         </div>
@@ -509,11 +519,12 @@ export default function Invoices({ invoices, settings, customers = [], products 
                     <button
                       key={inv.id}
                       ref={(el) => { invoiceItemRefs.current[idx] = el; }}
+                      aria-selected={isSelected}
                       onClick={() => {
                         setHighlightedInvoiceIndex(idx);
                         setSelectedInvoice(inv);
                       }}
-                      className={`w-full text-right p-4 rounded-xl border transition flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 active:scale-[0.99] ${
+                      className={`w-full text-right p-4 rounded-xl border transition flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none ${
                         isSelected || isHighlighted 
                           ? 'border-emerald-500 ring-2 ring-emerald-500/50 bg-emerald-50/30 shadow-sm' 
                           : 'border-slate-200 bg-white hover:border-slate-300'
@@ -565,10 +576,10 @@ export default function Invoices({ invoices, settings, customers = [], products 
                       <button
                         onClick={() => handleReturnInvoice(selectedInvoice)}
                         disabled={isReturning}
-                        className="p-1.5 px-2.5 text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition flex items-center gap-1"
+                        className="p-1.5 px-2.5 text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition flex items-center gap-1 focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:outline-none"
                         title="إرجاع الفاتورة بالكامل (مرتجع مبيعات)"
                       >
-                        <RotateCcw className="w-3.5 h-3.5" />
+                        <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
                         <span>مرتجع</span>
                       </button>
                     )}
@@ -576,38 +587,38 @@ export default function Invoices({ invoices, settings, customers = [], products 
                     <button
                       onClick={() => handleDownloadPdf(selectedInvoice, 'a4')}
                       disabled={isDownloadingPdf}
-                      className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs rounded-lg transition flex items-center gap-1 shadow-xs"
+                      className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs rounded-lg transition flex items-center gap-1 shadow-xs focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
                       title="تحميل فاتورة ضريبية رسمية PDF (A4)"
                     >
-                      <Download className="w-3.5 h-3.5" />
+                      <Download className="w-3.5 h-3.5" aria-hidden="true" />
                       <span>{isDownloadingPdf ? 'جاري التحميل...' : 'تحميل PDF (A4)'}</span>
                     </button>
 
                     <button
                       onClick={() => handleDownloadPdf(selectedInvoice, 'thermal')}
                       disabled={isDownloadingPdf}
-                      className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-lg transition flex items-center gap-1 shadow-xs"
+                      className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-lg transition flex items-center gap-1 shadow-xs focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:outline-none"
                       title="تحميل إيصال حراري PDF"
                     >
-                      <Download className="w-3.5 h-3.5" />
+                      <Download className="w-3.5 h-3.5" aria-hidden="true" />
                       <span>إيصال PDF</span>
                     </button>
 
                     <button
                       onClick={() => setShowShareModal(true)}
-                      className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-lg transition flex items-center gap-1 shadow-xs"
+                      className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-lg transition flex items-center gap-1 shadow-xs focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none"
                       title="مشاركة الفاتورة عبر واتساب، تلجرام، جيميل، جوجل درايف"
                     >
-                      <Share2 className="w-3.5 h-3.5" />
+                      <Share2 className="w-3.5 h-3.5" aria-hidden="true" />
                       <span>مشاركة / إرسال</span>
                     </button>
 
                     <button
                       onClick={() => window.print()}
-                      className="p-1.5 px-2 text-slate-600 dark:text-slate-300 hover:text-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition flex items-center gap-1"
+                      className="p-1.5 px-2 text-slate-600 dark:text-slate-300 hover:text-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition flex items-center gap-1 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none"
                       title="طباعة حرارية فورية"
                     >
-                      <Printer className="w-4 h-4" />
+                      <Printer className="w-4 h-4" aria-hidden="true" />
                       <span className="text-xs font-bold">طباعة</span>
                     </button>
                   </div>
