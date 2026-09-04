@@ -1,19 +1,36 @@
 import { db } from '../database/index.ts';
 import { withAutoMigration } from '../database/initSchema.ts';
 import { products, categories, units, stockMoves, warehouses } from '../database/schema.ts';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, like, or, and } from 'drizzle-orm';
 
 export class ProductRepository {
+  /**
+   * Fetch products with optional filtering by category and search term.
+   * Optimized: Pushes filter conditions directly down to SQL via Drizzle ORM
+   * instead of fetching the entire products table into memory for JS array filtering.
+   */
   static async findAll(params?: { search?: string; category?: string }) {
-    let list = await db.select().from(products);
+    const conditions = [];
+
     if (params?.category) {
-      list = list.filter(p => p.category === params.category);
+      conditions.push(eq(products.category, params.category));
     }
+
     if (params?.search) {
-      const term = params.search.toLowerCase();
-      list = list.filter(p => p.name.toLowerCase().includes(term) || p.barcode.includes(term));
+      const term = `%${params.search}%`;
+      conditions.push(
+        or(
+          like(products.name, term),
+          like(products.barcode, term)
+        )
+      );
     }
-    return list;
+
+    if (conditions.length > 0) {
+      return await db.select().from(products).where(and(...conditions));
+    }
+
+    return await db.select().from(products);
   }
 
   static async findById(id: string) {
