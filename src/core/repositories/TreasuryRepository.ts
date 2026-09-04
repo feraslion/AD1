@@ -6,7 +6,7 @@ import {
   bankReconciliations,
   accounts 
 } from '../database/schema.ts';
-import { eq, desc, and } from 'drizzle-orm';
+import { eq, desc, and, or } from 'drizzle-orm';
 import { AccountingRepository } from './AccountingRepository.ts';
 import { withAutoMigration, ensureDatabaseTables } from '../database/initSchema.ts';
 
@@ -237,13 +237,15 @@ export class TreasuryRepository {
   static async getTransactions(type?: string) {
     return await withAutoMigration(async () => {
       try {
-        let query = db.select().from(treasuryTransactions).orderBy(desc(treasuryTransactions.createdAt));
-        const list = await query;
-        let filtered = list;
+        // Performance Optimization: Push down `type` filtering directly to SQL database using `where()` clause
+        // instead of fetching all transactions into memory and using Array.prototype.filter.
+        const query = db.select().from(treasuryTransactions);
         if (type) {
-          filtered = list.filter(t => t.transactionType === type);
+          query.where(eq(treasuryTransactions.transactionType, type));
         }
-        return filtered.map(t => ({
+        const list = await query.orderBy(desc(treasuryTransactions.createdAt));
+
+        return list.map(t => ({
           ...t,
           amount: parseFloat(t.amount || '0'),
           exchangeRate: parseFloat(t.exchangeRate || '1'),
@@ -519,15 +521,20 @@ export class TreasuryRepository {
 
   static async getUnreconciledTransactions(bankAccountId: string) {
     try {
+      // Performance Optimization: Push down `sourceId === bankAccountId || destinationId === bankAccountId`
+      // directly to the SQL database using Drizzle ORM `and` & `or` clauses instead of fetching all unreconciled
+      // transactions into memory and filtering in JS.
       const list = await db.select().from(treasuryTransactions)
         .where(and(
-          eq(treasuryTransactions.reconciled, 'false')
+          eq(treasuryTransactions.reconciled, 'false'),
+          or(
+            eq(treasuryTransactions.sourceId, bankAccountId),
+            eq(treasuryTransactions.destinationId, bankAccountId)
+          )
         ))
         .orderBy(desc(treasuryTransactions.date));
 
-      // Filter transactions related to this bank account (either as source or destination)
-      const filtered = list.filter(t => t.sourceId === bankAccountId || t.destinationId === bankAccountId);
-      return filtered.map(t => ({
+      return list.map(t => ({
         ...t,
         amount: parseFloat(t.amount || '0')
       }));
