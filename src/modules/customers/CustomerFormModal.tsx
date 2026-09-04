@@ -28,6 +28,16 @@ export default function CustomerFormModal({ isOpen, onClose, onSave, customer }:
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
+  useEffect(() => {
     if (customer) {
       setFormData({
         id: customer.id,
@@ -101,16 +111,21 @@ export default function CustomerFormModal({ isOpen, onClose, onSave, customer }:
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="customer-form-modal-title"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200"
+    >
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-emerald-500/20 text-emerald-400 rounded-xl">
-              <UserPlus className="w-5 h-5" />
+              <UserPlus className="w-5 h-5" aria-hidden="true" />
             </div>
             <div>
-              <h3 className="font-extrabold text-base">
+              <h3 id="customer-form-modal-title" className="font-extrabold text-base">
                 {customer ? 'تعديل بيانات العميل' : 'إضافة عميل جديد'}
               </h3>
               <p className="text-xs text-slate-400">سجل بيانات التواصل، السجل التجاري، وسقف الائتمان</p>
@@ -118,9 +133,10 @@ export default function CustomerFormModal({ isOpen, onClose, onSave, customer }:
           </div>
           <button
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition"
+            aria-label="إغلاق النافذة"
+            className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition focus:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-500"
           >
-            <X className="w-5 h-5" />
+            <X className="w-5 h-5" aria-hidden="true" />
           </button>
         </div>
 
@@ -128,7 +144,7 @@ export default function CustomerFormModal({ isOpen, onClose, onSave, customer }:
         <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-4 text-xs">
           {errorMsg && (
             <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl flex items-center gap-2">
-              <ShieldAlert className="w-4 h-4 shrink-0 text-rose-600" />
+              <ShieldAlert className="w-4 h-4 shrink-0 text-rose-600" aria-hidden="true" />
               <span>{errorMsg}</span>
             </div>
           )}
@@ -148,7 +164,7 @@ export default function CustomerFormModal({ isOpen, onClose, onSave, customer }:
                   placeholder="مثال: شركة الأفق للتجارة / أحمد محمد"
                   className="w-full pl-3 pr-9 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-hidden font-medium"
                 />
-                <Building className="w-4 h-4 absolute right-3 top-3 text-slate-400" />
+                <Building className="w-4 h-4 absolute right-3 top-3 text-slate-400" aria-hidden="true" />
               </div>
             </div>
 
@@ -164,7 +180,7 @@ export default function CustomerFormModal({ isOpen, onClose, onSave, customer }:
                   placeholder="05xxxxxxx"
                   className="w-full pl-3 pr-9 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-hidden font-mono"
                 />
-                <Phone className="w-4 h-4 absolute right-3 top-3 text-slate-400" />
+                <Phone className="w-4 h-4 absolute right-3 top-3 text-slate-400" aria-hidden="true" />
               </div>
             </div>
 
@@ -180,7 +196,7 @@ export default function CustomerFormModal({ isOpen, onClose, onSave, customer }:
                   placeholder="customer@domain.com"
                   className="w-full pl-3 pr-9 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-hidden dir-ltr text-right"
                 />
-                <Mail className="w-4 h-4 absolute right-3 top-3 text-slate-400" />
+                <Mail className="w-4 h-4 absolute right-3 top-3 text-slate-400" aria-hidden="true" />
               </div>
             </div>
 
@@ -199,7 +215,7 @@ export default function CustomerFormModal({ isOpen, onClose, onSave, customer }:
                   <option value="company">شركات / مؤسسات</option>
                   <option value="vip">عميل مميز (VIP)</option>
                 </select>
-                <Tag className="w-4 h-4 absolute right-3 top-3 text-slate-400" />
+                <Tag className="w-4 h-4 absolute right-3 top-3 text-slate-400" aria-hidden="true" />
               </div>
             </div>
           </div>
@@ -219,7 +235,7 @@ export default function CustomerFormModal({ isOpen, onClose, onSave, customer }:
                   placeholder="300000000000003"
                   className="w-full pl-3 pr-9 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-hidden font-mono"
                 />
-                <FileText className="w-4 h-4 absolute right-3 top-3 text-slate-400" />
+                <FileText className="w-4 h-4 absolute right-3 top-3 text-slate-400" aria-hidden="true" />
               </div>
             </div>
 
@@ -235,7 +251,7 @@ export default function CustomerFormModal({ isOpen, onClose, onSave, customer }:
                   placeholder="1010xxxxxx"
                   className="w-full pl-3 pr-9 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-hidden font-mono"
                 />
-                <Building className="w-4 h-4 absolute right-3 top-3 text-slate-400" />
+                <Building className="w-4 h-4 absolute right-3 top-3 text-slate-400" aria-hidden="true" />
               </div>
             </div>
           </div>
@@ -253,7 +269,7 @@ export default function CustomerFormModal({ isOpen, onClose, onSave, customer }:
                 placeholder="الرياض، حي الملز، الشارع العام"
                 className="w-full pl-3 pr-9 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
               />
-              <MapPin className="w-4 h-4 absolute right-3 top-3 text-slate-400" />
+              <MapPin className="w-4 h-4 absolute right-3 top-3 text-slate-400" aria-hidden="true" />
             </div>
           </div>
 
@@ -272,7 +288,7 @@ export default function CustomerFormModal({ isOpen, onClose, onSave, customer }:
                   onChange={(e) => setFormData({ ...formData, creditLimit: parseFloat(e.target.value) || 0 })}
                   className="w-full pl-3 pr-9 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-hidden font-mono font-bold text-amber-600"
                 />
-                <DollarSign className="w-4 h-4 absolute right-3 top-3 text-slate-400" />
+                <DollarSign className="w-4 h-4 absolute right-3 top-3 text-slate-400" aria-hidden="true" />
               </div>
             </div>
 
@@ -289,7 +305,7 @@ export default function CustomerFormModal({ isOpen, onClose, onSave, customer }:
                     onChange={(e) => setFormData({ ...formData, openingBalance: parseFloat(e.target.value) || 0 })}
                     className="w-full pl-3 pr-9 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-hidden font-mono font-bold"
                   />
-                  <DollarSign className="w-4 h-4 absolute right-3 top-3 text-slate-400" />
+                  <DollarSign className="w-4 h-4 absolute right-3 top-3 text-slate-400" aria-hidden="true" />
                 </div>
               </div>
             )}
@@ -329,7 +345,7 @@ export default function CustomerFormModal({ isOpen, onClose, onSave, customer }:
             <button
               type="button"
               onClick={onClose}
-              className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-bold transition"
+              className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-bold transition focus:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-500"
             >
               إلغاء
             </button>
@@ -337,9 +353,9 @@ export default function CustomerFormModal({ isOpen, onClose, onSave, customer }:
             <button
               type="submit"
               disabled={isSubmitting}
-              className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition disabled:opacity-50"
+              className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition disabled:opacity-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-500"
             >
-              <Save className="w-4 h-4" />
+              <Save className="w-4 h-4" aria-hidden="true" />
               <span>{isSubmitting ? 'جاري الحفظ...' : customer ? 'تحديث البيانات' : 'حفظ العميل'}</span>
             </button>
           </div>
